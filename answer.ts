@@ -32,8 +32,8 @@ export type Judged = Answer & { verdict: Verdict };
 // A Choice takes at most 255 options: 0 through 252, plus the two escapes.
 const COUNT_CEILING = 252;
 
-/** Jev writes no prose, so a count is a choice over the numbers themselves. */
-async function countFrom(
+/** Jev writes no prose, so a count is a choice over the numbers themselves. Untimed; see countFrom. */
+async function rawCount(
   client: TypeSafeClient,
   question: string,
   section: string,
@@ -49,19 +49,17 @@ async function countFrom(
       ? "This part of the text lists none of them"
       : "The text does not give this number";
 
-    const res = await timed("api", () =>
-      client.systemOne({
-        state: { question, section, text },
-        questions: {
-          count: choice(
-            partial
-              ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
-              : "How many, according to the text?",
-            criteria,
-          ),
-        },
-      }),
-    );
+    const res = await client.systemOne({
+      state: { question, section, text },
+      questions: {
+        count: choice(
+          partial
+            ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
+            : "How many, according to the text?",
+          criteria,
+        ),
+      },
+    });
     const a = res.answers.count;
     return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
   };
@@ -72,6 +70,9 @@ async function countFrom(
   // for it: one more call with the full range usually pins the number down.
   return a.text === `over ${ceiling}` && ceiling < COUNT_CEILING ? ask(COUNT_CEILING) : a;
 }
+
+const countFrom = (client: TypeSafeClient, question: string, section: string, text: string, max: number) =>
+  timed("api", () => rawCount(client, question, section, text, max));
 
 /**
  * A list longer than one window cannot be counted in one call, so each window
@@ -86,10 +87,13 @@ export async function countAcross(
   max: number,
   onPart?: (page: number, part: Answer, running: number) => void,
 ): Promise<Answer> {
+  // One span for the parallel calls, so the timing split stays under wall time.
+  const parts = await timed("api", () =>
+    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, max, true))),
+  );
   let total = 0;
   let worst = 1;
-  for (const w of windows) {
-    const part = await countFrom(client, question, section, w.text, max, true);
+  for (const [i, part] of parts.entries()) {
     const n = Number(part.text);
     // "not stated" and "over N" carry no number to add; a window listing none
     // is expected in a long section, so it lowers no confidence.
@@ -97,7 +101,7 @@ export async function countAcross(
       total += n;
       if (n > 0) worst = Math.min(worst, part.p);
     }
-    onPart?.(w.page, part, total);
+    onPart?.(windows[i]!.page, part, total);
   }
   return { text: String(total), p: worst };
 }

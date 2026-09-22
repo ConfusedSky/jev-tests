@@ -78,6 +78,21 @@ describe.if(live)("count", () => {
   });
 });
 
+describe.if(live)("per-page gating", () => {
+  const opts = { question: "", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, perPage: true };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  // 24 pages of near-identical entries; only one names the Fen Gasket.
+  test("lands on the one page of a long section that answers", async () => {
+    const question = "How much does the Fen Gasket cost?";
+    const { hit, tried } = await searchPdf(client, fixture("catalogue.pdf"), { ...opts, question }, ui);
+    expect(hit?.page).toBe(24);
+    expect(tried).toHaveLength(24);
+    const others = tried.filter((t) => t.page !== 24).map((t) => t.p);
+    expect(Math.max(...others)).toBeLessThan(0.5);
+  });
+});
+
 describe.if(live)("counting across windows", () => {
   test("sums a list too long for one window", async () => {
     // 30 gadgets, ten per page, forced into one window per page.

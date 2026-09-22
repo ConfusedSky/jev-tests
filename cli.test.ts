@@ -44,6 +44,13 @@ describe("parseFlags", () => {
 });
 
 describe("readFlags", () => {
+  test("pages are gated one by one unless --whole-windows", () => {
+    expect(readDefaults().perPage).toBe(true);
+    const o = readDefaults();
+    parseFlags(["--whole-windows"], o, readFlags(), usage);
+    expect(o.perPage).toBe(false);
+  });
+
   test("--kind takes only the three kinds", () => {
     const o = readDefaults();
     parseFlags(["--kind", "count"], o, readFlags(), usage);

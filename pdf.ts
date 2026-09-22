@@ -124,22 +124,46 @@ export async function openAt(url: string): Promise<void> {
  * are 94 perks, so asking whether a window "contains the answer" rejects the
  * very pages the perks are listed on. A count asks for the list instead.
  */
+export type Gate = (of: string) => string;
 export const GATE = {
-  answer: "The text contains the answer to the question",
-  list: "The text lists entries of the kind the question asks about",
-} as const;
+  answer: (of) => `${of} contains the answer to the question`,
+  list: (of) => `${of} lists entries of the kind the question asks about`,
+} satisfies Record<string, Gate>;
 
-async function askWindow(
-  client: TypeSafeClient,
-  question: string,
-  section: string,
-  text: string,
-  gate: string,
-): Promise<number> {
+async function askWindow(client: TypeSafeClient, question: string, section: string, text: string, gate: Gate) {
   const res = await timed("api", () =>
-    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate) } }),
+    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate("The text")) } }),
   );
   return res.answers.answers.noul;
+}
+
+/**
+ * Gates many pages in one call, a question per page over one state. Shown the
+ * pages together the model contrasts them: on a 24-page section the runner-up
+ * page sat at 0.03 this way and at 0.33 when each page was asked alone.
+ */
+async function askPages(client: TypeSafeClient, question: string, section: string, pages: Window[], gate: Gate) {
+  const key = (w: Window) => `p${w.page}`;
+  const res = await client.systemOne({
+    state: { question, section, pages: Object.fromEntries(pages.map((w) => [key(w), w.text])) },
+    questions: Object.fromEntries(pages.map((w) => [key(w), noul(gate(`Page ${key(w)}`))])),
+  });
+  return pages.map((w) => res.answers[key(w)]!.noul);
+}
+
+/** Pages packed into batches of at most `chars`; a page over the limit travels alone. */
+export function batches(pages: Window[], chars: number): Window[][] {
+  const out: Window[][] = [];
+  let size = Infinity;
+  for (const w of pages) {
+    if (size + w.text.length > chars) {
+      out.push([]);
+      size = 0;
+    }
+    out.at(-1)!.push(w);
+    size += w.text.length;
+  }
+  return out;
 }
 
 /**
@@ -157,14 +181,14 @@ export type SearchOpts = {
   max: number;
   chars: number;
   batch: number;
-  /** One page per call, so the hit is the page itself. Costs a call per page. */
+  /** Every page gated on its own, in batches of `chars`, so the hit is the page itself. */
   perPage?: boolean;
   maxAnswers?: number;
   verify?: Verify;
   /** Tries the table of contents before any page is read; may instead name the section to read. */
   fromOutline?: (sections: Section[]) => Promise<OutlineAnswer | undefined>;
   /** What a window must satisfy to be worth reading out; see GATE. */
-  gate?: string;
+  gate?: Gate;
   /** Counts a whole section at once, for a list too long to fit one window. */
   countAcross?: (section: string, windows: Window[]) => Promise<Judged>;
 };
@@ -190,25 +214,59 @@ export async function searchPdf(
   // fragment of the same pages, so they are neither read nor kept as fallbacks.
   const counted: string[] = [];
 
-  /**
-   * Asks one window. Returns the hit to stop on, "spent" once maxAnswers
-   * windows have answered below the floor, or undefined to keep walking.
-   */
-  const visit = async (w: Window, name: string, label: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
-    ui.trying(label);
-    const t = Date.now();
-    const p = await askWindow(client, o.question, name, w.text, o.gate ?? GATE.answer);
-    tried.push({ name, page: w.page, p });
-    ui.clear();
-    const yes = p >= o.threshold;
-    ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label}`);
-    if (!yes) return undefined;
+  const gate = o.gate ?? GATE.answer;
+  type Passed = { w: Window; p: number; label: string };
 
-    const hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
+  /**
+   * The windows worth reading out, best first. Whole windows are gated one at
+   * a time and stop at the first yes. Pages are gated a batch at a time, each
+   * batch as big as a whole window, so the walk spends the same calls and
+   * stops at the same place; within a batch the best page is read first.
+   */
+  async function* passed(ws: Window[], name: string, label: (w: Window, i: number) => string): AsyncGenerator<Passed> {
+    if (!o.perPage) {
+      for (const [i, w] of ws.entries()) {
+        ui.trying(label(w, i));
+        const t = Date.now();
+        const p = await askWindow(client, o.question, name, w.text, gate);
+        tried.push({ name, page: w.page, p });
+        ui.clear();
+        const yes = p >= o.threshold;
+        ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label(w, i)}`);
+        if (yes) yield { w, p, label: label(w, i) };
+      }
+      return;
+    }
+    const groups = batches(ws, o.chars);
+    let i = 0;
+    for (const [g, group] of groups.entries()) {
+      const batch = `batch ${g + 1}/${groups.length}`;
+      ui.trying(`${name} ${group.length} pages (${batch})`);
+      const t = Date.now();
+      const ps = await timed("api", () => askPages(client, o.question, name, group, gate));
+      ui.clear();
+      const scored = group.map((w, j) => ({ w, p: ps[j]!, label: label(w, i + j) }));
+      i += group.length;
+      for (const { w, p } of scored) tried.push({ name, page: w.page, p });
+      const yes = scored.filter((s) => s.p >= o.threshold).sort((a, b) => b.p - a.p);
+      ui.log(`${indent}  gated ${group.length} pages (${batch}), ${secs(Date.now() - t)} jev, ${yes.length} yes  ${name}`);
+      for (const s of scored) ui.log(`${indent}  ${s.p >= o.threshold ? "yes" : "no "}  ${s.p.toFixed(2)}  ${s.label}`);
+      yield* yes;
+    }
+  }
+
+  /**
+   * Reads the answer out of a window that passed. Returns the hit to stop on,
+   * "spent" once maxAnswers windows have answered below the floor, or
+   * undefined to keep walking.
+   */
+  const settle = async ({ w, p, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
+    let hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
-    // than the window that happened to answer.
+    // than the window that happened to answer, and links to where it starts.
     let check: Promise<Judged> | undefined;
     if (all && all.length > 1 && o.countAcross) {
+      hit = { ...hit, page: all[0]!.page };
       counted.push(name);
       const fragments = rejected.filter((c) => c.hit.section.startsWith(`${name} > `));
       for (const f of fragments) {
@@ -235,10 +293,12 @@ export async function searchPdf(
       return done();
     }
     ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
-    for (const [i, w] of ws.entries()) {
+    const nameOf = (w: Window, i: number) => {
       const next = ws[i + 1];
-      const name = next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
-      const out = await visit(w, name, `${name} (window ${i + 1}/${ws.length})`);
+      return o.perPage ? `p.${w.page}` : next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
+    };
+    for await (const c of passed(ws, "", (w, i) => `${nameOf(w, i)} (window ${i + 1}/${ws.length})`)) {
+      const out = await settle(c, nameOf(c.w, ws.indexOf(c.w)));
       if (out === "spent") break;
       if (out) return done(out);
     }
@@ -295,16 +355,16 @@ export async function searchPdf(
       continue;
     }
     const wholeSection = Boolean(o.countAcross && ws.length > 1);
-    for (const [i, w] of ws.entries()) {
-      const span = ws.length > 1 ? `p.${w.page} (window ${i + 1}/${ws.length})` : `p.${w.page}`;
-      const out = await visit(w, r.name, `${r.name} ${span}`, ws);
+    const label = (w: Window, i: number) => `${r.name} p.${w.page}${ws.length > 1 ? ` (window ${i + 1}/${ws.length})` : ""}`;
+    for await (const c of passed(ws, r.name, label)) {
+      const out = await settle(c, r.name, ws);
       if (out === "spent") return done();
       if (out) {
         ui.log(`${indent}section ${split(sectionSnap)}`);
         return done(out);
       }
       // A section-wide count already read every window, so the rest are spent.
-      if (wholeSection && tried.at(-1)!.p >= o.threshold) break;
+      if (wholeSection) break;
     }
     if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
   }

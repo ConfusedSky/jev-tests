@@ -70,7 +70,7 @@ export const readDefaults = (): ReadOpts => ({
   noToc: false,
   maxAnswers: 5,
   tocMaxSpan: 3,
-  perPage: false,
+  perPage: true,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -86,7 +86,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
-  "--per-page": (o) => (o.perPage = true),
+  "--whole-windows": (o) => (o.perPage = false),
   "--no-toc": (o) => (o.noToc = true),
   "--kind": (o, next, fail) => {
     const k = next();
@@ -99,7 +99,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --title-floor F  skip sections scoring below F on title, 0-3 (default 1.0)
       --max N          read at most N sections per file (default 12)
       --chars N        characters of text per call (default 48000)
-      --per-page       one page per call, so the hit is the exact page
+      --whole-windows  gate a window of text at a time instead of every page
       --batch N        names per ranking call (default 40)
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit

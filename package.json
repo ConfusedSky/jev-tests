@@ -17,6 +17,6 @@
     "fixture": "ls fixture | bun jevgrep.ts -t 0",
     "test": "bun test",
     "test:live": "JEV_LIVE=1 bun test",
-    "fixture:build": "cd fixture && groff -ms -Tpdf manual.ms > manual.pdf && groff -ms -Tpdf heart.ms > heart.pdf && groff -ms -Tpdf title-only.ms > title-only.pdf"
+    "fixture:build": "cd fixture && groff -ms -Tpdf manual.ms > manual.pdf && groff -ms -Tpdf heart.ms > heart.pdf && groff -ms -Tpdf title-only.ms > title-only.pdf && groff -ms -Tpdf catalogue.ms > catalogue.pdf"
   }
 }

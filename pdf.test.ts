@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
+import { batches, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -204,8 +204,47 @@ describe("a section-wide count", () => {
   });
 });
 
+describe("batches", () => {
+  const page = (n: number, len: number) => ({ page: n, text: "x".repeat(len) });
+
+  test("packs pages up to the limit, in order", () => {
+    const out = batches([page(1, 40), page(2, 40), page(3, 40), page(4, 40)], 100);
+    expect(out.map((b) => b.map((w) => w.page))).toEqual([[1, 2], [3, 4]]);
+  });
+
+  test("a page over the limit travels alone", () => {
+    const out = batches([page(1, 10), page(2, 500), page(3, 10)], 100);
+    expect(out.map((b) => b.map((w) => w.page))).toEqual([[1], [2], [3]]);
+  });
+
+  test("no pages, no batches", () => {
+    expect(batches([], 100)).toEqual([]);
+  });
+});
+
 describe("per page", () => {
   const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  test("gates a section's pages in one call, not one per page", async () => {
+    let calls = 0;
+    const inner = stubClient((t) => (t === "Characters" ? 3 : 0));
+    const counting = { systemOne: async (r: never) => (calls++, inner.systemOne(r)) } as unknown as typeof inner;
+    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, perPage: true };
+    const { tried } = await searchPdf(counting, toc, opts, ui);
+    expect(tried.map((t) => t.page)).toEqual([2, 3]);
+    expect(calls).toBe(2); // one to rank the titles, one to gate both pages
+  });
+
+  // The fallback for a PDF without an outline used to gate the whole book in
+  // one go; a batch is a whole window's worth of pages, and the walk stops at
+  // the first batch that answers, as it does with whole windows.
+  test("gates the pages of a long scan a batch at a time and stops at the first that answers", async () => {
+    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 5000, batch: 40, perPage: true };
+    const { hit, tried } = await searchPdf(stubClient(), fixture("catalogue.pdf"), opts, ui);
+    expect(hit?.page).toBe(1);
+    expect(tried.length).toBeGreaterThan(1);
+    expect(tried.length).toBeLessThan(24);
+  });
 
   test("a chars of 0 puts every page in its own window", async () => {
     const ws = await windows(manual, { path: "", start: 1, end: 3 }, 0);

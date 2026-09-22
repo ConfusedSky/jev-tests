@@ -229,16 +229,37 @@ page order. Ranking those windows by their opening text was tried and removed:
 a 300-character snippet put a credits page above the body, and since the walk
 stops at the first yes, order only costs latency.
 
-`--chars` matters more here than anywhere else. The default 48000 turns a
-28-page PDF into 2 windows, so a hit links to page 1; at `--chars 12000` it
-becomes 6 windows and lands on page 10.
-
 ## The exact page
 
-A window is tagged with its first page, so a hit in a 16-page section links to
-where the section starts. `--per-page` reads one page per call instead, and the
-hit is the page that answered. It costs a call per page walked rather than one
-per window, so it is off by default. A count still sums the pages of a section.
+Every page of a section is gated on its own, so the hit is the page that
+answered:
+
+```console
+$ bun jevsec.ts catalogue.pdf "How much does the Fen Gasket cost?"
+  gated 24 pages (batch 1/1), 0.3s jev, 1 yes  Catalogue
+  no   0.01  Catalogue p.1 (window 1/24)
+  …
+  yes  0.99  Catalogue p.24 (window 24/24)
+catalogue.pdf p.24  Catalogue  (found p=0.99)
+```
+
+The pages go out together, one question per page over one state, in batches of
+`--chars` characters, in order, stopping at the first batch that answers. So a
+per-page walk spends the same calls as a whole-window walk and stops at the same
+place; only the resolution changes. Batching is not only cheaper than a call per
+page, it is sharper: shown the pages side by side the model contrasts them. On that
+24-page section the runner-up page sat at 0.03 batched and at 0.33 when each
+page was asked alone, and smaller batches were in between (six pages per call
+0.67 mean margin, twelve 0.89, all twenty-four 0.97). The best page is read
+first, not the first page over the threshold.
+
+A count still sums the pages of a section, counted in parallel.
+
+`--whole-windows` gates a window of `--chars` characters at a time instead, one
+`noul` per call. A window is tagged with its first page, so a hit in a 16-page
+section then links to where the section starts; at `--chars 12000` a 28-page
+PDF becomes 6 windows and a hit lands on page 10 rather than page 1. It costs
+the same calls and is less sharp, so it is only there for comparison.
 
 ## Limits
 
