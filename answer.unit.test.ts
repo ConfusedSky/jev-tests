@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { childrenByParent, membershipFromContents, mentions } from "./answer";
+import { childrenByParent, countAcross, membershipFromContents, mentions } from "./answer";
 
 const HEART: [string, string[]][] = [
   ["Characters", ["Callings", "Classes"]],
@@ -80,5 +80,49 @@ describe("membershipFromContents", () => {
       ["Appendix > Classes", ["Cleaver"]],
     ];
     expect(membershipFromContents("Is witch a class?", groups)).toBeUndefined();
+  });
+});
+
+/** Returns each queued choice in turn, so a walk's arithmetic can be checked offline. */
+function stubCounts(answers: [string, number][]) {
+  let i = 0;
+  return {
+    systemOne: async () => {
+      const [choice, p] = answers[i++]!;
+      return { answers: { count: { type: "choice", choice, confidence: p, probabilities: { [choice]: p } } } };
+    },
+  } as unknown as Parameters<typeof countAcross>[0];
+}
+
+const ws = (n: number) => Array.from({ length: n }, (_, i) => ({ page: i + 1, text: "x" }));
+
+describe("countAcross", () => {
+  test("adds the parts up", async () => {
+    const a = await countAcross(stubCounts([["10", 0.9], ["10", 0.95], ["10", 0.8]]), "q", "s", ws(3), 60);
+    expect(a.text).toBe("30");
+  });
+
+  test("reports the least certain part that contributed", async () => {
+    const a = await countAcross(stubCounts([["4", 0.9], ["6", 0.42]]), "q", "s", ws(2), 60);
+    expect(a).toEqual({ text: "10", p: 0.42 });
+  });
+
+  // A long list has windows holding none of it; that is expected, not doubt.
+  test("a window listing none neither adds nor lowers confidence", async () => {
+    const a = await countAcross(stubCounts([["7", 0.9], ["not stated", 0.05], ["0", 0.1]]), "q", "s", ws(3), 60);
+    expect(a).toEqual({ text: "7", p: 0.9 });
+  });
+
+  test("a part above the ceiling contributes no number", async () => {
+    const a = await countAcross(stubCounts([["3", 0.9], ["over 60", 0.3]]), "q", "s", ws(2), 60);
+    expect(a.text).toBe("3");
+  });
+
+  test("reports each part as it lands", async () => {
+    const seen: number[] = [];
+    await countAcross(stubCounts([["2", 0.9], ["3", 0.9]]), "q", "s", ws(2), 60, (_p, _a, running) =>
+      seen.push(running),
+    );
+    expect(seen).toEqual([2, 5]);
   });
 });

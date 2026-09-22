@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, classify, KINDS, type Kind } from "./answer";
-import { link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Kind } from "./answer";
+import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -50,6 +50,7 @@ export type ReadOpts = SearchOpts & {
   answerFloor: number;
   noToc: boolean;
   maxAnswers: number;
+  tocMaxSpan: number;
   kind?: Kind;
 };
 
@@ -67,6 +68,7 @@ export const readDefaults = (): ReadOpts => ({
   answerFloor: 0.7,
   noToc: false,
   maxAnswers: 5,
+  tocMaxSpan: 3,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -78,6 +80,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--count-max": num("countMax"),
   "--answer-floor": num("answerFloor"),
   "--max-answers": num("maxAnswers"),
+  "--toc-max-span": num("tocMaxSpan"),
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
@@ -101,6 +104,8 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
+      --toc-max-span N pages a section may span and still be counted from the
+                       table of contents (default 3)
       --kind K         force count, truth or passage instead of asking jev`;
 
 /**
@@ -112,15 +117,28 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
   const fromOutline = o.noToc
     ? undefined
-    : (paths: string[]) => answerFromOutline(client, kind, o.question, paths, o.answerFloor);
+    : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
+        answerFromOutline(client, kind, o.question, sections, o.answerFloor, o.tocMaxSpan);
+  // "not stated" and "over N" are refusals, not answers, so they never settle
+  // a walk however confident the model is that it cannot say.
+  const settles = (a: { text: string }) => kind !== "count" || Number.isFinite(Number(a.text));
   const verify: SearchOpts["verify"] =
     kind === "passage"
       ? undefined
       : async (section, _page, text) => {
           const a = await answerFrom(client, kind, o.question, section, text, o.countMax);
-          return { ...a, ok: a.p >= o.answerFloor };
+          return { ...a, ok: a.p >= o.answerFloor && settles(a), usable: settles(a) };
         };
-  return { ...o, kind, verify, fromOutline };
+  const across: SearchOpts["countAcross"] =
+    kind !== "count"
+      ? undefined
+      : async (section, windows) => {
+          const a = await countAcross(client, o.question, section, windows, o.countMax, (page, part, running) =>
+            ui.log(`    +${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  running ${running}`),
+          );
+          return { ...a, ok: a.p >= o.answerFloor && settles(a), usable: settles(a) };
+        };
+  return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };
 }
 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>

@@ -114,12 +114,25 @@ export async function openAt(url: string): Promise<void> {
   console.error(`could not resolve a PDF handler (${id}); open the URL yourself`);
 }
 
-async function askWindow(client: TypeSafeClient, question: string, section: string, text: string): Promise<number> {
+/**
+ * A count is derived, not stated: no page of the Fallout rulebook says there
+ * are 94 perks, so asking whether a window "contains the answer" rejects the
+ * very pages the perks are listed on. A count asks for the list instead.
+ */
+export const GATE = {
+  answer: "The text contains the answer to the question",
+  list: "The text lists entries of the kind the question asks about",
+} as const;
+
+async function askWindow(
+  client: TypeSafeClient,
+  question: string,
+  section: string,
+  text: string,
+  gate: string,
+): Promise<number> {
   const res = await timed("api", () =>
-    client.systemOne({
-      state: { question, section, text },
-      questions: { answers: noul("The text contains the answer to the question") },
-    }),
+    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate) } }),
   );
   return res.answers.answers.noul;
 }
@@ -130,7 +143,11 @@ async function askWindow(client: TypeSafeClient, question: string, section: stri
  * about skills while the count inside it comes back at p=0.32. Returning
  * `ok: false` keeps the walk going instead of settling for that.
  */
-export type Verify = (section: string, page: number, text: string) => Promise<Answer & { ok: boolean }>;
+export type Verify = (
+  section: string,
+  page: number,
+  text: string,
+) => Promise<Answer & { ok: boolean; usable?: boolean }>;
 
 export type SearchOpts = {
   question: string;
@@ -142,7 +159,11 @@ export type SearchOpts = {
   maxAnswers?: number;
   verify?: Verify;
   /** Tries the table of contents before any page is read. */
-  fromOutline?: (paths: string[]) => Promise<OutlineAnswer | undefined>;
+  fromOutline?: (sections: Section[]) => Promise<OutlineAnswer | undefined>;
+  /** What a window must satisfy to be worth reading out; see GATE. */
+  gate?: string;
+  /** Counts a whole section at once, for a list too long to fit one window. */
+  countAcross?: (section: string, windows: Window[]) => Promise<Answer & { ok: boolean; usable?: boolean }>;
 };
 
 /**
@@ -165,10 +186,10 @@ export async function searchPdf(
    * Asks one window. Returns the hit to stop on, "spent" once maxAnswers
    * windows have answered below the floor, or undefined to keep walking.
    */
-  const visit = async (w: Window, name: string, label: string): Promise<Hit | "spent" | undefined> => {
+  const visit = async (w: Window, name: string, label: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
     ui.trying(label);
     const t = Date.now();
-    const p = await askWindow(client, o.question, name, w.text);
+    const p = await askWindow(client, o.question, name, w.text, o.gate ?? GATE.answer);
     tried.push({ name, page: w.page, p });
     ui.clear();
     const yes = p >= o.threshold;
@@ -176,10 +197,15 @@ export async function searchPdf(
     if (!yes) return undefined;
 
     const hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
-    if (!o.verify) return hit;
-    const { ok, ...answer } = await o.verify(name, w.page, w.text);
-    ui.log(`${indent}  ${ok ? "take" : "keep"}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
+    // A list can outrun one window, so a count reads the whole section rather
+    // than the window that happened to answer.
+    const check = all && all.length > 1 && o.countAcross ? o.countAcross(name, all) : o.verify?.(name, w.page, w.text);
+    if (!check) return hit;
+    const { ok, usable, ...answer } = await check;
+    ui.log(`${indent}  ${ok ? "take" : usable === false ? "drop" : "keep"}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
     if (ok) return { ...hit, answer };
+    // A refusal ("not stated") is not a weak answer to fall back on later.
+    if (usable === false) return undefined;
     rejected.push({ hit, answer });
     return rejected.length >= maxAnswers ? "spent" : undefined;
   };
@@ -205,7 +231,7 @@ export async function searchPdf(
 
   if (o.fromOutline) {
     const outlineSnap = snapshot();
-    const toc = await o.fromOutline(sections.map((s) => s.path));
+    const toc = await o.fromOutline(sections);
     if (toc) {
       const at = sections.find((s) => s.path === toc.parent)!;
       ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
@@ -232,14 +258,17 @@ export async function searchPdf(
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${r.name}  p.${s.start}-${s.end}  no extractable text`);
       continue;
     }
+    const whole = Boolean(o.countAcross && ws.length > 1);
     for (const [i, w] of ws.entries()) {
       const span = ws.length > 1 ? `p.${w.page} (window ${i + 1}/${ws.length})` : `p.${w.page}`;
-      const out = await visit(w, r.name, `${r.name} ${span}`);
+      const out = await visit(w, r.name, `${r.name} ${span}`, ws);
       if (out === "spent") return done();
       if (out) {
         ui.log(`${indent}section ${split(sectionSnap)}`);
         return done(out);
       }
+      // A section-wide count already read every window, so the rest are spent.
+      if (whole && tried.at(-1)!.p >= o.threshold) break;
     }
     if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
   }

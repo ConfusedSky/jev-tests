@@ -32,22 +32,61 @@ async function countFrom(
   section: string,
   text: string,
   max: number,
+  partial = false,
 ): Promise<Answer> {
   // A Choice takes at most 255 options: 0 through 252, plus the two escapes.
   const ceiling = Math.min(max, 252);
   const criteria: Record<string, string> = {};
   for (let i = 0; i <= ceiling; i++) criteria[String(i)] = `The answer is exactly ${i}`;
   criteria[`over ${ceiling}`] = `The answer is greater than ${ceiling}`;
-  criteria["not stated"] = "The text does not give this number";
+  criteria["not stated"] = partial
+    ? "This part of the text lists none of them"
+    : "The text does not give this number";
 
   const res = await timed("api", () =>
     client.systemOne({
       state: { question, section, text },
-      questions: { count: choice("How many, according to the text?", criteria) },
+      questions: {
+        count: choice(
+          partial
+            ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
+            : "How many, according to the text?",
+          criteria,
+        ),
+      },
     }),
   );
   const a = res.answers.count;
   return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+}
+
+/**
+ * A list longer than one window cannot be counted in one call, so each window
+ * is counted on its own and the parts are added up. The aggregate is only as
+ * trustworthy as its least certain part, so that is the confidence reported.
+ */
+export async function countAcross(
+  client: TypeSafeClient,
+  question: string,
+  section: string,
+  windows: { page: number; text: string }[],
+  max: number,
+  onPart?: (page: number, part: Answer, running: number) => void,
+): Promise<Answer> {
+  let total = 0;
+  let worst = 1;
+  for (const w of windows) {
+    const part = await countFrom(client, question, section, w.text, max, true);
+    const n = Number(part.text);
+    // "not stated" and "over N" carry no number to add; a window listing none
+    // is expected in a long section, so it lowers no confidence.
+    if (Number.isFinite(n)) {
+      total += n;
+      if (n > 0) worst = Math.min(worst, part.p);
+    }
+    onPart?.(w.page, part, total);
+  }
+  return { text: String(total), p: worst };
 }
 
 async function truthFrom(
@@ -160,9 +199,11 @@ export async function answerFromOutline(
   client: TypeSafeClient,
   kind: Kind,
   question: string,
-  paths: string[],
+  sections: { path: string; start: number; end: number }[],
   floor: number,
+  maxSpan: number,
 ): Promise<OutlineAnswer | undefined> {
+  const paths = sections.map((s) => s.path);
   if (kind === "passage") return undefined;
 
   const groups = [...childrenByParent(paths)].filter(([, kids]) => kids.length > 1);
@@ -198,5 +239,14 @@ export async function answerFromOutline(
   if (!hit) return undefined;
 
   const p = g.probabilities[g.choice] ?? g.confidence;
-  return p >= floor ? { answer: { text: String(hit.kids.length), p }, parent: hit.parent } : undefined;
+  if (p < floor) return undefined;
+
+  // Counting bookmarks only works while they are a list rather than a set of
+  // chapters, and a long span is where that stops being true: the Fallout
+  // rulebook nests 89 of its 94 perks under the first perk, so counting the
+  // entries of any one section there is wrong. Read the pages instead.
+  const at = sections.find((s) => s.path === hit.parent);
+  if (!at || at.end - at.start + 1 > maxSpan) return undefined;
+
+  return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }

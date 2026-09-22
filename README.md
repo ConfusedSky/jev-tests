@@ -118,6 +118,12 @@ A count asks jev which section's entries the question is about, then counts
 them, so the number itself is exact rather than estimated. Below
 `--answer-floor` the pick is discarded and the pages are read instead.
 
+Counting bookmarks only holds while they are a list. Past `--toc-max-span`
+pages (default 3) a section is a set of chapters instead, and the contents are
+abandoned for the pages: the Fallout rulebook nests 89 of its 94 perks under
+the first perk, so counting any one section's entries there gives 7 or 89,
+never 94.
+
 Membership is decided in code, not by the model. "Is witch a class?" names a
 category (`class`, matching the section `Classes`) and an entry (`Witch`,
 listed under it), and both are string comparisons with exact answers. Requiring
@@ -135,6 +141,28 @@ Is knight a class in heart?   false (p=0.97)   contents said no, pages agreed
 ```
 
 `--no-toc` skips this stage entirely.
+
+### Counting a list longer than one window
+
+A list of 94 perks over 16 pages does not fit one call, so each window is
+counted on its own and the parts are added up, reported as they land:
+
+```console
+  yes  0.96   1.1s jev  Gadgets p.1 (window 1/3)
+    + 10 (p=1.00)  p.1  running 10
+    + 10 (p=0.95)  p.2  running 20
+    + 10 (p=0.94)  p.3  running 30
+  take  30 (p=0.94)  Gadgets p.1
+```
+
+The aggregate is only as trustworthy as its least certain contributing part, so
+that is the confidence reported. A window listing none of the items neither
+adds nor lowers it, since a long section is expected to have some.
+
+A count also changes what a window has to satisfy to be worth reading. No page
+says "there are 94 perks", so asking whether a window "contains the answer"
+rejects the very pages the perks are listed on; a count asks whether the window
+lists entries of the kind in question instead.
 
 ### Counts and statements keep looking
 
@@ -198,7 +226,12 @@ becomes 6 windows and lands on page 10.
 - **A count from the contents trusts the contents.** A section listing three of
   its four classes yields three, with no page read to check. Membership has a
   safeguard for this, a negative being confirmed against the pages; a count has
-  none.
+  none beyond the `--toc-max-span` limit.
+- **Counting dense pages is unreliable.** Summing windows is exact on a clean
+  list (30 gadgets over three windows, p=0.94) and poor on a two-column
+  rulebook: the Fallout perks come back as 64 of 94, at p=0.07. The floor
+  refuses that rather than reporting it, so the usual outcome there is no
+  answer rather than a wrong one.
 - **The category matcher is loose.** It takes any section whose name appears in
   the question, so "Is Brotherhood Initiate an origin?" can match a section
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, classify, type Kind } from "./answer";
+import { answerFrom, classify, countAcross, type Kind } from "./answer";
 import { pageScan, searchPdf } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
 
@@ -75,6 +75,16 @@ describe.if(live)("count", () => {
   test("collapses a count above the ceiling instead of guessing", async () => {
     const a = await answerFrom(client, "count", "How many rads are lethal without treatment?", "Radiation", manualText, 5);
     expect(a!.text).toBe("over 5");
+  });
+});
+
+describe.if(live)("counting across windows", () => {
+  test("sums a list too long for one window", async () => {
+    // 30 gadgets, ten per page, forced into one window per page.
+    const windows = await pageScan(fixture("gadgets.pdf"), 900);
+    expect(windows.length).toBeGreaterThan(1);
+    const a = await countAcross(client, "How many gadgets are there?", "Gadgets", windows, 60);
+    expect(a.text).toBe("30");
   });
 });
 
