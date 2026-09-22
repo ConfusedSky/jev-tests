@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { DEFAULT_MODEL, makeClient, rankTitles, snapshot, split, timed } from "./shared";
-import { link, makeUi, openAt, pageUrl, searchPdf, type Hit, type Tried } from "./pdf";
+import { link, makeUi, openAt, pageUrl, searchPdf, type Candidate, type Hit, type Tried, type Verify } from "./pdf";
 import { answerFrom, classify, type Kind } from "./answer";
 
 type Opts = {
@@ -16,6 +16,8 @@ type Opts = {
   quiet: boolean;
   open: boolean;
   countMax: number;
+  answerFloor: number;
+  maxAnswers: number;
   kind?: Kind;
 };
 
@@ -38,6 +40,8 @@ ranked by section title, and sections are read until one answers the question.
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
       --count-max N    largest exact count jev may answer with (default 50)
+      --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
+      --max-answers N  windows to read out before settling for the best (default 5)
       --kind K         force count, truth or passage instead of asking jev
 
 Reads paths on stdin. Only PDFs with an outline are searched; anything else is
@@ -59,6 +63,8 @@ function parseArgs(argv: string[]): Opts {
     quiet: false,
     open: false,
     countMax: 50,
+    answerFloor: 0.7,
+    maxAnswers: 5,
   };
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -75,6 +81,8 @@ function parseArgs(argv: string[]): Opts {
     else if (a === "-q" || a === "--quiet") o.quiet = true;
     else if (a === "--open") o.open = true;
     else if (a === "--count-max") o.countMax = Number(next());
+    else if (a === "--answer-floor") o.answerFloor = Number(next());
+    else if (a === "--max-answers") o.maxAnswers = Number(next());
     else if (a === "--kind") o.kind = next() as Kind;
     else if (a === "-h" || a === "--help") usage(0);
     else rest.push(a);
@@ -112,8 +120,19 @@ ui.log(
     (all.length > ranked.length ? ` (${all.length - ranked.length} skipped)` : ""),
 );
 
+// Only count and truth questions have an answer to be confident about; a
+// passage question is satisfied by the window itself.
+const verify: Verify | undefined =
+  kind === "passage"
+    ? undefined
+    : async (section, _page, text) => {
+        const a = (await answerFrom(client, kind, opts.question, section, text, opts.countMax))!;
+        return { ...a, ok: a.p >= opts.answerFloor };
+      };
+
 let hit: Hit | undefined;
 const tried: Tried[] = [];
+const rejected: Candidate[] = [];
 let opened = 0;
 
 for (const r of ranked) {
@@ -128,23 +147,36 @@ for (const r of ranked) {
     continue;
   }
   opened++;
-  const res = await searchPdf(client, r.name, opts, ui, "  ");
+  const res = await searchPdf(client, r.name, { ...opts, verify, maxAnswers: opts.maxAnswers - rejected.length }, ui, "  ");
   tried.push(...res.tried);
+  rejected.push(...res.rejected);
   ui.log(`  file ${split(fileSnap)}  ${res.tried.length} windows read`);
   if (res.hit) {
     hit = res.hit;
     break;
   }
+  if (rejected.length >= opts.maxAnswers) break;
 }
 
 ui.clear();
 if (hit) {
-  const answer = await answerFrom(client, kind, opts.question, hit.section, hit.text, opts.countMax);
   ui.log(`total ${split(startSnap)}, ${opened} files opened, ${tried.length} windows read`);
-  const prefix = answer ? `${answer.text}  (p=${answer.p.toFixed(2)})  ` : "";
+  const prefix = hit.answer ? `${hit.answer.text}  (p=${hit.answer.p.toFixed(2)})  ` : "";
   console.log(`${prefix}${link(hit.pdf, hit.page)}  ${hit.section}  (found p=${hit.p.toFixed(2)})`);
   if (opts.open) await openAt(pageUrl(hit.pdf, hit.page));
   process.exit(0);
+}
+
+// Nothing cleared the floor, so report the best of what was read and say so.
+if (rejected.length > 0) {
+  const { hit: h, answer } = rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
+  ui.log(`total ${split(startSnap)}, ${opened} files opened, ${tried.length} windows read`);
+  console.error(`jevfind: no answer reached p=${opts.answerFloor} in ${rejected.length} windows; best follows`);
+  console.log(
+    `${answer.text}  (p=${answer.p.toFixed(2)}, below ${opts.answerFloor})  ` +
+      `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`,
+  );
+  process.exit(1);
 }
 
 if (tried.length === 0) {

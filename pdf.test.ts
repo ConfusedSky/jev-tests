@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { outline, pageCount, pageScan, parseOutline, pageUrl, windows } from "./pdf";
+import { outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -89,5 +89,58 @@ describe("pageScan", () => {
 describe("pageUrl", () => {
   test("carries the page as a fragment", () => {
     expect(pageUrl("/tmp/a b.pdf", 12)).toBe("file:///tmp/a%20b.pdf#page=12");
+  });
+});
+
+/**
+ * A client that scores every title 3 and answers the "does this window hold
+ * the answer" Noul with 1, so a walk visits sections in outline order and the
+ * verifier alone decides where it stops. Keeps the walk testable offline.
+ */
+function stubClient() {
+  return {
+    systemOne: async ({ questions }: { questions: Record<string, unknown> }) => ({
+      answers: Object.fromEntries(
+        Object.entries(questions).map(([k, q]) => [
+          k,
+          (q as { type: string }).type === "noul"
+            ? { type: "noul", noul: 1 }
+            : { type: "score", score: 3, confidence: 1, legend: {}, probabilities: {} },
+        ]),
+      ),
+    }),
+  } as unknown as Parameters<typeof searchPdf>[0];
+}
+
+describe("searchPdf verification", () => {
+  const base = { question: "q", threshold: 0.7, titleFloor: 0, max: 12, chars: 48000, batch: 40 };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  test("walks past a weak answer and takes a later strong one", async () => {
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      const ok = section.startsWith("Chapter III");
+      return { text: ok ? "50" : "0", p: ok ? 0.9 : 0.3, ok };
+    };
+    const { hit, rejected } = await searchPdf(stubClient(), manual, { ...base, verify }, ui);
+    expect(seen).toEqual(["Chapter I: Skills", "Chapter II: Perks", "Chapter III: Radiation"]);
+    expect(hit?.section).toBe("Chapter III: Radiation");
+    expect(hit?.answer).toEqual({ text: "50", p: 0.9 });
+    expect(rejected).toHaveLength(2);
+  });
+
+  test("stops after maxAnswers windows and keeps them all as candidates", async () => {
+    const verify = async () => ({ text: "0", p: 0.1, ok: false });
+    const { hit, rejected } = await searchPdf(stubClient(), manual, { ...base, verify, maxAnswers: 2 }, ui);
+    expect(hit).toBeUndefined();
+    expect(rejected).toHaveLength(2);
+  });
+
+  test("without a verifier the first window wins, as a passage question wants", async () => {
+    const { hit, rejected } = await searchPdf(stubClient(), manual, base, ui);
+    expect(hit?.section).toBe("Chapter I: Skills");
+    expect(hit?.answer).toBeUndefined();
+    expect(rejected).toEqual([]);
   });
 });

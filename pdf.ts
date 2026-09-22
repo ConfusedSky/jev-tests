@@ -2,7 +2,16 @@ import { noul, type NoulResponse, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rankTitles, snapshot, split, timed, type Snapshot } from "./shared";
 
 export type Section = { path: string; start: number; end: number };
-export type Hit = { pdf: string; section: string; page: number; p: number; text: string };
+export type Hit = {
+  pdf: string;
+  section: string;
+  page: number;
+  p: number;
+  text: string;
+  answer?: { text: string; p: number };
+};
+/** A window that answered, with whatever the answer layer read out of it. */
+export type Candidate = { hit: Hit; answer: { text: string; p: number } };
 export type Tried = { name: string; page: number; p: number };
 
 export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -122,6 +131,14 @@ async function askWindow(
   return (res.answers.answers as NoulResponse).noul;
 }
 
+/**
+ * Checks the answer a window actually yields. Finding the right pages and
+ * reading a value out of them fail independently: a section can clearly be
+ * about skills while the count inside it comes back at p=0.32. Returning
+ * `ok: false` keeps the walk going instead of settling for that.
+ */
+export type Verify = (section: string, page: number, text: string) => Promise<{ text: string; p: number; ok: boolean }>;
+
 export type SearchOpts = {
   question: string;
   threshold: number;
@@ -129,6 +146,8 @@ export type SearchOpts = {
   max: number;
   chars: number;
   batch: number;
+  maxAnswers?: number;
+  verify?: Verify;
 };
 
 /**
@@ -141,15 +160,28 @@ export async function searchPdf(
   o: SearchOpts,
   ui: Ui,
   indent = "",
-): Promise<{ hit?: Hit; tried: Tried[] }> {
+): Promise<{ hit?: Hit; tried: Tried[]; rejected: Candidate[] }> {
   const tried: Tried[] = [];
+  const rejected: Candidate[] = [];
+  const maxAnswers = o.maxAnswers ?? 5;
+
+  /** Returns the hit to stop on, or undefined to keep walking. */
+  const settle = async (hit: Hit, label: string): Promise<Hit | undefined> => {
+    if (!o.verify) return hit;
+    const a = await o.verify(hit.section, hit.page, hit.text);
+    ui.log(`${indent}  ${a.ok ? "take" : "keep"}  ${a.text} (p=${a.p.toFixed(2)})  ${label}`);
+    const answer = { text: a.text, p: a.p };
+    if (a.ok) return { ...hit, answer };
+    rejected.push({ hit, answer });
+    return undefined;
+  };
   const sections = await outline(pdf);
   if (sections.length === 0) {
     const scanSnap = snapshot();
     const ws = await pageScan(pdf, o.chars);
     if (ws.length === 0) {
       ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-      return { tried };
+      return { tried, rejected };
     }
     ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
     for (const [i, w] of ws.entries()) {
@@ -162,9 +194,13 @@ export async function searchPdf(
       ui.clear();
       const hit = p >= o.threshold;
       ui.log(`${indent}  ${hit ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - windowSnap.at).padStart(5)} jev  ${name} (window ${i + 1}/${ws.length})`);
-      if (hit) return { hit: { pdf, section: name, page: w.page, p, text: w.text }, tried };
+      if (hit) {
+        const settled = await settle({ pdf, section: name, page: w.page, p, text: w.text }, name);
+        if (settled) return { hit: settled, tried, rejected };
+        if (rejected.length >= maxAnswers) break;
+      }
     }
-    return { tried };
+    return { tried, rejected };
   }
 
   const rankSnap = snapshot();
@@ -197,10 +233,12 @@ export async function searchPdf(
       ui.log(`${indent}  ${hit ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - windowSnap.at).padStart(5)} jev  ${r.name}${span}`);
       if (hit) {
         ui.log(`${indent}section ${split(sectionSnap)}`);
-        return { hit: { pdf, section: r.name, page: w.page, p, text: w.text }, tried };
+        const settled = await settle({ pdf, section: r.name, page: w.page, p, text: w.text }, `${r.name}${span}`);
+        if (settled) return { hit: settled, tried, rejected };
+        if (rejected.length >= maxAnswers) return { tried, rejected };
       }
     }
     if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
   }
-  return { tried };
+  return { tried, rejected };
 }
