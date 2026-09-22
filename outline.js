@@ -2,7 +2,7 @@ var doc = Document.openDocument(scriptArgs[0]);
 var entries = [];
 function flatten(items, prefix, depth) {
   items.forEach(function (it) {
-    var path = prefix + it.title;
+    var path = prefix + String(it.title).replace(/\s+/g, " ").trim();
     entries.push({ path: path, depth: depth, start: it.uri ? doc.resolveLink(it.uri) + 1 : null });
     if (it.down) flatten(it.down, path + " > ", depth + 1);
   });

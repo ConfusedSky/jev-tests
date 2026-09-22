@@ -1,12 +1,5 @@
 #!/usr/bin/env bun
-import { TypeSafeClient, score, type ScoreResponse } from "@typesafe-ai/sdk";
-
-const RUBRIC = [
-  "Unrelated to the question",
-  "Related area, but unlikely to hold the answer",
-  "Plausibly holds part of the answer",
-  "Directly names the subject of the question",
-] as const;
+import { DEFAULT_MODEL, makeClient, rankTitles, type Ranked } from "./shared";
 
 type Opts = {
   question: string;
@@ -24,7 +17,7 @@ function parseArgs(argv: string[]): Opts {
     top: Infinity,
     threshold: 1.5,
     batch: 40,
-    model: process.env.JEVGREP_MODEL ?? "~typesafe/jev-latest",
+    model: DEFAULT_MODEL,
     json: false,
     namesOnly: false,
   };
@@ -64,32 +57,7 @@ Needs $OPENROUTER_API_KEY.`);
   process.exit(code);
 }
 
-// Jev returns no prose, so the reason is built from the rubric level it landed
-// on plus how much probability mass sits there.
-function reason(a: ScoreResponse): string {
-  const level = Math.round(a.score);
-  const label = (a.legend as Record<string, string>)[String(level)] ?? "?";
-  const p = (a.probabilities as Record<string, number>)[String(level)] ?? 0;
-  return `${label} (p=${p.toFixed(2)} conf=${a.confidence.toFixed(2)})`;
-}
-
 const opts = parseArgs(Bun.argv.slice(2));
-
-// Bun only auto-loads .env from the cwd, and this runs from any directory.
-async function keyFromScriptEnv(): Promise<string | undefined> {
-  const f = Bun.file(new URL(".env", import.meta.url));
-  if (!(await f.exists())) return undefined;
-  for (const line of (await f.text()).split("\n")) {
-    const m = /^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*(.*)$/.exec(line);
-    if (m) return m[1]!.trim().replace(/^["']|["']$/g, "");
-  }
-}
-
-const apiKey = process.env.OPENROUTER_API_KEY ?? (await keyFromScriptEnv());
-if (!apiKey) {
-  console.error("jevgrep: OPENROUTER_API_KEY is not set");
-  process.exit(2);
-}
 
 const names = (await Bun.stdin.text())
   .split("\n")
@@ -101,39 +69,10 @@ if (names.length === 0) {
   process.exit(2);
 }
 
-const client = new TypeSafeClient({
-  apiKey,
-  baseURL: "https://openrouter.ai/api",
-  defaultModel: opts.model,
-});
+const client = await makeClient(opts.model);
 
-type Row = { name: string; score: number; confidence: number; reason: string };
-
-async function rank(chunk: string[]): Promise<Row[]> {
-  const questions = Object.fromEntries(
-    chunk.map((name, i) => [
-      `f${i}`,
-      score(`The file named "${name}" answers the question`, RUBRIC),
-    ]),
-  );
-  const res = await client.systemOne({
-    state: { question: opts.question, candidate_filenames: chunk },
-    questions,
-  });
-  return chunk.map((name, i) => {
-    const a = res.answers[`f${i}`] as ScoreResponse;
-    return { name, score: a.score, confidence: a.confidence, reason: reason(a) };
-  });
-}
-
-const chunks: string[][] = [];
-for (let i = 0; i < names.length; i += opts.batch)
-  chunks.push(names.slice(i, i + opts.batch));
-
-const rows = (await Promise.all(chunks.map(rank)))
-  .flat()
+const rows = (await rankTitles(client, opts.question, names, opts.batch, "file named"))
   .filter((r) => r.score >= opts.threshold)
-  .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
   .slice(0, opts.top);
 
 // Keep the tab-separated form when piped; align only for a human at a TTY.
@@ -155,7 +94,7 @@ function elidePath(s: string, w: number): string {
   return `${elideMiddle(s.slice(0, cut), avail)}/${base}`;
 }
 
-function render(rows: Row[]): string[] {
+function render(rows: Ranked[]): string[] {
   if (!process.stdout.isTTY)
     return rows.map((r) => `${r.score.toFixed(2)}\t${r.name}\t${r.reason}`);
   const cols = process.stdout.columns ?? 120;
