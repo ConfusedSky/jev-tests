@@ -110,7 +110,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --no-toc         never answer from the table of contents alone
       --toc-max-span N pages a section may span and still be counted from the
                        table of contents (default 3)
-      --kind K         force count, truth or passage instead of asking jev`;
+      --kind K         force count, number, truth or passage instead of asking jev`;
 
 /**
  * Wires the answer layer into a search: only count and truth questions have a
@@ -127,7 +127,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   // however confident the model is that it cannot say. "over N" is an answer.
   const judge = (a: Answer): Judged => ({
     ...a,
-    verdict: kind === "count" && a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
+    verdict: a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
   });
   const verify: SearchOpts["verify"] =
     kind === "passage"

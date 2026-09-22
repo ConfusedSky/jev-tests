@@ -1,7 +1,7 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { timed } from "./shared";
 
-export const KINDS = ["count", "truth", "passage"] as const;
+export const KINDS = ["count", "number", "truth", "passage"] as const;
 export type Kind = (typeof KINDS)[number];
 /** The kinds that yield a value to be confident about; a passage is satisfied by the page itself. */
 export type Valued = Exclude<Kind, "passage">;
@@ -13,7 +13,8 @@ export async function classify(client: TypeSafeClient, question: string): Promis
       state: { question },
       questions: {
         kind: choice("What shape of answer does this question want?", {
-          count: "Asks how many, how much, or for some other number",
+          count: "Asks how many of something there are: a tally of entries, items or options to be counted up",
+          number: "Asks for a figure the text states outright: a cost, a weight, a rating, a distance, a limit, how much of something",
           truth: "States something that is either true or false, or asks whether something is the case",
           passage: "Asks what, how or why, and wants an explanation or the place it is written",
         }),
@@ -73,6 +74,83 @@ async function rawCount(
 
 const countFrom = (client: TypeSafeClient, question: string, section: string, text: string, max: number) =>
   timed("api", () => rawCount(client, question, section, text, max));
+
+const SMALL: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+  eighty: 80, ninety: 90,
+};
+const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, million: 1000000 };
+const WORDS = `(?:${[...Object.keys(SMALL), ...Object.keys(SCALE)].join("|")})`;
+const NUMBER = new RegExp(
+  `(?<![\\w.])\\d[\\d,]*(?:\\.\\d+)?(?![\\w])|\\b${WORDS}(?:[ -](?:and[ -])?${WORDS})*\\b`,
+  "gi",
+);
+
+/** "two hundred" is 200; "twenty-one" is 21. */
+function wordsToNumber(s: string): number {
+  let total = 0;
+  let run = 0;
+  for (const w of s.toLowerCase().split(/[ -]+/)) {
+    if (w === "and") continue;
+    if (w in SMALL) run += SMALL[w]!;
+    else if (w in SCALE) {
+      run = (run || 1) * SCALE[w]!;
+      if (SCALE[w]! >= 1000) {
+        total += run;
+        run = 0;
+      }
+    }
+  }
+  return total + run;
+}
+
+export type Figure = { value: string; context: string };
+
+/**
+ * Every figure the text states, digits or words, with a scrap of the text
+ * around its first appearance. These are the only numbers a stated-figure
+ * question can be answered with, so they are the choices offered.
+ */
+export function figuresIn(text: string, around = 40): Figure[] {
+  const seen = new Map<string, Figure>();
+  const flat = text.replace(/\s+/g, " ");
+  for (const m of flat.matchAll(NUMBER)) {
+    const raw = m[0];
+    const value = /^\d/.test(raw) ? raw.replace(/,/g, "") : String(wordsToNumber(raw));
+    if (seen.has(value)) continue;
+    const at = m.index!;
+    const context = flat.slice(Math.max(0, at - around), Math.min(flat.length, at + raw.length + around)).trim();
+    seen.set(value, { value, context });
+  }
+  return [...seen.values()];
+}
+
+// A Choice takes at most 255 options; one is spent on "not stated".
+const FIGURE_LIMIT = 254;
+
+/**
+ * A stated figure is one of the numbers on the page, so those are the choices,
+ * each shown with the words around it. A count offers 0 through N instead
+ * because the total of a list is not written anywhere on the page.
+ */
+async function numberFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+  const figures = figuresIn(text).slice(0, FIGURE_LIMIT);
+  if (figures.length === 0) return { text: "not stated", p: 1 };
+  const criteria: Record<string, string> = Object.fromEntries(
+    figures.map((f) => [f.value, `The answer is ${f.value}, as in: …${f.context}…`]),
+  );
+  criteria["not stated"] = "None of these figures answers the question";
+  const res = await timed("api", () =>
+    client.systemOne({
+      state: { question, section, text },
+      questions: { figure: choice("Which figure from the text answers the question?", criteria) },
+    }),
+  );
+  const a = res.answers.figure;
+  return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+}
 
 /**
  * A list longer than one window cannot be counted in one call, so each window
@@ -137,9 +215,9 @@ export function answerFrom(
   text: string,
   countMax: number,
 ): Promise<Answer> {
-  return kind === "count"
-    ? countFrom(client, question, section, text, countMax)
-    : truthFrom(client, question, section, text);
+  if (kind === "count") return countFrom(client, question, section, text, countMax);
+  if (kind === "number") return numberFrom(client, question, section, text);
+  return truthFrom(client, question, section, text);
 }
 
 const normalize = (s: string) =>
@@ -243,7 +321,8 @@ export async function answerFromOutline(
   maxSpan: number,
 ): Promise<OutlineAnswer | undefined> {
   const paths = sections.map((s) => s.path);
-  if (kind === "passage") return undefined;
+  // A stated figure is on a page, never in the contents.
+  if (kind === "passage" || kind === "number") return undefined;
 
   const groups = [...childrenByParent(paths)].filter(([, kids]) => kids.length > 1);
   if (groups.length === 0) return undefined;

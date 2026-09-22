@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, childrenByParent, countAcross, membershipFromContents, mentions, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, childrenByParent, countAcross, figuresIn, membershipFromContents, mentions, subjectOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -161,6 +161,54 @@ describe("a count above the ceiling", () => {
   test("stands when the range was already full", async () => {
     const client = stubCounts([["over 252", 0.8]]);
     expect(await answerFrom(client, "count", "q", "s", "text", 9999)).toEqual({ text: "over 252", p: 0.8 });
+  });
+});
+
+describe("figuresIn", () => {
+  const values = (t: string) => figuresIn(t).map((f) => f.value);
+
+  test("finds digits, with thousands separators and decimals", () => {
+    expect(values("Cost: 80 caps, 1,250 total, 2.5 pounds.")).toEqual(["80", "1250", "2.5"]);
+  });
+
+  test("reads numbers written as words", () => {
+    expect(values("two hundred rads, fifty rads, twenty-one perks, one thousand and five caps")).toEqual(["200", "50", "21", "1005"]);
+  });
+
+  test("keeps the first appearance of a repeated figure, with its context", () => {
+    const [f] = figuresIn("Weight: 1 pounds. Cost: 1 cap.");
+    expect(figuresIn("Weight: 1 pounds. Cost: 1 cap.")).toHaveLength(1);
+    expect(f!.context).toContain("Weight: 1 pounds");
+  });
+
+  test("ignores a number glued to a word, such as a version", () => {
+    expect(values("see v2.5 and p12 and the Mk3")).toEqual([]);
+  });
+
+  test("a page with no figures yields no choices", () => {
+    expect(figuresIn("Nothing here is measured.")).toEqual([]);
+  });
+});
+
+describe("a stated figure", () => {
+  const stub = (choice: string, p: number) =>
+    ({
+      systemOne: async ({ questions }: { questions: { figure: { criteria: Record<string, string> } } }) => {
+        // The choices are exactly the page's figures plus the refusal. Integer
+        // keys come back in numeric order: that is JavaScript, not the text.
+        expect(Object.keys(questions.figure.criteria)).toEqual(["1", "80", "not stated"]);
+        return { answers: { figure: { type: "choice", choice, confidence: p, probabilities: { [choice]: p } } } };
+      },
+    }) as unknown as Parameters<typeof answerFrom>[0];
+  const text = "The Umber is a field device. Cost: 80 caps. Weight: 1 pounds.";
+
+  test("is chosen from the figures on the page", async () => {
+    expect(await answerFrom(stub("80", 0.9), "number", "How much does the Umber cost?", "s", text, 50)).toEqual({ text: "80", p: 0.9 });
+  });
+
+  test("a page without figures is not stated, without asking", async () => {
+    const never = { systemOne: async () => { throw new Error("asked"); } } as unknown as Parameters<typeof answerFrom>[0];
+    expect(await answerFrom(never, "number", "q", "s", "no figures here", 50)).toEqual({ text: "not stated", p: 1 });
   });
 });
 

@@ -24,6 +24,9 @@ describe.if(live)("classify", () => {
   test.each([
     ["How many skills does a vault dweller have?", "count"],
     ["How many themes does a hero have?", "count"],
+    ["How much does the Umber cost?", "number"],
+    ["How many rads are lethal without treatment?", "number"],
+    ["What is the carry weight of a vault dweller?", "number"],
     ["Is Gunslinger a perk?", "truth"],
     ["Radiation damage is permanent until treated.", "truth"],
     ["How do I treat radiation sickness?", "passage"],
@@ -100,6 +103,24 @@ describe.if(live)("counting across windows", () => {
     expect(windows.length).toBeGreaterThan(1);
     const a = await countAcross(client, "How many gadgets are there?", "Gadgets", windows, 60);
     expect(a.text).toBe("30");
+  });
+});
+
+describe.if(live)("number", () => {
+  test("reads a cost off the page that states it", async () => {
+    const page = (await pageScan(fixture("gadgets.pdf"), 0))[2]!.text;
+    const a = await answerFrom(client, "number", "How much does the Umber cost?", "Gadgets", page, 50);
+    expect(a.text).toBe("80");
+  });
+
+  test("reads a figure written in words", async () => {
+    const a = await answerFrom(client, "number", "How many rads are lethal without treatment?", "Radiation", manualText, 50);
+    expect(a.text).toBe("200");
+  });
+
+  test("declines when the page has the subject but not the figure", async () => {
+    const a = await answerFrom(client, "number", "How much does a dosimeter weigh?", "Radiation", manualText, 50);
+    expect(a.text).toBe("not stated");
   });
 });
 

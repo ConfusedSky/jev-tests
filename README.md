@@ -89,12 +89,20 @@ follows.
 | question | kind | output |
 | --- | --- | --- |
 | "How many themes does a hero have?" | count | `4  (p=0.97)` + link |
+| "How much does the Umber cost?" | number | `80  (p=0.99)` + link |
 | "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.99)` + link |
 | "How do I create a hero?" | passage | link only |
 
 Because jev emits no text, a count is a `choice` over the numbers themselves
 (`0`…`N`, plus `over N` and `not stated`), and a statement is a `noul`. Both
-come back with a probability per option rather than a sentence. `N` is
+come back with a probability per option rather than a sentence.
+
+A count and a number are different questions. A count is a tally the page does
+not state ("how many classes"), so the choices are `0`…`N` and a long list is
+summed across its pages. A number is a figure the page does state ("how much
+does it cost", "how many rads are lethal"), so the choices are the figures on
+that page, digits or words, each shown with the text around it; nothing is
+summed, and a page without figures is `not stated` without a call. `N` is
 `--count-max` (default 50); an `over N` answer is asked once more with the full
 range of 252, so a low ceiling costs a call rather than the answer. `not stated`
 is a refusal, not an answer: the window is dropped and the walk goes on.
@@ -103,7 +111,7 @@ Two probabilities print, and they mean different things: the answer's own
 confidence, and `found p=…` for the window that produced it. Finding the right
 pages and reading a value out of them fail independently.
 
-Force a kind with `--kind count|truth|passage`.
+Force a kind with `--kind count|number|truth|passage`.
 
 ### Answering from the table of contents
 
