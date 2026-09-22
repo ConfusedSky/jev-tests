@@ -165,6 +165,11 @@ counted on its own and the parts are added up, reported as they land:
   take  30 (p=0.94)  Gadgets p.1
 ```
 
+Counting a section reads every page under it, so its subsections are skipped
+rather than re-counted, and a section-wide count outranks a more confident count
+off one of its pages when the best answer is chosen: the two are not the same
+quantity.
+
 The aggregate is only as trustworthy as its least certain contributing part, so
 that is the confidence reported. A window listing none of the items neither
 adds nor lowers it, since a long section is expected to have some.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { num, parseFlags, readDefaults, readFlags } from "./cli";
+import { bestCandidate, num, parseFlags, readDefaults, readFlags } from "./cli";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
@@ -49,5 +49,27 @@ describe("readFlags", () => {
     parseFlags(["--kind", "count"], o, readFlags(), usage);
     expect(o.kind).toBe("count");
     expect(() => parseFlags(["--kind", "maybe"], readDefaults(), readFlags(), usage)).toThrow("usage 1");
+  });
+});
+
+describe("bestCandidate", () => {
+  const c = (scope: number, p: number, text: string) => ({
+    hit: { pdf: "b.pdf", section: text, page: 1, p: 1, text: "" },
+    answer: { text, p },
+    scope,
+  });
+
+  // The Fallout run reported 5 off one perk's page over 78 for the whole
+  // section, because 0.37 beat 0.05.
+  test("prefers the wider count over the more confident fragment", () => {
+    expect(bestCandidate([c(1, 0.37, "5"), c(3, 0.05, "78")]).answer.text).toBe("78");
+  });
+
+  test("falls back to probability at equal scope", () => {
+    expect(bestCandidate([c(1, 0.3, "a"), c(1, 0.6, "b")]).answer.text).toBe("b");
+  });
+
+  test("a single candidate is the best one", () => {
+    expect(bestCandidate([c(1, 0.1, "only")]).answer.text).toBe("only");
   });
 });

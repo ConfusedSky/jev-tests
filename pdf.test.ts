@@ -4,6 +4,7 @@ import { outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
 const heart = fixture("heart.pdf"); // one page, no outline
+const toc = fixture("toc.pdf"); // nested sections, a parent spanning pages
 
 describe("parseOutline", () => {
   test("reads path, start and end from each line", () => {
@@ -172,5 +173,43 @@ describe("searchPdf verification", () => {
     expect(hit?.section).toBe("Chapter I: Skills");
     expect(hit?.answer).toBeUndefined();
     expect(rejected).toEqual([]);
+  });
+});
+
+describe("a section-wide count", () => {
+  const base = { question: "q", threshold: 0.7, titleFloor: -Infinity, max: 12, chars: 400, batch: 40 };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  test("spends its descendants, which could only re-count its pages", async () => {
+    const counted: string[] = [];
+    const { rejected } = await searchPdf(
+      stubClient(),
+      toc,
+      {
+        ...base,
+        countAcross: async (section, windows) => {
+          counted.push(section);
+          return { text: String(windows.length), p: 0.1, verdict: "keep" };
+        },
+        verify: async (section) => {
+          counted.push(section);
+          return { text: "1", p: 0.1, verdict: "keep" };
+        },
+      },
+      ui,
+    );
+    const wide = counted[0]!;
+    expect(counted.filter((c) => c.startsWith(`${wide} > `))).toEqual([]);
+    expect(rejected[0]!.scope).toBeGreaterThan(1);
+  });
+
+  test("records scope 1 for a window read on its own", async () => {
+    const { rejected } = await searchPdf(
+      stubClient(),
+      manual,
+      { ...base, chars: 48000, verify: async () => ({ text: "1", p: 0.1, verdict: "keep" }) },
+      ui,
+    );
+    expect(rejected[0]!.scope).toBe(1);
   });
 });

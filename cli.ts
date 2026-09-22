@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Answer, type Judged, type Kind } from "./answer";
-import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { GATE, link, openAt, pageUrl, type Candidate, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -141,6 +141,13 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };
 }
 
+/**
+ * Widest scope first: a count over a whole section beats a more confident count
+ * off one of its pages, which can only have seen part of the list.
+ */
+export const bestCandidate = (cs: Candidate[]): Candidate =>
+  cs.reduce((a, b) => (b.scope !== a.scope ? (b.scope > a.scope ? b : a) : b.answer.p > a.answer.p ? b : a));
+
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
   `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`;
 
@@ -166,7 +173,7 @@ export async function report(
 
   // Nothing cleared the floor, so report the best of what was read and say so.
   if (r.rejected.length > 0) {
-    const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
+    const { hit, answer } = bestCandidate(r.rejected);
     ui.log(`total ${split(since)}${walked}`);
     console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
     console.log(`${answer.text}  (p=${answer.p.toFixed(2)}, below ${o.answerFloor})  ${hitLine(hit)}`);

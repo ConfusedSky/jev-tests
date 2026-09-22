@@ -4,8 +4,12 @@ import type { Answer, Judged, OutlineAnswer } from "./answer";
 
 export type Section = { path: string; start: number; end: number };
 export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
-/** A window that answered, with whatever the answer layer read out of it. */
-export type Candidate = { hit: Hit; answer: Answer };
+/**
+ * A window that answered, with whatever the answer layer read out of it, and
+ * how many windows that answer covers. A section-wide count and a count off one
+ * page are not the same quantity, so the wider one wins before probability does.
+ */
+export type Candidate = { hit: Hit; answer: Answer; scope: number };
 export type Tried = { name: string; page: number; p: number };
 /** Windows that held the pages but yielded no answer to fall back on, such as a count "not stated". */
 export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
@@ -197,12 +201,13 @@ export async function searchPdf(
     const hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
     // than the window that happened to answer.
-    const check = all && all.length > 1 && o.countAcross ? o.countAcross(name, all) : o.verify?.(name, w.page, w.text);
+    const whole = Boolean(all && all.length > 1 && o.countAcross);
+    const check = whole ? o.countAcross!(name, all!) : o.verify?.(name, w.page, w.text);
     if (!check) return hit;
     const { verdict, ...answer } = await check;
     ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
     if (verdict === "take") return { ...hit, answer };
-    (verdict === "keep" ? rejected : dropped).push({ hit, answer });
+    (verdict === "keep" ? rejected : dropped).push({ hit, answer, scope: whole ? all!.length : 1 });
     return rejected.length >= maxAnswers ? "spent" : undefined;
   };
 
@@ -258,8 +263,16 @@ export async function searchPdf(
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
+  // A section-wide count already read every page under it, so its descendants
+  // can only re-count a fragment of what it covered.
+  const counted: string[] = [];
   for (const r of ranked) {
     const s = byPath.get(r.name)!;
+    const under = counted.find((c) => r.name.startsWith(`${c} > `));
+    if (under) {
+      ui.log(`${indent}  --    ${r.name}  already counted under ${under}`);
+      continue;
+    }
     if (read.has(`${s.start}-${s.end}`)) continue;
     read.add(`${s.start}-${s.end}`);
     const sectionSnap = snapshot();
@@ -269,7 +282,8 @@ export async function searchPdf(
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${r.name}  p.${s.start}-${s.end}  no extractable text`);
       continue;
     }
-    const whole = Boolean(o.countAcross && ws.length > 1);
+    const wholeSection = Boolean(o.countAcross && ws.length > 1);
+    if (wholeSection) counted.push(r.name);
     for (const [i, w] of ws.entries()) {
       const span = ws.length > 1 ? `p.${w.page} (window ${i + 1}/${ws.length})` : `p.${w.page}`;
       const out = await visit(w, r.name, `${r.name} ${span}`, ws);
@@ -279,7 +293,7 @@ export async function searchPdf(
         return done(out);
       }
       // A section-wide count already read every window, so the rest are spent.
-      if (whole && tried.at(-1)!.p >= o.threshold) break;
+      if (wholeSection && tried.at(-1)!.p >= o.threshold) break;
     }
     if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
   }
