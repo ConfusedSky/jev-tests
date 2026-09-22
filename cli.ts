@@ -1,5 +1,5 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Answer, type Judged, type Kind } from "./answer";
 import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
@@ -119,25 +119,25 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     ? undefined
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
         answerFromOutline(client, kind, o.question, sections, o.answerFloor, o.tocMaxSpan);
-  // "not stated" and "over N" are refusals, not answers, so they never settle
-  // a walk however confident the model is that it cannot say.
-  const settles = (a: { text: string }) => kind !== "count" || Number.isFinite(Number(a.text));
+  // "not stated" is a refusal, not an answer, so it never settles a walk
+  // however confident the model is that it cannot say. "over N" is an answer.
+  const judge = (a: Answer): Judged => ({
+    ...a,
+    verdict: kind === "count" && a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
+  });
   const verify: SearchOpts["verify"] =
     kind === "passage"
       ? undefined
-      : async (section, _page, text) => {
-          const a = await answerFrom(client, kind, o.question, section, text, o.countMax);
-          return { ...a, ok: a.p >= o.answerFloor && settles(a), usable: settles(a) };
-        };
+      : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, o.countMax));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined
-      : async (section, windows) => {
-          const a = await countAcross(client, o.question, section, windows, o.countMax, (page, part, running) =>
-            ui.log(`    +${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  running ${running}`),
+      : async (section, windows) =>
+          judge(
+            await countAcross(client, o.question, section, windows, o.countMax, (page, part, running) =>
+              ui.log(`    +${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  running ${running}`),
+            ),
           );
-          return { ...a, ok: a.p >= o.answerFloor && settles(a), usable: settles(a) };
-        };
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };
 }
 
@@ -177,8 +177,17 @@ export async function report(
     console.error(`${tool}: ${ctx.nothing}`);
     process.exit(1);
   }
-  const best = r.tried.reduce((a, b) => (b.p > a.p ? b : a));
   const across = ctx.files === undefined ? "" : ` across ${ctx.files} files`;
+  // Dropped windows did pass the gate, so "no window reached the threshold"
+  // would be false; say what actually happened.
+  if (r.dropped.length > 0) {
+    const where = r.dropped.map(({ hit }) => `${hit.section} p.${hit.page}`).join(", ");
+    console.error(
+      `${tool}: ${r.dropped.length} windows${across} held the pages but stated no number in ${split(since)}: ${where}`,
+    );
+    process.exit(1);
+  }
+  const best = r.tried.reduce((a, b) => (b.p > a.p ? b : a));
   console.error(
     `${tool}: none of ${r.tried.length} windows${across} reached p=${o.threshold} in ${split(since)}; ` +
       `best was ${best.p.toFixed(2)} at ${best.name} p.${best.page}`,

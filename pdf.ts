@@ -1,13 +1,14 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rankTitles, secs, snapshot, split, timed } from "./shared";
-import type { Answer, OutlineAnswer } from "./answer";
+import type { Answer, Judged, OutlineAnswer } from "./answer";
 
 export type Section = { path: string; start: number; end: number };
 export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
 /** A window that answered, with whatever the answer layer read out of it. */
 export type Candidate = { hit: Hit; answer: Answer };
 export type Tried = { name: string; page: number; p: number };
-export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[] };
+/** Windows that held the pages but yielded no answer to fall back on, such as a count "not stated". */
+export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
 
 /** Progress goes to stderr and the hit to stdout, so redirecting one never hides the other. */
 export type Ui = { log: (line: string) => void; trying: (line: string) => void; clear: () => void };
@@ -140,14 +141,10 @@ async function askWindow(
 /**
  * Checks the answer a window actually yields. Finding the right pages and
  * reading a value out of them fail independently: a section can clearly be
- * about skills while the count inside it comes back at p=0.32. Returning
- * `ok: false` keeps the walk going instead of settling for that.
+ * about skills while the count inside it comes back at p=0.32. A "keep"
+ * verdict lets the walk go on instead of settling for that.
  */
-export type Verify = (
-  section: string,
-  page: number,
-  text: string,
-) => Promise<Answer & { ok: boolean; usable?: boolean }>;
+export type Verify = (section: string, page: number, text: string) => Promise<Judged>;
 
 export type SearchOpts = {
   question: string;
@@ -158,12 +155,12 @@ export type SearchOpts = {
   batch: number;
   maxAnswers?: number;
   verify?: Verify;
-  /** Tries the table of contents before any page is read. */
+  /** Tries the table of contents before any page is read; may instead name the section to read. */
   fromOutline?: (sections: Section[]) => Promise<OutlineAnswer | undefined>;
   /** What a window must satisfy to be worth reading out; see GATE. */
   gate?: string;
   /** Counts a whole section at once, for a list too long to fit one window. */
-  countAcross?: (section: string, windows: Window[]) => Promise<Answer & { ok: boolean; usable?: boolean }>;
+  countAcross?: (section: string, windows: Window[]) => Promise<Judged>;
 };
 
 /**
@@ -179,8 +176,9 @@ export async function searchPdf(
 ): Promise<Outcome> {
   const tried: Tried[] = [];
   const rejected: Candidate[] = [];
+  const dropped: Candidate[] = [];
   const maxAnswers = o.maxAnswers ?? 5;
-  const done = (hit?: Hit): Outcome => ({ hit, tried, rejected });
+  const done = (hit?: Hit): Outcome => ({ hit, tried, rejected, dropped });
 
   /**
    * Asks one window. Returns the hit to stop on, "spent" once maxAnswers
@@ -201,12 +199,10 @@ export async function searchPdf(
     // than the window that happened to answer.
     const check = all && all.length > 1 && o.countAcross ? o.countAcross(name, all) : o.verify?.(name, w.page, w.text);
     if (!check) return hit;
-    const { ok, usable, ...answer } = await check;
-    ui.log(`${indent}  ${ok ? "take" : usable === false ? "drop" : "keep"}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
-    if (ok) return { ...hit, answer };
-    // A refusal ("not stated") is not a weak answer to fall back on later.
-    if (usable === false) return undefined;
-    rejected.push({ hit, answer });
+    const { verdict, ...answer } = await check;
+    ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
+    if (verdict === "take") return { ...hit, answer };
+    (verdict === "keep" ? rejected : dropped).push({ hit, answer });
     return rejected.length >= maxAnswers ? "spent" : undefined;
   };
 
@@ -229,28 +225,43 @@ export async function searchPdf(
     return done();
   }
 
+  // The contents may settle the question, or only say which section can. In
+  // the second case the walk is confined to that section and its children,
+  // and the title floor no longer applies: the section was already picked.
+  let pool = sections;
+  let floor = o.titleFloor;
   if (o.fromOutline) {
     const outlineSnap = snapshot();
     const toc = await o.fromOutline(sections);
-    if (toc) {
+    if (toc?.answer) {
       const at = sections.find((s) => s.path === toc.parent)!;
       ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
       return done({ pdf, section: toc.parent, page: at.start, p: toc.answer.p, text: "", answer: toc.answer });
     }
+    if (toc) {
+      pool = sections.filter((s) => s.path === toc.parent || s.path.startsWith(`${toc.parent} > `));
+      floor = -Infinity;
+      ui.log(`${indent}  toc   reading ${toc.parent} (${pool.length} sections)  in ${split(outlineSnap)}`);
+    }
   }
 
   const rankSnap = snapshot();
-  const all = await rankTitles(client, o.question, sections.map((s) => s.path), o.batch, "section");
-  const ranked = all.filter((r) => r.score >= o.titleFloor).slice(0, o.max);
+  const all = await rankTitles(client, o.question, pool.map((s) => s.path), o.batch, "section");
+  const ranked = all.filter((r) => r.score >= floor).slice(0, o.max);
   ui.log(
     `${indent}ranked ${all.length} sections in ${split(rankSnap)}, ` +
-      `${ranked.length} above title floor ${o.titleFloor}` +
+      `${ranked.length} above title floor ${floor}` +
       (all.length > ranked.length ? ` (${all.length - ranked.length} skipped)` : ""),
   );
 
   const byPath = new Map(sections.map((s) => [s.path, s]));
+  // A parent and its only child, or siblings on one page, resolve to the same
+  // pages; reading them twice would cost a call and change nothing.
+  const read = new Set<string>();
   for (const r of ranked) {
     const s = byPath.get(r.name)!;
+    if (read.has(`${s.start}-${s.end}`)) continue;
+    read.add(`${s.start}-${s.end}`);
     const sectionSnap = snapshot();
     const ws = await windows(pdf, s, o.chars);
     if (ws.length === 0) {

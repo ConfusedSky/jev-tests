@@ -3,15 +3,15 @@ import { childrenByParent } from "./answer";
 import { outline } from "./pdf";
 
 /**
- * The Fallout rulebook lives on removable media, so these skip when it is not
- * mounted. It is kept as a fixture because its outline is malformed in ways no
- * generated fixture would be: the first perk became the parent of the other 89,
- * and six derived statistics are parked under the perks section.
+ * The Fallout core rulebook is not redistributable, so point JEV_FALLOUT_PDF at
+ * a copy to run these; they skip otherwise. It is worth a test because its
+ * outline is malformed in ways no generated fixture would be: the first perk
+ * became the parent of the other 89, and six derived statistics are parked
+ * under the perks section.
  */
-const FALLOUT =
-  "/run/media/masa/Files and S/Fallout Stuff/Fallout RPG/Fallout RPG_210412/Fallout Core Rulebook WEB 210412.pdf";
-const mounted = await Bun.file(FALLOUT).exists();
-if (!mounted) console.warn(`media tests skipped, not mounted: ${FALLOUT}`);
+const FALLOUT = process.env.JEV_FALLOUT_PDF ?? "";
+const mounted = FALLOUT !== "" && (await Bun.file(FALLOUT).exists());
+if (!mounted) console.warn("media tests skipped: set JEV_FALLOUT_PDF to the Fallout core rulebook");
 
 describe.if(mounted)("a malformed outline", async () => {
   const sections = mounted ? await outline(FALLOUT) : [];

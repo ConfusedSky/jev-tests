@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { childrenByParent, countAcross, membershipFromContents, mentions } from "./answer";
+import { answerFrom, answerFromOutline, childrenByParent, countAcross, membershipFromContents, mentions, subjectOf } from "./answer";
+import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
   ["Characters", ["Callings", "Classes"]],
@@ -70,6 +71,25 @@ describe("membershipFromContents", () => {
     expect(membershipFromContents("Is mage a class?", HEART)?.text).toBe("false");
   });
 
+  // The bug this guards: "witch hunter" contains the entry "Witch", and the
+  // contents answered true at p=1.00 without opening a page.
+  test("a name that contains an entry is not that entry", () => {
+    expect(membershipFromContents("Is witch hunter a class?", HEART)?.text).toBe("false");
+    expect(membershipFromContents("Is the junk mage apprentice a class?", HEART)?.text).toBe("false");
+  });
+
+  test("takes the statement and the one-of forms too", () => {
+    expect(membershipFromContents("Witch is a class.", HEART)?.text).toBe("true");
+    expect(membershipFromContents("Is witch one of the classes?", HEART)?.text).toBe("true");
+  });
+
+  test("a statement not shaped as membership is a negative for the pages to read", () => {
+    expect(membershipFromContents("Heroes choose two classes each.", HEART)).toEqual({
+      text: "false",
+      parent: "Characters > Classes",
+    });
+  });
+
   test("declines when no section names the claimed category", () => {
     expect(membershipFromContents("Is stress a mechanic?", HEART)).toBeUndefined();
   });
@@ -96,6 +116,54 @@ function stubCounts(answers: [string, number][]) {
 
 const ws = (n: number) => Array.from({ length: n }, (_, i) => ({ page: i + 1, text: "x" }));
 
+describe("subjectOf", () => {
+  test.each([
+    ["Is witch a class?", "class", "witch"],
+    ["Is the Vermissian Knight a class in heart?", "class", "vermissian knight"],
+    ["Witch is a class.", "class", "witch"],
+    ["Is witch one of the classes?", "classes", "witch"],
+    ["Is witch an origin?", "origin", "witch"],
+  ])("%s names %s", (q, category, subject) => {
+    expect(subjectOf(q, category)).toBe(subject);
+  });
+
+  test("has no subject when the statement is not about membership", () => {
+    expect(subjectOf("How many classes are there?", "class")).toBeUndefined();
+  });
+});
+
+describe("answerFromOutline for a statement", () => {
+  const none = {} as TypeSafeClient; // membership never reaches the model
+  const paths = HEART.flatMap(([parent, kids]) => kids.map((k) => `${parent} > ${k}`));
+  const sections = paths.map((path, i) => ({ path, start: i + 1, end: i + 1 }));
+
+  test("a listed entry is final", async () => {
+    const r = await answerFromOutline(none, "truth", "Is witch a class?", sections, 0.7, 3);
+    expect(r).toEqual({ answer: { text: "true", p: 1 }, parent: "Characters > Classes" });
+  });
+
+  test("an unlisted entry points the walk at the section instead", async () => {
+    const r = await answerFromOutline(none, "truth", "Is heretic a calling?", sections, 0.7, 3);
+    expect(r).toEqual({ parent: "Characters > Callings" });
+  });
+
+  test("no matching category leaves the walk unconfined", async () => {
+    expect(await answerFromOutline(none, "truth", "Is stress a mechanic?", sections, 0.7, 3)).toBeUndefined();
+  });
+});
+
+describe("a count above the ceiling", () => {
+  test("is asked again with the full range", async () => {
+    const client = stubCounts([["over 5", 0.8], ["200", 0.9]]);
+    expect(await answerFrom(client, "count", "q", "s", "text", 5)).toEqual({ text: "200", p: 0.9 });
+  });
+
+  test("stands when the range was already full", async () => {
+    const client = stubCounts([["over 252", 0.8]]);
+    expect(await answerFrom(client, "count", "q", "s", "text", 9999)).toEqual({ text: "over 252", p: 0.8 });
+  });
+});
+
 describe("countAcross", () => {
   test("adds the parts up", async () => {
     const a = await countAcross(stubCounts([["10", 0.9], ["10", 0.95], ["10", 0.8]]), "q", "s", ws(3), 60);
@@ -113,8 +181,8 @@ describe("countAcross", () => {
     expect(a).toEqual({ text: "7", p: 0.9 });
   });
 
-  test("a part above the ceiling contributes no number", async () => {
-    const a = await countAcross(stubCounts([["3", 0.9], ["over 60", 0.3]]), "q", "s", ws(2), 60);
+  test("a part above the full range contributes no number", async () => {
+    const a = await countAcross(stubCounts([["3", 0.9], ["over 60", 0.3], ["over 252", 0.3]]), "q", "s", ws(2), 60);
     expect(a.text).toBe("3");
   });
 

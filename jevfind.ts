@@ -59,6 +59,7 @@ ui.log(
 let hit: Hit | undefined;
 const tried: Tried[] = [];
 const rejected: Candidate[] = [];
+const dropped: Candidate[] = [];
 let opened = 0;
 
 for (const r of ranked) {
@@ -77,12 +78,13 @@ for (const r of ranked) {
   const res = await searchPdf(client, r.name, { ...search, maxAnswers: opts.maxAnswers - rejected.length }, ui, "  ");
   tried.push(...res.tried);
   rejected.push(...res.rejected);
+  dropped.push(...res.dropped);
   ui.log(`  file ${split(fileSnap)}  ${res.tried.length} windows read`);
   hit = res.hit;
   if (hit || rejected.length >= opts.maxAnswers) break;
 }
 
-await report("jevfind", { hit, tried, rejected }, search, ui, startSnap, {
+await report("jevfind", { hit, tried, rejected, dropped }, search, ui, startSnap, {
   files: opened,
   nothing:
     `nothing searchable above the floors in ${split(startSnap)}; ` +

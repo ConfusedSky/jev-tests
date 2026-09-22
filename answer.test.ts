@@ -72,9 +72,9 @@ describe.if(live)("count", () => {
     expect(a!.text).toBe("7");
   });
 
-  test("collapses a count above the ceiling instead of guessing", async () => {
+  test("a count above the ceiling is asked again with the full range", async () => {
     const a = await answerFrom(client, "count", "How many rads are lethal without treatment?", "Radiation", manualText, 5);
-    expect(a!.text).toBe("over 5");
+    expect(a.text).toBe("200");
   });
 });
 

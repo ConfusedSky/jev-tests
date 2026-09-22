@@ -25,6 +25,13 @@ export async function classify(client: TypeSafeClient, question: string): Promis
 
 export type Answer = { text: string; p: number };
 
+/** How an extracted answer bears on the walk: settle, keep as a fallback, or discard. */
+export type Verdict = "take" | "keep" | "drop";
+export type Judged = Answer & { verdict: Verdict };
+
+// A Choice takes at most 255 options: 0 through 252, plus the two escapes.
+const COUNT_CEILING = 252;
+
 /** Jev writes no prose, so a count is a choice over the numbers themselves. */
 async function countFrom(
   client: TypeSafeClient,
@@ -34,30 +41,36 @@ async function countFrom(
   max: number,
   partial = false,
 ): Promise<Answer> {
-  // A Choice takes at most 255 options: 0 through 252, plus the two escapes.
-  const ceiling = Math.min(max, 252);
-  const criteria: Record<string, string> = {};
-  for (let i = 0; i <= ceiling; i++) criteria[String(i)] = `The answer is exactly ${i}`;
-  criteria[`over ${ceiling}`] = `The answer is greater than ${ceiling}`;
-  criteria["not stated"] = partial
-    ? "This part of the text lists none of them"
-    : "The text does not give this number";
+  const ask = async (ceiling: number): Promise<Answer> => {
+    const criteria: Record<string, string> = {};
+    for (let i = 0; i <= ceiling; i++) criteria[String(i)] = `The answer is exactly ${i}`;
+    criteria[`over ${ceiling}`] = `The answer is greater than ${ceiling}`;
+    criteria["not stated"] = partial
+      ? "This part of the text lists none of them"
+      : "The text does not give this number";
 
-  const res = await timed("api", () =>
-    client.systemOne({
-      state: { question, section, text },
-      questions: {
-        count: choice(
-          partial
-            ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
-            : "How many, according to the text?",
-          criteria,
-        ),
-      },
-    }),
-  );
-  const a = res.answers.count;
-  return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+    const res = await timed("api", () =>
+      client.systemOne({
+        state: { question, section, text },
+        questions: {
+          count: choice(
+            partial
+              ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
+              : "How many, according to the text?",
+            criteria,
+          ),
+        },
+      }),
+    );
+    const a = res.answers.count;
+    return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+  };
+
+  const ceiling = Math.min(max, COUNT_CEILING);
+  const a = await ask(ceiling);
+  // "over N" is a real answer, but a low --count-max should not be the reason
+  // for it: one more call with the full range usually pins the number down.
+  return a.text === `over ${ceiling}` && ceiling < COUNT_CEILING ? ask(COUNT_CEILING) : a;
 }
 
 /**
@@ -150,6 +163,18 @@ export function mentions(text: string, phrase: string): boolean {
   return p !== "" && ` ${normalize(text)} `.includes(` ${p} `);
 }
 
+/**
+ * The thing a membership statement is about: "witch" in "is witch a class?",
+ * "witch is a class" or "is witch one of the classes?". Undefined when the
+ * statement is not shaped like that.
+ */
+export function subjectOf(question: string, category: string): string | undefined {
+  const m = new RegExp(`^(?:is )?(?:the )?(.+?)(?: is)? (?:a|an|one of the) ${normalize(category)}(?: |$)`).exec(
+    normalize(question),
+  );
+  return m?.[1];
+}
+
 /** Immediate children of each section, by the " > " path outline.js prints. */
 export function childrenByParent(paths: string[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -162,7 +187,11 @@ export function childrenByParent(paths: string[]): Map<string, string[]> {
   return out;
 }
 
-export type OutlineAnswer = { answer: Answer; parent: string };
+/**
+ * What the contents say: an answer, or only which section the pages should
+ * be read from when they cannot settle it.
+ */
+export type OutlineAnswer = { parent: string; answer?: Answer };
 
 /**
  * Decide a membership statement from the contents alone: "is witch a class?"
@@ -172,22 +201,28 @@ export type OutlineAnswer = { answer: Answer; parent: string };
  * refused to commit, and every prose framing of the same question mistook a
  * leading article or an extra word for a different name.
  *
- * Undefined means the contents cannot settle it and the pages should be read.
+ * The subject must equal an entry, not merely contain one: "witch hunter" is
+ * not "witch", any more than "knight" is "vermissian knight".
+ *
+ * Undefined means no single section is the category asked about.
  */
 export function membershipFromContents(
   question: string,
   groups: [string, string[]][],
 ): { text: string; parent: string } | undefined {
-  const category = groups.filter(([parent]) => {
+  const category = groups.flatMap(([parent, kids]) => {
     const leaf = parent.split(" > ").at(-1)!;
-    return mentions(question, leaf) || mentions(question, singular(leaf));
+    const name = [leaf, singular(leaf)].find((n) => mentions(question, n));
+    return name === undefined ? [] : [{ parent, kids, name }];
   });
   if (category.length !== 1) return undefined;
 
   // The contents list a section's whole membership, the same assumption the
   // count path makes, so an entry absent from them is absent from the section.
-  const [parent, kids] = category[0]!;
-  return { text: kids.some((kid) => mentions(question, kid)) ? "true" : "false", parent };
+  const { parent, kids, name } = category[0]!;
+  const subject = subjectOf(question, name);
+  const listed = subject !== undefined && kids.some((kid) => normalize(kid) === subject);
+  return { text: listed ? "true" : "false", parent };
 }
 
 /**
@@ -211,11 +246,13 @@ export async function answerFromOutline(
 
   if (kind === "truth") {
     const m = membershipFromContents(question, groups);
+    if (!m) return undefined;
     // Finding an entry in the contents proves it exists. Not finding one proves
     // nothing: contents summarize, and a section may list three of its four
     // classes. So a positive is taken as final and a negative is handed to the
-    // page walk to confirm or overturn.
-    return m?.text === "true" ? { answer: { text: "true", p: 1 }, parent: m.parent } : undefined;
+    // pages of that section, which are the ones that can overturn it: a
+    // statement about callings read off the classes page came back true.
+    return m.text === "true" ? { answer: { text: "true", p: 1 }, parent: m.parent } : { parent: m.parent };
   }
 
   // Option names are sent to the model, so they carry the section name; the
@@ -244,9 +281,10 @@ export async function answerFromOutline(
   // Counting bookmarks only works while they are a list rather than a set of
   // chapters, and a long span is where that stops being true: the Fallout
   // rulebook nests 89 of its 94 perks under the first perk, so counting the
-  // entries of any one section there is wrong. Read the pages instead.
+  // entries of any one section there is wrong. Read that section's pages instead.
   const at = sections.find((s) => s.path === hit.parent);
-  if (!at || at.end - at.start + 1 > maxSpan) return undefined;
+  if (!at) return undefined;
+  if (at.end - at.start + 1 > maxSpan) return { parent: hit.parent };
 
   return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }

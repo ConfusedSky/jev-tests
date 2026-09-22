@@ -94,7 +94,10 @@ follows.
 
 Because jev emits no text, a count is a `choice` over the numbers themselves
 (`0`…`N`, plus `over N` and `not stated`), and a statement is a `noul`. Both
-come back with a probability per option rather than a sentence.
+come back with a probability per option rather than a sentence. `N` is
+`--count-max` (default 50); an `over N` answer is asked once more with the full
+range of 252, so a low ceiling costs a call rather than the answer. `not stated`
+is a refusal, not an answer: the window is dropped and the walk goes on.
 
 Two probabilities print, and they mean different things: the answer's own
 confidence, and `found p=…` for the window that produced it. Finding the right
@@ -125,20 +128,27 @@ the first perk, so counting any one section's entries there gives 7 or 89,
 never 94.
 
 Membership is decided in code, not by the model. "Is witch a class?" names a
-category (`class`, matching the section `Classes`) and an entry (`Witch`,
-listed under it), and both are string comparisons with exact answers. Requiring
-the entry to appear in the question, rather than the reverse, is what makes
-`knight` a non-match while `vermissian knight` matches.
+category (`class`, matching the section `Classes`) and a subject (`witch`, the
+words between "is" and "a class"), and both are string comparisons with exact
+answers. The subject must equal an entry, so `knight` and `witch hunter` are
+non-matches while `vermissian knight` matches.
 
 **A positive is proof; a negative is only silence.** Finding an entry in the
 contents settles the question. Not finding one settles nothing, because
 contents summarize and a section may list three of its four classes, so a
-negative is handed to the page walk to confirm or overturn:
+negative is handed to the pages of that section, and only that section, to
+confirm or overturn. Reading the whole book instead let the classes page answer
+"Is heretic a calling?" with true:
 
 ```console
 Is witch a class in heart?    true  (p=1.00)   contents, no page opened
-Is knight a class in heart?   false (p=0.97)   contents said no, pages agreed
+Is knight a class in heart?   false (p=0.97)   contents said no, Classes pages agreed
+Is heretic a calling?         false (p=0.96)   contents said no, Callings pages agreed
 ```
+
+A count whose section spans more than `--toc-max-span` pages is confined the
+same way: the contents say which section holds the list, and the pages of that
+section are read to count it.
 
 `--no-toc` skips this stage entirely.
 
@@ -221,8 +231,6 @@ becomes 6 windows and lands on page 10.
 
 ## Limits
 
-- **A count comes from one window.** If a list straddles a window boundary, jev
-  counts what it can see. There is no cross-window aggregation.
 - **A count from the contents trusts the contents.** A section listing three of
   its four classes yields three, with no page read to check. Membership has a
   safeguard for this, a negative being confirmed against the pages; a count has
