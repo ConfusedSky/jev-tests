@@ -1,0 +1,19 @@
+{
+  "name": "jev",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0"
+  },
+  "scripts": {
+    "fixture:demo": "ls fixture | bun jevgrep.ts -t 0 \"What are the skills in the fallout rpg?\"",
+    "fixture": "ls fixture | bun jevgrep.ts -t 0"
+  }
+}
