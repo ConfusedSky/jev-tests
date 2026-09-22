@@ -102,6 +102,40 @@ pages and reading a value out of them fail independently.
 
 Force a kind with `--kind count|truth|passage`.
 
+### Answering from the table of contents
+
+A book that lists its nine classes as nine outline entries already holds the
+count. Before any page is opened, counts and statements are tried against the
+contents:
+
+```console
+$ bun jevsec.ts heart.pdf "How many classes are there in heart?"
+  toc   9 (p=0.89)  Characters > Classes  in 0.2s (jev 0.2s, read 0.0s, other 0.0s)
+9  (p=0.89)  heart.pdf p.31  Characters > Classes  (found p=0.89)
+```
+
+A count asks jev which section's entries the question is about, then counts
+them, so the number itself is exact rather than estimated. Below
+`--answer-floor` the pick is discarded and the pages are read instead.
+
+Membership is decided in code, not by the model. "Is witch a class?" names a
+category (`class`, matching the section `Classes`) and an entry (`Witch`,
+listed under it), and both are string comparisons with exact answers. Requiring
+the entry to appear in the question, rather than the reverse, is what makes
+`knight` a non-match while `vermissian knight` matches.
+
+**A positive is proof; a negative is only silence.** Finding an entry in the
+contents settles the question. Not finding one settles nothing, because
+contents summarize and a section may list three of its four classes, so a
+negative is handed to the page walk to confirm or overturn:
+
+```console
+Is witch a class in heart?    true  (p=1.00)   contents, no page opened
+Is knight a class in heart?   false (p=0.97)   contents said no, pages agreed
+```
+
+`--no-toc` skips this stage entirely.
+
 ### Counts and statements keep looking
 
 A section can plainly be about skills while the count inside it comes back at
@@ -161,6 +195,14 @@ becomes 6 windows and lands on page 10.
 
 - **A count comes from one window.** If a list straddles a window boundary, jev
   counts what it can see. There is no cross-window aggregation.
+- **A count from the contents trusts the contents.** A section listing three of
+  its four classes yields three, with no page read to check. Membership has a
+  safeguard for this, a negative being confirmed against the pages; a count has
+  none.
+- **The category matcher is loose.** It takes any section whose name appears in
+  the question, so "Is Brotherhood Initiate an origin?" can match a section
+  named `Brotherhood`. A wrong match now costs a page read rather than a wrong
+  answer, but it still costs one.
 - **Filenames carry no signal sometimes.** `RTG-CPRed-SingleShotPackv1.1.pdf` is
   the Cyberpunk Red starter set; no question about netrunning will rank it.
   Lower `--file-floor`, or search it directly with jevsec.

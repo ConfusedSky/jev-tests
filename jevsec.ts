@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { DEFAULT_MODEL, makeClient, snapshot, split } from "./shared";
 import { link, makeUi, openAt, pageUrl, searchPdf, type Candidate, type Verify } from "./pdf";
-import { answerFrom, classify, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, classify, type Kind } from "./answer";
 
 type Opts = {
   pdf: string;
@@ -16,6 +16,7 @@ type Opts = {
   open: boolean;
   countMax: number;
   answerFloor: number;
+  noToc: boolean;
   maxAnswers: number;
   kind?: Kind;
 };
@@ -39,6 +40,7 @@ the first section whose text actually answers the question.
       --count-max N    largest exact count jev may answer with (default 50)
       --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
+      --no-toc         never answer from the table of contents alone
       --kind K         force count, truth or passage instead of asking jev
 
 Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
@@ -59,6 +61,7 @@ function parseArgs(argv: string[]): Opts {
     open: false,
     countMax: 50,
     answerFloor: 0.7,
+    noToc: false,
     maxAnswers: 5,
   };
   const rest: string[] = [];
@@ -75,6 +78,7 @@ function parseArgs(argv: string[]): Opts {
     else if (a === "--open") o.open = true;
     else if (a === "--count-max") o.countMax = Number(next());
     else if (a === "--answer-floor") o.answerFloor = Number(next());
+    else if (a === "--no-toc") o.noToc = true;
     else if (a === "--max-answers") o.maxAnswers = Number(next());
     else if (a === "--kind") o.kind = next() as Kind;
     else if (a === "-h" || a === "--help") usage(0);
@@ -101,6 +105,10 @@ ui.log(`question looks like a ${kind} question`);
 
 // Only count and truth questions have an answer to be confident about; a
 // passage question is satisfied by the window itself.
+const fromOutline = opts.noToc
+  ? undefined
+  : (paths: string[]) => answerFromOutline(client, kind, opts.question, paths, opts.answerFloor);
+
 const verify: Verify | undefined =
   kind === "passage"
     ? undefined
@@ -109,7 +117,7 @@ const verify: Verify | undefined =
         return { ...a, ok: a.p >= opts.answerFloor };
       };
 
-const { hit, tried, rejected } = await searchPdf(client, opts.pdf, { ...opts, verify }, ui);
+const { hit, tried, rejected } = await searchPdf(client, opts.pdf, { ...opts, verify, fromOutline }, ui);
 
 ui.clear();
 const bestAnswer = (cs: Candidate[]) => cs.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));

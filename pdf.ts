@@ -148,6 +148,8 @@ export type SearchOpts = {
   batch: number;
   maxAnswers?: number;
   verify?: Verify;
+  /** Tries the table of contents before any page is read. */
+  fromOutline?: (paths: string[]) => Promise<{ answer: { text: string; p: number }; parent: string } | undefined>;
 };
 
 /**
@@ -201,6 +203,20 @@ export async function searchPdf(
       }
     }
     return { tried, rejected };
+  }
+
+  if (o.fromOutline) {
+    const outlineSnap = snapshot();
+    const fromToc = await o.fromOutline(sections.map((s) => s.path));
+    if (fromToc) {
+      const at = sections.find((s) => s.path === fromToc.parent)!;
+      ui.log(`${indent}  toc   ${fromToc.answer.text} (p=${fromToc.answer.p.toFixed(2)})  ${fromToc.parent}  in ${split(outlineSnap)}`);
+      return {
+        hit: { pdf, section: fromToc.parent, page: at.start, p: fromToc.answer.p, text: "", answer: fromToc.answer },
+        tried,
+        rejected,
+      };
+    }
   }
 
   const rankSnap = snapshot();
