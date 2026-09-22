@@ -1,9 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, classify, type Kind } from "./answer";
-import { pageScan } from "./pdf";
+import { pageScan, searchPdf } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
-import { searchPdf } from "./pdf";
 
 // These spend money and jev is not deterministic, so they only assert the
 // direction of an answer, never an exact probability. Run with JEV_LIVE=1.

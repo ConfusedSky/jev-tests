@@ -1,7 +1,10 @@
-import { choice, noul, type ChoiceResponse, type NoulResponse, type TypeSafeClient } from "@typesafe-ai/sdk";
+import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { timed } from "./shared";
 
-export type Kind = "count" | "truth" | "passage";
+export const KINDS = ["count", "truth", "passage"] as const;
+export type Kind = (typeof KINDS)[number];
+/** The kinds that yield a value to be confident about; a passage is satisfied by the page itself. */
+export type Valued = Exclude<Kind, "passage">;
 
 /** What shape of answer the question wants, decided once from its wording. */
 export async function classify(client: TypeSafeClient, question: string): Promise<Kind> {
@@ -17,7 +20,7 @@ export async function classify(client: TypeSafeClient, question: string): Promis
       },
     }),
   );
-  return (res.answers.kind as ChoiceResponse).choice as Kind;
+  return res.answers.kind.choice;
 }
 
 export type Answer = { text: string; p: number };
@@ -43,8 +46,8 @@ async function countFrom(
       questions: { count: choice("How many, according to the text?", criteria) },
     }),
   );
-  const a = res.answers.count as ChoiceResponse;
-  return { text: a.choice, p: (a.probabilities as Record<string, number>)[a.choice] ?? a.confidence };
+  const a = res.answers.count;
+  return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
 }
 
 async function truthFrom(
@@ -66,21 +69,21 @@ async function truthFrom(
       },
     }),
   );
-  const p = (res.answers.truth as NoulResponse).noul;
+  const p = res.answers.truth.noul;
   return { text: p >= 0.5 ? "true" : "false", p: p >= 0.5 ? p : 1 - p };
 }
 
-export async function answerFrom(
+export function answerFrom(
   client: TypeSafeClient,
-  kind: Kind,
+  kind: Valued,
   question: string,
   section: string,
   text: string,
   countMax: number,
-): Promise<Answer | undefined> {
-  if (kind === "count") return countFrom(client, question, section, text, countMax);
-  if (kind === "truth") return truthFrom(client, question, section, text);
-  return undefined;
+): Promise<Answer> {
+  return kind === "count"
+    ? countFrom(client, question, section, text, countMax)
+    : truthFrom(client, question, section, text);
 }
 
 const normalize = (s: string) =>
@@ -105,8 +108,7 @@ function singular(word: string): string {
 /** Whether `phrase` appears in `text` as whole words, ignoring case and a leading "the". */
 export function mentions(text: string, phrase: string): boolean {
   const p = normalize(phrase);
-  if (!p) return false;
-  return new RegExp(`(^| )${p.replace(/ /g, " ")}( |$)`).test(` ${normalize(text)} `);
+  return p !== "" && ` ${normalize(text)} `.includes(` ${p} `);
 }
 
 /** Immediate children of each section, by the " > " path outline.js prints. */
@@ -179,10 +181,7 @@ export async function answerFromOutline(
   // index keeps them unique when two parents end in the same word.
   const keyed = groups.map(([parent, kids], i) => ({ key: `${i}:${parent.split(" > ").at(-1)}`, parent, kids }));
   const criteria: Record<string, string> = Object.fromEntries(
-    keyed.map(({ key, parent, kids }) => [
-      key,
-      `"${parent}" lists ${kids.length} entries: ${kids.join(", ")}`,
-    ]),
+    keyed.map(({ key, parent, kids }) => [key, `"${parent}" lists ${kids.length} entries: ${kids.join(", ")}`]),
   );
   criteria["none of these"] = "No section's entries are what the question is about";
 
@@ -194,14 +193,10 @@ export async function answerFromOutline(
       },
     }),
   );
-  const g = picked.answers.group as ChoiceResponse;
-  if (g.choice === "none of these") return undefined;
+  const g = picked.answers.group;
   const hit = keyed.find((k) => k.key === g.choice);
   if (!hit) return undefined;
 
-  const pGroup = (g.probabilities as Record<string, number>)[g.choice] ?? g.confidence;
-  if (pGroup < floor) return undefined;
-
-  const answer = { text: String(hit.kids.length), p: pGroup };
-  return answer.p >= floor ? { answer, parent: hit.parent } : undefined;
+  const p = g.probabilities[g.choice] ?? g.confidence;
+  return p >= floor ? { answer: { text: String(hit.kids.length), p }, parent: hit.parent } : undefined;
 }

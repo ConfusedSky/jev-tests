@@ -1,6 +1,5 @@
 import type { Ranked } from "./shared";
 
-// Keep the tab-separated form when piped; align only for a human at a TTY.
 export function elideMiddle(s: string, w: number): string {
   if (s.length <= w) return s;
   const keep = w - 1;
@@ -19,6 +18,7 @@ export function elidePath(s: string, w: number): string {
   return `${elideMiddle(s.slice(0, cut), avail)}/${base}`;
 }
 
+// Keep the tab-separated form when piped; align only for a human at a TTY.
 export function render(rows: Ranked[], cols?: number): string[] {
   if (cols === undefined && !process.stdout.isTTY)
     return rows.map((r) => `${r.score.toFixed(2)}\t${r.name}\t${r.reason}`);

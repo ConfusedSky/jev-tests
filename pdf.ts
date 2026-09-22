@@ -1,41 +1,38 @@
-import { noul, type NoulResponse, type TypeSafeClient } from "@typesafe-ai/sdk";
-import { rankTitles, snapshot, split, timed, type Snapshot } from "./shared";
+import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+import { rankTitles, secs, snapshot, split, timed } from "./shared";
+import type { Answer, OutlineAnswer } from "./answer";
 
 export type Section = { path: string; start: number; end: number };
-export type Hit = {
-  pdf: string;
-  section: string;
-  page: number;
-  p: number;
-  text: string;
-  answer?: { text: string; p: number };
-};
+export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
 /** A window that answered, with whatever the answer layer read out of it. */
-export type Candidate = { hit: Hit; answer: { text: string; p: number } };
+export type Candidate = { hit: Hit; answer: Answer };
 export type Tried = { name: string; page: number; p: number };
-
-export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[] };
 
 /** Progress goes to stderr and the hit to stdout, so redirecting one never hides the other. */
-export function makeUi(quiet: boolean) {
+export type Ui = { log: (line: string) => void; trying: (line: string) => void; clear: () => void };
+
+export function makeUi(quiet: boolean): Ui {
+  const live = !quiet && process.stderr.isTTY;
   return {
-    log: (line: string) => quiet || console.error(line),
-    trying: (line: string) => {
-      if (!quiet && process.stderr.isTTY) process.stderr.write(`\u001b[2m  … ${line}\u001b[0m\r`);
+    log: (line) => {
+      if (!quiet) console.error(line);
+    },
+    trying: (line) => {
+      if (live) process.stderr.write(`\u001b[2m  … ${line}\u001b[0m\r`);
     },
     clear: () => {
-      if (!quiet && process.stderr.isTTY) process.stderr.write("\u001b[2K");
+      if (live) process.stderr.write("\u001b[2K");
     },
   };
 }
-export type Ui = ReturnType<typeof makeUi>;
 
-export async function run(cmd: string[]): Promise<string> {
+export function run(cmd: string[]): Promise<string> {
   return timed("extract", async () => {
-  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  if ((await p.exited) !== 0) throw new Error(`${cmd[0]} failed: ${err.trim()}`);
-  return out;
+    const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+    const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    if ((await p.exited) !== 0) throw new Error(`${cmd[0]} failed: ${err.trim()}`);
+    return out;
   });
 }
 
@@ -54,14 +51,15 @@ export async function outline(pdf: string): Promise<Section[]> {
   return parseOutline(await run(["mutool", "run", script, pdf]));
 }
 
+export type Window = { page: number; text: string };
+
 /** Section text split into windows small enough for one call, each tagged with its first page. */
-export async function windows(pdf: string, s: Section, chars: number) {
+export async function windows(pdf: string, s: Section, chars: number): Promise<Window[]> {
   const text = await run(["pdftotext", "-f", String(s.start), "-l", String(s.end), pdf, "-"]);
-  const pages = text.split("\f");
-  const out: { page: number; text: string }[] = [];
+  const out: Window[] = [];
   let buf = "";
   let first = s.start;
-  pages.forEach((page, i) => {
+  text.split("\f").forEach((page, i) => {
     if (buf && buf.length + page.length > chars) {
       out.push({ page: first, text: buf });
       buf = "";
@@ -81,11 +79,11 @@ export async function pageCount(pdf: string): Promise<number> {
 
 /**
  * Whole-document page windows, for a PDF with no outline. Ranking them by
- * their opening text was worse than useless — a 300-character snippet judged
- * a credits page above the body — and the walk stops at the first yes anyway,
+ * their opening text was worse than useless (a 300-character snippet judged
+ * a credits page above the body) and the walk stops at the first yes anyway,
  * so they are simply read in page order.
  */
-export async function pageScan(pdf: string, chars: number) {
+export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
   const pages = await pageCount(pdf);
   if (pages === 0) return [];
   return windows(pdf, { path: "", start: 1, end: pages }, chars);
@@ -116,19 +114,14 @@ export async function openAt(url: string): Promise<void> {
   console.error(`could not resolve a PDF handler (${id}); open the URL yourself`);
 }
 
-async function askWindow(
-  client: TypeSafeClient,
-  question: string,
-  section: string,
-  text: string,
-): Promise<number> {
+async function askWindow(client: TypeSafeClient, question: string, section: string, text: string): Promise<number> {
   const res = await timed("api", () =>
     client.systemOne({
       state: { question, section, text },
       questions: { answers: noul("The text contains the answer to the question") },
     }),
   );
-  return (res.answers.answers as NoulResponse).noul;
+  return res.answers.answers.noul;
 }
 
 /**
@@ -137,7 +130,7 @@ async function askWindow(
  * about skills while the count inside it comes back at p=0.32. Returning
  * `ok: false` keeps the walk going instead of settling for that.
  */
-export type Verify = (section: string, page: number, text: string) => Promise<{ text: string; p: number; ok: boolean }>;
+export type Verify = (section: string, page: number, text: string) => Promise<Answer & { ok: boolean }>;
 
 export type SearchOpts = {
   question: string;
@@ -149,7 +142,7 @@ export type SearchOpts = {
   maxAnswers?: number;
   verify?: Verify;
   /** Tries the table of contents before any page is read. */
-  fromOutline?: (paths: string[]) => Promise<{ answer: { text: string; p: number }; parent: string } | undefined>;
+  fromOutline?: (paths: string[]) => Promise<OutlineAnswer | undefined>;
 };
 
 /**
@@ -162,60 +155,61 @@ export async function searchPdf(
   o: SearchOpts,
   ui: Ui,
   indent = "",
-): Promise<{ hit?: Hit; tried: Tried[]; rejected: Candidate[] }> {
+): Promise<Outcome> {
   const tried: Tried[] = [];
   const rejected: Candidate[] = [];
   const maxAnswers = o.maxAnswers ?? 5;
+  const done = (hit?: Hit): Outcome => ({ hit, tried, rejected });
 
-  /** Returns the hit to stop on, or undefined to keep walking. */
-  const settle = async (hit: Hit, label: string): Promise<Hit | undefined> => {
+  /**
+   * Asks one window. Returns the hit to stop on, "spent" once maxAnswers
+   * windows have answered below the floor, or undefined to keep walking.
+   */
+  const visit = async (w: Window, name: string, label: string): Promise<Hit | "spent" | undefined> => {
+    ui.trying(label);
+    const t = Date.now();
+    const p = await askWindow(client, o.question, name, w.text);
+    tried.push({ name, page: w.page, p });
+    ui.clear();
+    const yes = p >= o.threshold;
+    ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label}`);
+    if (!yes) return undefined;
+
+    const hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     if (!o.verify) return hit;
-    const a = await o.verify(hit.section, hit.page, hit.text);
-    ui.log(`${indent}  ${a.ok ? "take" : "keep"}  ${a.text} (p=${a.p.toFixed(2)})  ${label}`);
-    const answer = { text: a.text, p: a.p };
-    if (a.ok) return { ...hit, answer };
+    const { ok, ...answer } = await o.verify(name, w.page, w.text);
+    ui.log(`${indent}  ${ok ? "take" : "keep"}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
+    if (ok) return { ...hit, answer };
     rejected.push({ hit, answer });
-    return undefined;
+    return rejected.length >= maxAnswers ? "spent" : undefined;
   };
+
   const sections = await outline(pdf);
   if (sections.length === 0) {
     const scanSnap = snapshot();
     const ws = await pageScan(pdf, o.chars);
     if (ws.length === 0) {
       ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-      return { tried, rejected };
+      return done();
     }
     ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
     for (const [i, w] of ws.entries()) {
-      const end = i + 1 < ws.length ? ws[i + 1]!.page - 1 : "";
-      const name = `p.${w.page}${end ? `-${end}` : "+"}`;
-      ui.trying(`${name} (window ${i + 1}/${ws.length})`);
-      const windowSnap = snapshot();
-      const p = await askWindow(client, o.question, name, w.text);
-      tried.push({ name, page: w.page, p });
-      ui.clear();
-      const hit = p >= o.threshold;
-      ui.log(`${indent}  ${hit ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - windowSnap.at).padStart(5)} jev  ${name} (window ${i + 1}/${ws.length})`);
-      if (hit) {
-        const settled = await settle({ pdf, section: name, page: w.page, p, text: w.text }, name);
-        if (settled) return { hit: settled, tried, rejected };
-        if (rejected.length >= maxAnswers) break;
-      }
+      const next = ws[i + 1];
+      const name = next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
+      const out = await visit(w, name, `${name} (window ${i + 1}/${ws.length})`);
+      if (out === "spent") break;
+      if (out) return done(out);
     }
-    return { tried, rejected };
+    return done();
   }
 
   if (o.fromOutline) {
     const outlineSnap = snapshot();
-    const fromToc = await o.fromOutline(sections.map((s) => s.path));
-    if (fromToc) {
-      const at = sections.find((s) => s.path === fromToc.parent)!;
-      ui.log(`${indent}  toc   ${fromToc.answer.text} (p=${fromToc.answer.p.toFixed(2)})  ${fromToc.parent}  in ${split(outlineSnap)}`);
-      return {
-        hit: { pdf, section: fromToc.parent, page: at.start, p: fromToc.answer.p, text: "", answer: fromToc.answer },
-        tried,
-        rejected,
-      };
+    const toc = await o.fromOutline(sections.map((s) => s.path));
+    if (toc) {
+      const at = sections.find((s) => s.path === toc.parent)!;
+      ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
+      return done({ pdf, section: toc.parent, page: at.start, p: toc.answer.p, text: "", answer: toc.answer });
     }
   }
 
@@ -239,22 +233,15 @@ export async function searchPdf(
       continue;
     }
     for (const [i, w] of ws.entries()) {
-      const span = ws.length > 1 ? ` p.${w.page} (window ${i + 1}/${ws.length})` : ` p.${w.page}`;
-      ui.trying(`${r.name}${span}`);
-      const windowSnap = snapshot();
-      const p = await askWindow(client, o.question, r.name, w.text);
-      tried.push({ name: r.name, page: w.page, p });
-      ui.clear();
-      const hit = p >= o.threshold;
-      ui.log(`${indent}  ${hit ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - windowSnap.at).padStart(5)} jev  ${r.name}${span}`);
-      if (hit) {
+      const span = ws.length > 1 ? `p.${w.page} (window ${i + 1}/${ws.length})` : `p.${w.page}`;
+      const out = await visit(w, r.name, `${r.name} ${span}`);
+      if (out === "spent") return done();
+      if (out) {
         ui.log(`${indent}section ${split(sectionSnap)}`);
-        const settled = await settle({ pdf, section: r.name, page: w.page, p, text: w.text }, `${r.name}${span}`);
-        if (settled) return { hit: settled, tried, rejected };
-        if (rejected.length >= maxAnswers) return { tried, rejected };
+        return done(out);
       }
     }
     if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
   }
-  return { tried, rejected };
+  return done();
 }

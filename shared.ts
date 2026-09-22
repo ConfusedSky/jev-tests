@@ -34,11 +34,10 @@ export const DEFAULT_MODEL = process.env.JEVGREP_MODEL ?? "~typesafe/jev-latest"
 
 // Jev returns no prose, so the reason is built from the rubric level it landed
 // on plus how much probability mass sits there.
-export function reason(a: ScoreResponse): string {
-  const level = Math.round(a.score);
-  const label = (a.legend as Record<string, string>)[String(level)] ?? "?";
-  const p = (a.probabilities as Record<string, number>)[String(level)] ?? 0;
-  return `${label} (p=${p.toFixed(2)} conf=${a.confidence.toFixed(2)})`;
+export function reason(a: ScoreResponse<typeof RUBRIC>): string {
+  const level = Math.round(a.score) as 0 | 1 | 2 | 3;
+  const p = a.probabilities[level] ?? 0;
+  return `${RUBRIC[level] ?? "?"} (p=${p.toFixed(2)} conf=${a.confidence.toFixed(2)})`;
 }
 
 /**
@@ -59,17 +58,18 @@ export async function timed<T>(kind: keyof typeof clock, fn: () => Promise<T>): 
 export type Snapshot = { at: number; api: number; extract: number; wait: number };
 export const snapshot = (): Snapshot => ({ at: Date.now(), ...clock });
 
+export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
 /** "1.4s (jev 1.1s, read 0.2s, other 0.1s)" for everything since the snapshot. */
 export function split(s: Snapshot): string {
-  const fmt = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
   const total = Date.now() - s.at;
   const api = clock.api - s.api;
   const extract = clock.extract - s.extract;
   const wait = clock.wait - s.wait;
-  const parts = [`jev ${fmt(api)}`, `read ${fmt(extract)}`];
-  if (wait > 0) parts.push(`stdin ${fmt(wait)}`);
-  parts.push(`other ${fmt(Math.max(0, total - api - extract - wait))}`);
-  return `${fmt(total)} (${parts.join(", ")})`;
+  const parts = [`jev ${secs(api)}`, `read ${secs(extract)}`];
+  if (wait > 0) parts.push(`stdin ${secs(wait)}`);
+  parts.push(`other ${secs(Math.max(0, total - api - extract - wait))}`);
+  return `${secs(total)} (${parts.join(", ")})`;
 }
 
 export type Ranked = { name: string; score: number; confidence: number; reason: string };
@@ -94,7 +94,7 @@ export async function rankTitles(
         questions,
       });
       return chunk.map((name, i) => {
-        const a = res.answers[`f${i}`] as ScoreResponse;
+        const a = res.answers[`f${i}`]!;
         return { name, score: a.score, confidence: a.confidence, reason: reason(a) };
       });
     }),
