@@ -166,9 +166,8 @@ counted on its own and the parts are added up, reported as they land:
 ```
 
 Counting a section reads every page under it, so its subsections are skipped
-rather than re-counted, and a section-wide count outranks a more confident count
-off one of its pages when the best answer is chosen: the two are not the same
-quantity.
+rather than re-counted, and any count already taken off one of its pages is
+dropped as a fragment of the same list rather than kept as a fallback.
 
 The aggregate is only as trustworthy as its least certain contributing part, so
 that is the confidence reported. A window listing none of the items neither
@@ -233,6 +232,13 @@ stops at the first yes, order only costs latency.
 `--chars` matters more here than anywhere else. The default 48000 turns a
 28-page PDF into 2 windows, so a hit links to page 1; at `--chars 12000` it
 becomes 6 windows and lands on page 10.
+
+## The exact page
+
+A window is tagged with its first page, so a hit in a 16-page section links to
+where the section starts. `--per-page` reads one page per call instead, and the
+hit is the page that answered. It costs a call per page walked rather than one
+per window, so it is off by default. A count still sums the pages of a section.
 
 ## Limits
 

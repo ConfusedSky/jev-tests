@@ -98,16 +98,16 @@ describe("pageUrl", () => {
  * the answer" Noul with 1, so a walk visits sections in outline order and the
  * verifier alone decides where it stops. Keeps the walk testable offline.
  */
-function stubClient() {
+function stubClient(scoreOf: (title: string) => number = () => 3) {
   return {
     systemOne: async ({ questions }: { questions: Record<string, unknown> }) => ({
       answers: Object.fromEntries(
-        Object.entries(questions).map(([k, q]) => [
-          k,
-          (q as { type: string }).type === "noul"
-            ? { type: "noul", noul: 1 }
-            : { type: "score", score: 3, confidence: 1, legend: {}, probabilities: {} },
-        ]),
+        Object.entries(questions).map(([k, q]) => {
+          const { type, instructions } = q as { type: string; instructions: string };
+          if (type === "noul") return [k, { type, noul: 1 }];
+          const title = /"(.*)" answers/.exec(instructions)?.[1] ?? "";
+          return [k, { type, score: scoreOf(title), confidence: 1, legend: {}, probabilities: {} }];
+        }),
       ),
     }),
   } as unknown as Parameters<typeof searchPdf>[0];
@@ -177,39 +177,48 @@ describe("searchPdf verification", () => {
 });
 
 describe("a section-wide count", () => {
-  const base = { question: "q", threshold: 0.7, titleFloor: -Infinity, max: 12, chars: 400, batch: 40 };
+  const base = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 400, batch: 40 };
   const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+  const keep = (text: string) => ({ text, p: 0.1, verdict: "keep" as const });
+  const countAcross = async (section: string, windows: unknown[]) => keep(`${section}:${windows.length}`);
 
   test("spends its descendants, which could only re-count its pages", async () => {
-    const counted: string[] = [];
-    const { rejected } = await searchPdf(
-      stubClient(),
-      toc,
-      {
-        ...base,
-        countAcross: async (section, windows) => {
-          counted.push(section);
-          return { text: String(windows.length), p: 0.1, verdict: "keep" };
-        },
-        verify: async (section) => {
-          counted.push(section);
-          return { text: "1", p: 0.1, verdict: "keep" };
-        },
-      },
-      ui,
-    );
-    const wide = counted[0]!;
-    expect(counted.filter((c) => c.startsWith(`${wide} > `))).toEqual([]);
-    expect(rejected[0]!.scope).toBeGreaterThan(1);
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      return keep("1");
+    };
+    const { rejected } = await searchPdf(stubClient(), toc, { ...base, countAcross, verify }, ui);
+    expect(rejected.map((c) => c.hit.section)).toContain("Characters");
+    expect(seen.filter((c) => c.startsWith("Characters > "))).toEqual([]);
   });
 
-  test("records scope 1 for a window read on its own", async () => {
-    const { rejected } = await searchPdf(
-      stubClient(),
-      manual,
-      { ...base, chars: 48000, verify: async () => ({ text: "1", p: 0.1, verdict: "keep" }) },
-      ui,
-    );
-    expect(rejected[0]!.scope).toBe(1);
+  // The bug this guards: 5 off one perk's page outranked 78 for the whole
+  // section, because the fragment was more confident.
+  test("drops a fragment counted earlier once the whole section is counted", async () => {
+    const byTitle = (t: string) => (t === "Characters > Classes > Witch" ? 3 : t === "Characters" ? 2 : 0);
+    const verify = async () => keep("1");
+    const { rejected, dropped } = await searchPdf(stubClient(byTitle), toc, { ...base, countAcross, verify }, ui);
+    expect(rejected.map((c) => c.hit.section)).toEqual(["Characters"]);
+    expect(dropped.map((c) => c.hit.section)).toEqual(["Characters > Classes > Witch"]);
+  });
+});
+
+describe("per page", () => {
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  test("a chars of 0 puts every page in its own window", async () => {
+    const ws = await windows(manual, { path: "", start: 1, end: 3 }, 0);
+    expect(ws.map((w) => w.page)).toEqual([1, 2, 3]);
+  });
+
+  test("the hit names the page that answered, not the first of the section", async () => {
+    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40 };
+    const only = (t: string) => (t === "Characters" ? 3 : 0);
+    const onPage = async (_s: string, page: number) => ({ text: "x", p: 0.9, verdict: page === 3 ? ("take" as const) : ("keep" as const) });
+    const whole = await searchPdf(stubClient(only), toc, { ...opts, verify: onPage }, ui);
+    expect(whole.hit).toBeUndefined();
+    const paged = await searchPdf(stubClient(only), toc, { ...opts, perPage: true, verify: onPage }, ui);
+    expect(paged.hit?.page).toBe(3);
   });
 });

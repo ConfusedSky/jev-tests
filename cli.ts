@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Answer, type Judged, type Kind } from "./answer";
-import { GATE, link, openAt, pageUrl, type Candidate, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -51,6 +51,7 @@ export type ReadOpts = SearchOpts & {
   noToc: boolean;
   maxAnswers: number;
   tocMaxSpan: number;
+  perPage: boolean;
   kind?: Kind;
 };
 
@@ -69,6 +70,7 @@ export const readDefaults = (): ReadOpts => ({
   noToc: false,
   maxAnswers: 5,
   tocMaxSpan: 3,
+  perPage: false,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -84,6 +86,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
+  "--per-page": (o) => (o.perPage = true),
   "--no-toc": (o) => (o.noToc = true),
   "--kind": (o, next, fail) => {
     const k = next();
@@ -96,6 +99,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --title-floor F  skip sections scoring below F on title, 0-3 (default 1.0)
       --max N          read at most N sections per file (default 12)
       --chars N        characters of text per call (default 48000)
+      --per-page       one page per call, so the hit is the exact page
       --batch N        names per ranking call (default 40)
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
@@ -141,13 +145,6 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };
 }
 
-/**
- * Widest scope first: a count over a whole section beats a more confident count
- * off one of its pages, which can only have seen part of the list.
- */
-export const bestCandidate = (cs: Candidate[]): Candidate =>
-  cs.reduce((a, b) => (b.scope !== a.scope ? (b.scope > a.scope ? b : a) : b.answer.p > a.answer.p ? b : a));
-
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
   `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`;
 
@@ -173,7 +170,7 @@ export async function report(
 
   // Nothing cleared the floor, so report the best of what was read and say so.
   if (r.rejected.length > 0) {
-    const { hit, answer } = bestCandidate(r.rejected);
+    const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
     ui.log(`total ${split(since)}${walked}`);
     console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
     console.log(`${answer.text}  (p=${answer.p.toFixed(2)}, below ${o.answerFloor})  ${hitLine(hit)}`);

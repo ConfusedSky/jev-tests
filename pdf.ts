@@ -4,12 +4,8 @@ import type { Answer, Judged, OutlineAnswer } from "./answer";
 
 export type Section = { path: string; start: number; end: number };
 export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
-/**
- * A window that answered, with whatever the answer layer read out of it, and
- * how many windows that answer covers. A section-wide count and a count off one
- * page are not the same quantity, so the wider one wins before probability does.
- */
-export type Candidate = { hit: Hit; answer: Answer; scope: number };
+/** A window that answered, with whatever the answer layer read out of it. */
+export type Candidate = { hit: Hit; answer: Answer };
 export type Tried = { name: string; page: number; p: number };
 /** Windows that held the pages but yielded no answer to fall back on, such as a count "not stated". */
 export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
@@ -58,7 +54,11 @@ export async function outline(pdf: string): Promise<Section[]> {
 
 export type Window = { page: number; text: string };
 
-/** Section text split into windows small enough for one call, each tagged with its first page. */
+/**
+ * Section text split into windows small enough for one call, each tagged with
+ * its first page. A `chars` of 0 puts every page in a window of its own, so a
+ * hit names the exact page rather than the first of a span.
+ */
 export async function windows(pdf: string, s: Section, chars: number): Promise<Window[]> {
   const text = await run(["pdftotext", "-f", String(s.start), "-l", String(s.end), pdf, "-"]);
   const out: Window[] = [];
@@ -157,6 +157,8 @@ export type SearchOpts = {
   max: number;
   chars: number;
   batch: number;
+  /** One page per call, so the hit is the page itself. Costs a call per page. */
+  perPage?: boolean;
   maxAnswers?: number;
   verify?: Verify;
   /** Tries the table of contents before any page is read; may instead name the section to read. */
@@ -182,7 +184,11 @@ export async function searchPdf(
   const rejected: Candidate[] = [];
   const dropped: Candidate[] = [];
   const maxAnswers = o.maxAnswers ?? 5;
+  const chars = o.perPage ? 0 : o.chars;
   const done = (hit?: Hit): Outcome => ({ hit, tried, rejected, dropped });
+  // Sections a count has read in full: their descendants can only re-count a
+  // fragment of the same pages, so they are neither read nor kept as fallbacks.
+  const counted: string[] = [];
 
   /**
    * Asks one window. Returns the hit to stop on, "spent" once maxAnswers
@@ -201,20 +207,29 @@ export async function searchPdf(
     const hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
     // than the window that happened to answer.
-    const whole = Boolean(all && all.length > 1 && o.countAcross);
-    const check = whole ? o.countAcross!(name, all!) : o.verify?.(name, w.page, w.text);
+    let check: Promise<Judged> | undefined;
+    if (all && all.length > 1 && o.countAcross) {
+      counted.push(name);
+      const fragments = rejected.filter((c) => c.hit.section.startsWith(`${name} > `));
+      for (const f of fragments) {
+        rejected.splice(rejected.indexOf(f), 1);
+        dropped.push(f);
+        ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
+      }
+      check = o.countAcross(name, all);
+    } else check = o.verify?.(name, w.page, w.text);
     if (!check) return hit;
     const { verdict, ...answer } = await check;
     ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
     if (verdict === "take") return { ...hit, answer };
-    (verdict === "keep" ? rejected : dropped).push({ hit, answer, scope: whole ? all!.length : 1 });
+    (verdict === "keep" ? rejected : dropped).push({ hit, answer });
     return rejected.length >= maxAnswers ? "spent" : undefined;
   };
 
   const sections = await outline(pdf);
   if (sections.length === 0) {
     const scanSnap = snapshot();
-    const ws = await pageScan(pdf, o.chars);
+    const ws = await pageScan(pdf, chars);
     if (ws.length === 0) {
       ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
       return done();
@@ -263,9 +278,6 @@ export async function searchPdf(
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
-  // A section-wide count already read every page under it, so its descendants
-  // can only re-count a fragment of what it covered.
-  const counted: string[] = [];
   for (const r of ranked) {
     const s = byPath.get(r.name)!;
     const under = counted.find((c) => r.name.startsWith(`${c} > `));
@@ -276,14 +288,13 @@ export async function searchPdf(
     if (read.has(`${s.start}-${s.end}`)) continue;
     read.add(`${s.start}-${s.end}`);
     const sectionSnap = snapshot();
-    const ws = await windows(pdf, s, o.chars);
+    const ws = await windows(pdf, s, chars);
     if (ws.length === 0) {
       ui.clear();
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${r.name}  p.${s.start}-${s.end}  no extractable text`);
       continue;
     }
     const wholeSection = Boolean(o.countAcross && ws.length > 1);
-    if (wholeSection) counted.push(r.name);
     for (const [i, w] of ws.entries()) {
       const span = ws.length > 1 ? `p.${w.page} (window ${i + 1}/${ws.length})` : `p.${w.page}`;
       const out = await visit(w, r.name, `${r.name} ${span}`, ws);
