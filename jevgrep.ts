@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { DEFAULT_MODEL, makeClient, rankTitles, type Ranked } from "./shared";
+import { DEFAULT_MODEL, makeClient, rankTitles } from "./shared";
+import { render } from "./format";
 
 type Opts = {
   question: string;
@@ -74,40 +75,6 @@ const client = await makeClient(opts.model);
 const rows = (await rankTitles(client, opts.question, names, opts.batch, "file named"))
   .filter((r) => r.score >= opts.threshold)
   .slice(0, opts.top);
-
-// Keep the tab-separated form when piped; align only for a human at a TTY.
-function elideMiddle(s: string, w: number): string {
-  if (s.length <= w) return s;
-  const keep = w - 1;
-  const head = Math.ceil(keep / 2);
-  return s.slice(0, head) + "\u2026" + s.slice(s.length - (keep - head));
-}
-
-// The filename is what distinguishes siblings, so only the directories shrink.
-function elidePath(s: string, w: number): string {
-  if (s.length <= w) return s;
-  const cut = s.lastIndexOf("/");
-  if (cut < 0) return elideMiddle(s, w);
-  const base = s.slice(cut + 1);
-  const avail = w - base.length - 1;
-  if (avail < 3) return elideMiddle(base, w);
-  return `${elideMiddle(s.slice(0, cut), avail)}/${base}`;
-}
-
-function render(rows: Ranked[]): string[] {
-  if (!process.stdout.isTTY)
-    return rows.map((r) => `${r.score.toFixed(2)}\t${r.name}\t${r.reason}`);
-  const cols = process.stdout.columns ?? 120;
-  const reasonW = Math.max(...rows.map((r) => r.reason.length));
-  const nameW = Math.max(
-    24,
-    Math.min(Math.max(...rows.map((r) => r.name.length)), cols - 4 - 2 - reasonW - 2),
-  );
-  return rows.map(
-    (r) =>
-      `${r.score.toFixed(2).padStart(4)}  ${elidePath(r.name, nameW).padEnd(nameW)}  ${r.reason}`,
-  );
-}
 
 if (opts.json) console.log(JSON.stringify(rows, null, 2));
 else if (opts.namesOnly) for (const r of rows) console.log(r.name);
