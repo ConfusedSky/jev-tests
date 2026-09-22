@@ -19,7 +19,7 @@ Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
 
 const startSnap = snapshot();
 const opts = readDefaults();
-const [pdf = "", ...words] = parseFlags(Bun.argv.slice(2), opts, readFlags(usage), usage);
+const [pdf = "", ...words] = parseFlags(Bun.argv.slice(2), opts, readFlags(), usage);
 opts.question = words.join(" ").trim();
 if (!pdf || !opts.question) usage(1);
 if (!(await Bun.file(pdf).exists())) {

@@ -17,8 +17,9 @@ ranked by section title, and sections are read until one answers the question.
       --max-files N    open at most N files (default 5)
 ${READ_USAGE}
 
-Reads paths on stdin. Only PDFs with an outline are searched; anything else is
-logged and skipped. Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
+Reads paths on stdin. A PDF without an outline is read window by window in
+page order; anything that is not a PDF is logged and skipped.
+Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
   process.exit(code);
 }
 
@@ -27,7 +28,7 @@ const opts: Opts = { ...readDefaults(), fileFloor: 1.5, maxFiles: 5 };
 const words = parseFlags(
   Bun.argv.slice(2),
   opts,
-  { ...readFlags(usage), "--file-floor": num("fileFloor"), "--max-files": num("maxFiles") },
+  { ...readFlags(), "--file-floor": num("fileFloor"), "--max-files": num("maxFiles") },
   usage,
 );
 opts.question = words.join(" ").trim();

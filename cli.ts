@@ -3,27 +3,43 @@ import { answerFrom, answerFromOutline, classify, KINDS, type Kind } from "./ans
 import { link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
-/** A flag's handler; `next` consumes the following argument. */
-export type Flags<O> = Record<string, (o: O, next: () => string) => void>;
+/** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
+export type Flags<O> = Record<string, (o: O, next: () => string, fail: (why: string) => never) => void>;
 
-/** Applies `flags` (keyed "-x|--long") to `o`; returns the positionals. `-h` calls `usage(0)`. */
+/**
+ * Applies `flags` (keyed "-x|--long") to `o`; returns the positionals. `-h`
+ * calls `usage(0)`. An unrecognized flag is an error rather than a positional:
+ * silently folding `--typo` into the question asked a different question.
+ */
 export function parseFlags<O>(argv: string[], o: O, flags: Flags<O>, usage: (code: number) => never): string[] {
   const byName = new Map(Object.entries(flags).flatMap(([names, set]) => names.split("|").map((n) => [n, set])));
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     const set = byName.get(a);
-    if (set) set(o, () => argv[++i] ?? "");
-    else if (a === "-h" || a === "--help") usage(0);
-    else rest.push(a);
+    if (set) {
+      set(o, () => argv[++i] ?? "", (why) => {
+        console.error(`${a} ${why}`);
+        usage(1);
+      });
+    } else if (a === "-h" || a === "--help") usage(0);
+    else if (a.startsWith("-") && a !== "-") {
+      console.error(`unknown flag: ${a}`);
+      usage(1);
+    } else rest.push(a);
   }
   return rest;
 }
 
 type NumKeys<O> = { [K in keyof O]: O[K] extends number ? K : never }[keyof O];
-export const num = <O extends object>(key: NumKeys<O>) => (o: O, next: () => string) => {
-  Object.assign(o, { [key]: Number(next()) });
-};
+export const num =
+  <O extends object>(key: NumKeys<O>) =>
+  (o: O, next: () => string, fail: (why: string) => never) => {
+    const v = Number(next());
+    // Without this, --top abc becomes NaN and slice(0, NaN) prints nothing.
+    if (!Number.isFinite(v)) fail("expects a number");
+    Object.assign(o, { [key]: v });
+  };
 
 /** Options every PDF-reading tool shares; jevfind adds its file-level floors on top. */
 export type ReadOpts = SearchOpts & {
@@ -53,7 +69,7 @@ export const readDefaults = (): ReadOpts => ({
   maxAnswers: 5,
 });
 
-export const readFlags = (usage: (code: number) => never): Flags<ReadOpts> => ({
+export const readFlags = (): Flags<ReadOpts> => ({
   "-t|--threshold": num("threshold"),
   "--title-floor": num("titleFloor"),
   "--max": num("max"),
@@ -66,9 +82,9 @@ export const readFlags = (usage: (code: number) => never): Flags<ReadOpts> => ({
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
   "--no-toc": (o) => (o.noToc = true),
-  "--kind": (o, next) => {
+  "--kind": (o, next, fail) => {
     const k = next();
-    if (!KINDS.some((x) => x === k)) usage(1);
+    if (!KINDS.some((x) => x === k)) fail(`must be one of ${KINDS.join(", ")}`);
     o.kind = k as Kind;
   },
 });
@@ -93,7 +109,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
  */
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
   const kind = o.kind ?? (await classify(client, o.question));
-  ui.log(`question looks like a ${kind} question`);
+  ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
   const fromOutline = o.noToc
     ? undefined
     : (paths: string[]) => answerFromOutline(client, kind, o.question, paths, o.answerFloor);
