@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, classify, countAcross, type Kind } from "./answer";
+import { answerFrom, classify, countAcross, quantitiesOf, type Kind } from "./answer";
 import { pageScan, searchPdf } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
 
@@ -27,6 +27,7 @@ describe.if(live)("classify", () => {
     ["How much does the Umber cost?", "number"],
     ["How many rads are lethal without treatment?", "number"],
     ["What is the carry weight of a vault dweller?", "number"],
+    ["What is the cost, weight and damage rating of a combat rifle?", "number"],
     ["Is Gunslinger a perk?", "truth"],
     ["Radiation damage is permanent until treated.", "truth"],
     ["How do I treat radiation sickness?", "passage"],
@@ -116,6 +117,21 @@ describe.if(live)("number", () => {
   test("reads a figure written in words", async () => {
     const a = await answerFrom(client, "number", "How many rads are lethal without treatment?", "Radiation", manualText, 50);
     expect(a.text).toBe("200");
+  });
+
+  test("names the quantities a question asks for", async () => {
+    expect(await quantitiesOf(client, "What is the cost, weight and damage rating of a combat rifle?")).toEqual([
+      "cost",
+      "weight",
+      "damage rating",
+    ]);
+    expect(await quantitiesOf(client, "How much does the Umber cost?")).toEqual(["cost"]);
+  });
+
+  test("reads several figures off one page", async () => {
+    const page = (await pageScan(fixture("gadgets.pdf"), 0))[1]!.text;
+    const a = await answerFrom(client, "number", "What is the cost and weight of the Lantern?", "Gadgets", page, 50, ["cost", "weight"]);
+    expect(a.text).toBe("cost 53, weight 4");
   });
 
   test("declines when the page has the subject but not the figure", async () => {

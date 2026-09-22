@@ -130,26 +130,89 @@ export function figuresIn(text: string, around = 40): Figure[] {
 // A Choice takes at most 255 options; one is spent on "not stated".
 const FIGURE_LIMIT = 254;
 
+const STOPWORDS = new Set(
+  (
+    "a an the and or of for to in on at by with from as is are was were be been does do did has have had " +
+    "what which who whom whose how much many when where why it its this that these those there their his her " +
+    "my your our i you he she we they them me us can could would should will shall may might"
+  ).split(" "),
+);
+
+/**
+ * The quantities a question asks the value of: "the cost, weight and damage
+ * rating of a combat rifle" names three. One call, a noul per word; adjacent
+ * words that pass form one name, and a comma ends a name. Decided once per
+ * question, not per page.
+ */
+export async function quantitiesOf(client: TypeSafeClient, question: string): Promise<string[]> {
+  const words = question
+    .split(/\s+/)
+    .map((raw) => ({ word: raw.replace(/[^\w'-]/g, ""), ends: /[,;]$/.test(raw) }))
+    .filter((w) => w.word);
+  if (words.length === 0) return [];
+  // Asked word by word the model lets "what" and "of" through at p=0.5 or so;
+  // grammar words can never name a quantity, and they end a name.
+  const grammar = (w: string) => STOPWORDS.has(w.toLowerCase());
+  const questions = Object.fromEntries(
+    words.map((w, i) => [
+      `w${i}`,
+      noul(
+        `The word "${w.word}" names a quantity whose value the question asks for, ` +
+          "such as a cost, weight, rating, range, duration or amount. Not the thing measured, not a verb, not a joining word.",
+      ),
+    ]),
+  );
+  const res = await timed("api", () => client.systemOne({ state: { question }, questions }));
+  const names: string[] = [];
+  let run: string[] = [];
+  words.forEach((w, i) => {
+    const yes = !grammar(w.word) && res.answers[`w${i}`]!.noul >= 0.5;
+    if (yes) run.push(w.word);
+    if ((!yes || w.ends) && run.length) {
+      names.push(run.join(" "));
+      run = [];
+    }
+  });
+  if (run.length) names.push(run.join(" "));
+  return names;
+}
+
 /**
  * A stated figure is one of the numbers on the page, so those are the choices,
  * each shown with the words around it. A count offers 0 through N instead
- * because the total of a list is not written anywhere on the page.
+ * because the total of a list is not written anywhere on the page. A question
+ * naming several quantities asks one choice per quantity, in one call, and
+ * answers "cost 53, weight 4"; the confidence is the least certain part.
  */
-async function numberFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+async function numberFrom(
+  client: TypeSafeClient,
+  question: string,
+  section: string,
+  text: string,
+  wanted: string[],
+): Promise<Answer> {
   const figures = figuresIn(text).slice(0, FIGURE_LIMIT);
   if (figures.length === 0) return { text: "not stated", p: 1 };
   const criteria: Record<string, string> = Object.fromEntries(
     figures.map((f) => [f.value, `The answer is ${f.value}, as in: …${f.context}…`]),
   );
-  criteria["not stated"] = "None of these figures answers the question";
-  const res = await timed("api", () =>
-    client.systemOne({
-      state: { question, section, text },
-      questions: { figure: choice("Which figure from the text answers the question?", criteria) },
-    }),
+  criteria["not stated"] = "None of these figures is it";
+  const asked = wanted.length > 0 ? wanted : [""];
+  const questions = Object.fromEntries(
+    asked.map((name, i) => [
+      `q${i}`,
+      choice(name ? `Which figure from the text is the ${name} the question asks for?` : "Which figure from the text answers the question?", criteria),
+    ]),
   );
-  const a = res.answers.figure;
-  return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+  const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
+  const parts = asked.map((name, i) => {
+    const a = res.answers[`q${i}`]!;
+    return { name, text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+  });
+  if (parts.length === 1) return { text: parts[0]!.text, p: parts[0]!.p };
+  const stated = parts.filter((x) => x.text !== "not stated");
+  if (stated.length === 0) return { text: "not stated", p: Math.min(...parts.map((x) => x.p)) };
+  return { text: parts.map((x) => `${x.name} ${x.text}`).join(", "), p: Math.min(...stated.map((x) => x.p)) };
 }
 
 /**
@@ -214,9 +277,10 @@ export function answerFrom(
   section: string,
   text: string,
   countMax: number,
+  wanted: string[] = [],
 ): Promise<Answer> {
   if (kind === "count") return countFrom(client, question, section, text, countMax);
-  if (kind === "number") return numberFrom(client, question, section, text);
+  if (kind === "number") return numberFrom(client, question, section, text, wanted);
   return truthFrom(client, question, section, text);
 }
 

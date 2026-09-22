@@ -102,7 +102,15 @@ not state ("how many classes"), so the choices are `0`…`N` and a long list is
 summed across its pages. A number is a figure the page does state ("how much
 does it cost", "how many rads are lethal"), so the choices are the figures on
 that page, digits or words, each shown with the text around it; nothing is
-summed, and a page without figures is `not stated` without a call. `N` is
+summed, and a page without figures is `not stated` without a call.
+
+A question can ask for several figures. "What is the cost, weight and damage
+rating of a combat rifle?" is first split into words and each word is asked,
+in one call, whether it names a quantity the question wants; adjacent words
+that do form one name, so `damage rating` stays one. Then one choice per name
+goes out in one call over the page, and the answer reads `cost 410, weight 34,
+damage rating not stated`, with the confidence of its least certain stated
+part. `N` is
 `--count-max` (default 50); an `over N` answer is asked once more with the full
 range of 252, so a low ceiling costs a call rather than the answer. `not stated`
 is a refusal, not an answer: the window is dropped and the walk goes on.

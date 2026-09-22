@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, childrenByParent, countAcross, figuresIn, membershipFromContents, mentions, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, childrenByParent, countAcross, figuresIn, membershipFromContents, mentions, quantitiesOf, subjectOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -193,11 +193,11 @@ describe("figuresIn", () => {
 describe("a stated figure", () => {
   const stub = (choice: string, p: number) =>
     ({
-      systemOne: async ({ questions }: { questions: { figure: { criteria: Record<string, string> } } }) => {
+      systemOne: async ({ questions }: { questions: Record<string, { criteria: Record<string, string> }> }) => {
         // The choices are exactly the page's figures plus the refusal. Integer
         // keys come back in numeric order: that is JavaScript, not the text.
-        expect(Object.keys(questions.figure.criteria)).toEqual(["1", "80", "not stated"]);
-        return { answers: { figure: { type: "choice", choice, confidence: p, probabilities: { [choice]: p } } } };
+        expect(Object.keys(Object.values(questions)[0]!.criteria)).toEqual(["1", "80", "not stated"]);
+        return { answers: { q0: { type: "choice", choice, confidence: p, probabilities: { [choice]: p } } } };
       },
     }) as unknown as Parameters<typeof answerFrom>[0];
   const text = "The Umber is a field device. Cost: 80 caps. Weight: 1 pounds.";
@@ -209,6 +209,65 @@ describe("a stated figure", () => {
   test("a page without figures is not stated, without asking", async () => {
     const never = { systemOne: async () => { throw new Error("asked"); } } as unknown as Parameters<typeof answerFrom>[0];
     expect(await answerFrom(never, "number", "q", "s", "no figures here", 50)).toEqual({ text: "not stated", p: 1 });
+  });
+});
+
+describe("quantitiesOf", () => {
+  /** Says yes to exactly the listed words. */
+  const stub = (yes: string[]) =>
+    ({
+      systemOne: async ({ questions }: { questions: Record<string, { instructions: string }> }) => ({
+        answers: Object.fromEntries(
+          Object.entries(questions).map(([k, q]) => {
+            const word = /The word "(.*?)"/.exec(q.instructions)![1]!;
+            return [k, { type: "noul", noul: yes.includes(word) ? 0.9 : 0.1 }];
+          }),
+        ),
+      }),
+    }) as unknown as Parameters<typeof quantitiesOf>[0];
+
+  test("joins adjacent words into one name and splits names at commas", async () => {
+    const names = await quantitiesOf(stub(["cost", "weight", "damage", "rating"]), "What is the cost, weight and damage rating of a combat rifle?");
+    expect(names).toEqual(["cost", "weight", "damage rating"]);
+  });
+
+  test("a question naming no quantity yields none", async () => {
+    expect(await quantitiesOf(stub([]), "How does it work?")).toEqual([]);
+  });
+
+  test("grammar words never name a quantity, whatever the model says, and they end a name", async () => {
+    const names = await quantitiesOf(stub(["What", "cost", "weight", "of"]), "What is the cost and weight of the Lantern?");
+    expect(names).toEqual(["cost", "weight"]);
+  });
+});
+
+describe("several figures at once", () => {
+  const text = "The Lantern is a field device. Cost: 53 caps. Weight: 4 pounds.";
+  const stub = (picks: Record<string, [string, number]>) =>
+    ({
+      systemOne: async ({ questions }: { questions: Record<string, { instructions: string }> }) => ({
+        answers: Object.fromEntries(
+          Object.entries(questions).map(([k, q]) => {
+            const name = /is the (.*?) the question/.exec(q.instructions)![1]!;
+            const [choice, p] = picks[name]!;
+            return [k, { type: "choice", choice, confidence: p, probabilities: { [choice]: p } }];
+          }),
+        ),
+      }),
+    }) as unknown as Parameters<typeof answerFrom>[0];
+  const ask = (picks: Record<string, [string, number]>) =>
+    answerFrom(stub(picks), "number", "q", "s", text, 50, Object.keys(picks));
+
+  test("names each part and reports the least certain", async () => {
+    expect(await ask({ cost: ["53", 0.95], weight: ["4", 0.8] })).toEqual({ text: "cost 53, weight 4", p: 0.8 });
+  });
+
+  test("a part the page lacks is not stated, and does not drag the confidence", async () => {
+    expect(await ask({ cost: ["53", 0.95], damage: ["not stated", 0.6] })).toEqual({ text: "cost 53, damage not stated", p: 0.95 });
+  });
+
+  test("nothing stated is a refusal", async () => {
+    expect((await ask({ cost: ["not stated", 0.9], damage: ["not stated", 0.6] })).text).toBe("not stated");
   });
 });
 

@@ -1,5 +1,5 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, classify, countAcross, KINDS, type Answer, type Judged, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, classify, countAcross, KINDS, quantitiesOf, type Answer, type Judged, type Kind } from "./answer";
 import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
@@ -119,6 +119,9 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
   const kind = o.kind ?? (await classify(client, o.question));
   ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
+  // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
+  const wanted = kind === "number" ? await quantitiesOf(client, o.question) : [];
+  if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
   const fromOutline = o.noToc
     ? undefined
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
@@ -132,7 +135,8 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   const verify: SearchOpts["verify"] =
     kind === "passage"
       ? undefined
-      : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, o.countMax));
+      : async (section, _page, text) =>
+          judge(await answerFrom(client, kind, o.question, section, text, o.countMax, wanted));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined
