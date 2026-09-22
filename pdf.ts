@@ -60,7 +60,13 @@ export type Window = { page: number; text: string };
  * hit names the exact page rather than the first of a span.
  */
 export async function windows(pdf: string, s: Section, chars: number): Promise<Window[]> {
-  const text = await run(["pdftotext", "-f", String(s.start), "-l", String(s.end), pdf, "-"]);
+  // -layout keeps a table's row on one line and two prose columns side by
+  // side; reading order interleaved the columns line by line and put each
+  // table cell on a line of its own, three lines from its label.
+  const text = (await run(["pdftotext", "-layout", "-f", String(s.start), "-l", String(s.end), pdf, "-"])).replace(
+    /[ \t]+$/gm,
+    "",
+  );
   const out: Window[] = [];
   let buf = "";
   let first = s.start;
