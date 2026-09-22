@@ -50,7 +50,6 @@ export type ReadOpts = SearchOpts & {
   answerFloor: number;
   noToc: boolean;
   maxAnswers: number;
-  tocMaxSpan: number;
   perPage: boolean;
   kind?: Kind;
 };
@@ -69,7 +68,6 @@ export const readDefaults = (): ReadOpts => ({
   answerFloor: 0.7,
   noToc: false,
   maxAnswers: 5,
-  tocMaxSpan: 3,
   perPage: true,
 });
 
@@ -82,7 +80,6 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--count-max": num("countMax"),
   "--answer-floor": num("answerFloor"),
   "--max-answers": num("maxAnswers"),
-  "--toc-max-span": num("tocMaxSpan"),
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
@@ -108,8 +105,6 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
-      --toc-max-span N pages a section may span and still be counted from the
-                       table of contents (default 3)
       --kind K         force count, number, truth or passage instead of asking jev`;
 
 /**
@@ -125,7 +120,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   const fromOutline = o.noToc
     ? undefined
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
-        answerFromOutline(client, kind, o.question, sections, o.answerFloor, o.tocMaxSpan);
+        answerFromOutline(client, kind, o.question, sections, o.answerFloor);
   // "not stated" is a refusal, not an answer, so it never settles a walk
   // however confident the model is that it cannot say. "over N" is an answer.
   const judge = (a: Answer): Judged => ({
@@ -142,8 +137,11 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
       ? undefined
       : async (section, windows) =>
           judge(
-            await countAcross(client, o.question, section, windows, o.countMax, (page, part, running) =>
-              ui.log(`    +${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  running ${running}`),
+            await countAcross(client, o.question, section, windows, o.countMax, o.answerFloor, (page, part, counted, running) =>
+              ui.log(
+                `    ${counted ? "+" : "?"}${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  ` +
+                  (counted ? `running ${running}` : "unsure, left out"),
+              ),
             ),
           );
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };

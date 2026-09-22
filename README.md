@@ -137,11 +137,12 @@ A count asks jev which section's entries the question is about, then counts
 them, so the number itself is exact rather than estimated. Below
 `--answer-floor` the pick is discarded and the pages are read instead.
 
-Counting bookmarks only holds while they are a list. Past `--toc-max-span`
-pages (default 3) a section is a set of chapters instead, and the contents are
-abandoned for the pages: the Fallout rulebook nests 89 of its 94 perks under
-the first perk, so counting any one section's entries there gives 7 or 89,
-never 94.
+Counting bookmarks only holds while they are the list. The Fallout rulebook
+nests 89 of its 94 perks under the first perk, so its perks section lists one
+perk and six statistics; an entry with more entries under it than its parent
+has is where the list went, and the contents are abandoned for that section's
+pages. How many pages an entry takes is no signal: Heart gives each of its five
+callings two pages, and five is the count.
 
 Membership is decided in code, not by the model. "Is witch a class?" names a
 category (`class`, matching the section `Classes`) and a subject (`witch`, the
@@ -162,9 +163,8 @@ Is knight a class in heart?   false (p=0.97)   contents said no, Classes pages a
 Is heretic a calling?         false (p=0.96)   contents said no, Callings pages agreed
 ```
 
-A count whose section spans more than `--toc-max-span` pages is confined the
-same way: the contents say which section holds the list, and the pages of that
-section are read to count it.
+A count the contents cannot settle is confined the same way: they say which
+section holds the list, and the pages of that section are read to count it.
 
 `--no-toc` skips this stage entirely.
 
@@ -185,9 +185,13 @@ Counting a section reads every page under it, so its subsections are skipped
 rather than re-counted, and any count already taken off one of its pages is
 dropped as a fragment of the same list rather than kept as a fallback.
 
-The aggregate is only as trustworthy as its least certain contributing part, so
-that is the confidence reported. A window listing none of the items neither
-adds nor lowers it, since a long section is expected to have some.
+The aggregate is only as trustworthy as its least certain counted part, so that
+is the confidence reported. A window listing none of the items neither adds nor
+lowers it, since a long section is expected to have some. A part below
+`--answer-floor` is left out and marked `?`: a page of prose beside the list
+came back as 37 at p=0.04, and summing it turned five callings into 102. The
+confidence is then scaled by the share of the section that was counted, so
+three sure pages of a 36-page section do not pass as a count of it.
 
 A count also changes what a window has to satisfy to be worth reading. No page
 says "there are 94 perks", so asking whether a window "contains the answer"
@@ -245,6 +249,17 @@ page order. Ranking those windows by their opening text was tried and removed:
 a 300-character snippet put a credits page above the body, and since the walk
 stops at the first yes, order only costs latency.
 
+## Tables
+
+Text is extracted with `pdftotext -layout`, which keeps a table row on one line
+and two prose columns side by side. In reading order the columns came out
+interleaved line by line and each table cell on a line of its own, three lines
+from its label. A figure's choice now carries its row: "5, as in: Combat Rifle
+5C …", and on the Fallout weapons table the cost and weight of a combat rifle
+went from p=0.59 to p=1.00, the damage rating from unanswered to 5 at p=0.95.
+A figure may carry a unit on its tail (`5CD`, `10mm`) but never a letter on its
+head (`v2.5`, `p12`).
+
 ## The exact page
 
 Every page of a section is gated on its own, so the hit is the page that
@@ -282,7 +297,7 @@ the same calls and is less sharp, so it is only there for comparison.
 - **A count from the contents trusts the contents.** A section listing three of
   its four classes yields three, with no page read to check. Membership has a
   safeguard for this, a negative being confirmed against the pages; a count has
-  none beyond the `--toc-max-span` limit.
+  none.
 - **Counting dense pages is unreliable.** Summing windows is exact on a clean
   list (30 gadgets over three windows, p=0.94) and poor on a two-column
   rulebook: the Fallout perks come back as 64 of 94, at p=0.07. The floor

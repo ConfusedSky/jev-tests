@@ -138,17 +138,17 @@ describe("answerFromOutline for a statement", () => {
   const sections = paths.map((path, i) => ({ path, start: i + 1, end: i + 1 }));
 
   test("a listed entry is final", async () => {
-    const r = await answerFromOutline(none, "truth", "Is witch a class?", sections, 0.7, 3);
+    const r = await answerFromOutline(none, "truth", "Is witch a class?", sections, 0.7);
     expect(r).toEqual({ answer: { text: "true", p: 1 }, parent: "Characters > Classes" });
   });
 
   test("an unlisted entry points the walk at the section instead", async () => {
-    const r = await answerFromOutline(none, "truth", "Is heretic a calling?", sections, 0.7, 3);
+    const r = await answerFromOutline(none, "truth", "Is heretic a calling?", sections, 0.7);
     expect(r).toEqual({ parent: "Characters > Callings" });
   });
 
   test("no matching category leaves the walk unconfined", async () => {
-    expect(await answerFromOutline(none, "truth", "Is stress a mechanic?", sections, 0.7, 3)).toBeUndefined();
+    expect(await answerFromOutline(none, "truth", "Is stress a mechanic?", sections, 0.7)).toBeUndefined();
   });
 });
 
@@ -183,6 +183,11 @@ describe("figuresIn", () => {
 
   test("ignores a number glued to a word, such as a version", () => {
     expect(values("see v2.5 and p12 and the Mk3")).toEqual([]);
+  });
+
+  test("keeps a figure with a unit on its tail", () => {
+    // The Fallout weapons table prints "5 CD" as "5C" with the D wrapped.
+    expect(values("Combat Rifle 5C D Physical 10mm")).toEqual(["5", "10"]);
   });
 
   test("a page with no figures yields no choices", () => {
@@ -271,7 +276,54 @@ describe("several figures at once", () => {
   });
 });
 
+describe("a count from the contents", () => {
+  /** Picks the group whose description names `word`. */
+  const picker = (word: string) =>
+    ({
+      systemOne: async ({ questions }: { questions: { group: { criteria: Record<string, string> } } }) => {
+        const choice = Object.entries(questions.group.criteria).find(([, d]) => d.includes(word))![0];
+        return { answers: { group: { type: "choice", choice, confidence: 0.9, probabilities: { [choice]: 0.9 } } } };
+      },
+    }) as unknown as TypeSafeClient;
+  const at = (paths: string[]) => paths.map((path, i) => ({ path, start: i + 1, end: i + 1 }));
+
+  test("counts a section's entries however many pages each takes", async () => {
+    const paths = ["Callings", ...["Adventure", "Enlightenment", "Forced", "Heartsong", "Penitent"].map((c) => `Callings > ${c}`)];
+    const r = await answerFromOutline(picker("Callings"), "count", "How many callings?", at(paths), 0.7);
+    expect(r).toEqual({ answer: { text: "5", p: 0.9 }, parent: "Callings" });
+  });
+
+  // The bug this guards: the Fallout rulebook nests 89 of its 94 perks under
+  // the first perk, so the perks section lists one perk and six statistics.
+  test("reads the pages when an entry holds more entries than its parent", async () => {
+    const paths = ["Perks", "Perks > Aquaboy", "Perks > Carry Weight", "Perks > Defense"];
+    for (let i = 0; i < 10; i++) paths.push(`Perks > Aquaboy > Perk ${i}`);
+    const r = await answerFromOutline(picker("Perks"), "count", "How many perks?", at(paths), 0.7);
+    expect(r).toEqual({ parent: "Perks" });
+  });
+});
+
 describe("countAcross", () => {
+  test("leaves out a part below the floor and keeps the confidence of the rest", async () => {
+    const a = await countAcross(stubCounts([["1", 0.9], ["37", 0.04], ["1", 0.8]]), "q", "s", ws(3), 60, 0.7);
+    expect(a.text).toBe("2");
+    expect(a.p).toBeCloseTo(0.8 * (2 / 3));
+  });
+
+  // The bug this guards: three sure pages of a 36-page section summed to 3
+  // classes at p=0.77, a confident undercount of nine.
+  test("a count covering little of the section is not confident", async () => {
+    const parts: [string, number][] = [["1", 0.9], ["1", 0.8], ["1", 0.8], ["10", 0.2], ["8", 0.3], ["3", 0.1]];
+    const a = await countAcross(stubCounts(parts), "q", "s", ws(6), 60, 0.7);
+    expect(a.text).toBe("3");
+    expect(a.p).toBeCloseTo(0.8 * (3 / 6));
+  });
+
+  test("every part below the floor is not stated", async () => {
+    const a = await countAcross(stubCounts([["10", 0.1], ["30", 0.07]]), "q", "s", ws(2), 60, 0.7);
+    expect(a.text).toBe("not stated");
+  });
+
   test("adds the parts up", async () => {
     const a = await countAcross(stubCounts([["10", 0.9], ["10", 0.95], ["10", 0.8]]), "q", "s", ws(3), 60);
     expect(a.text).toBe("30");
@@ -295,7 +347,7 @@ describe("countAcross", () => {
 
   test("reports each part as it lands", async () => {
     const seen: number[] = [];
-    await countAcross(stubCounts([["2", 0.9], ["3", 0.9]]), "q", "s", ws(2), 60, (_p, _a, running) =>
+    await countAcross(stubCounts([["2", 0.9], ["3", 0.9]]), "q", "s", ws(2), 60, 0, (_p, _a, _c, running) =>
       seen.push(running),
     );
     expect(seen).toEqual([2, 5]);

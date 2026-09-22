@@ -35,9 +35,8 @@ describe.if(mounted)("a malformed outline", async () => {
     ]);
   });
 
-  test("spans far more pages than a list would, which is the signal to read instead", () => {
-    const at = sections.find((s) => s.path === `${perks} > Aquaboy/Aquagirl`)!;
-    expect(at.end - at.start + 1).toBeGreaterThan(3);
+  test("so an entry holds more entries than its parent, which is the signal to read instead", () => {
+    expect(kids.get(`${perks} > Aquaboy/Aquagirl`)!.length).toBeGreaterThan(kids.get(perks)!.length);
   });
 
   test("puts entries of the next section under the previous one", () => {

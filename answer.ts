@@ -83,8 +83,10 @@ const SMALL: Record<string, number> = {
 };
 const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, million: 1000000 };
 const WORDS = `(?:${[...Object.keys(SMALL), ...Object.keys(SCALE)].join("|")})`;
+// A figure may carry a unit on its tail ("5CD", "10mm") but never a letter on
+// its head: "v2.5", "p12" and "Mk3" are names, not figures.
 const NUMBER = new RegExp(
-  `(?<![\\w.])\\d[\\d,]*(?:\\.\\d+)?(?![\\w])|\\b${WORDS}(?:[ -](?:and[ -])?${WORDS})*\\b`,
+  `(?<![\\w.])\\d[\\d,]*(?:\\.\\d+)?|\\b${WORDS}(?:[ -](?:and[ -])?${WORDS})*\\b`,
   "gi",
 );
 
@@ -113,16 +115,20 @@ export type Figure = { value: string; context: string };
  * around its first appearance. These are the only numbers a stated-figure
  * question can be answered with, so they are the choices offered.
  */
-export function figuresIn(text: string, around = 40): Figure[] {
+export function figuresIn(text: string, around = 60): Figure[] {
   const seen = new Map<string, Figure>();
-  const flat = text.replace(/\s+/g, " ");
-  for (const m of flat.matchAll(NUMBER)) {
-    const raw = m[0];
-    const value = /^\d/.test(raw) ? raw.replace(/,/g, "") : String(wordsToNumber(raw));
-    if (seen.has(value)) continue;
-    const at = m.index!;
-    const context = flat.slice(Math.max(0, at - around), Math.min(flat.length, at + raw.length + around)).trim();
-    seen.set(value, { value, context });
+  // Line by line: with -layout a table row is a line, so a figure's context is
+  // its row, label included, rather than whatever sat above and below it.
+  for (const line of text.split("\n")) {
+    const flat = line.replace(/\s+/g, " ").trim();
+    for (const m of flat.matchAll(NUMBER)) {
+      const raw = m[0];
+      const value = /^\d/.test(raw) ? raw.replace(/,/g, "") : String(wordsToNumber(raw));
+      if (seen.has(value)) continue;
+      const at = m.index!;
+      const context = flat.slice(Math.max(0, at - around), Math.min(flat.length, at + raw.length + around)).trim();
+      seen.set(value, { value, context });
+    }
   }
   return [...seen.values()];
 }
@@ -217,8 +223,11 @@ async function numberFrom(
 
 /**
  * A list longer than one window cannot be counted in one call, so each window
- * is counted on its own and the parts are added up. The aggregate is only as
- * trustworthy as its least certain part, so that is the confidence reported.
+ * is counted on its own and the parts are added up. A part below `floor` is
+ * no information and is left out: a page of prose next to the list came back
+ * as 37 at p=0.04 and turned five callings into 102. The aggregate is as
+ * trustworthy as its least certain counted part, scaled by the share of the
+ * section that was counted: three sure pages out of thirty-six is not a count.
  */
 export async function countAcross(
   client: TypeSafeClient,
@@ -226,7 +235,8 @@ export async function countAcross(
   section: string,
   windows: { page: number; text: string }[],
   max: number,
-  onPart?: (page: number, part: Answer, running: number) => void,
+  floor = 0,
+  onPart?: (page: number, part: Answer, counted: boolean, running: number) => void,
 ): Promise<Answer> {
   // One span for the parallel calls, so the timing split stays under wall time.
   const parts = await timed("api", () =>
@@ -234,17 +244,22 @@ export async function countAcross(
   );
   let total = 0;
   let worst = 1;
+  let covered = 0;
+  let any = false;
   for (const [i, part] of parts.entries()) {
     const n = Number(part.text);
+    const counted = part.p >= floor;
+    if (counted) covered++;
     // "not stated" and "over N" carry no number to add; a window listing none
     // is expected in a long section, so it lowers no confidence.
-    if (Number.isFinite(n)) {
+    if (counted && Number.isFinite(n)) {
       total += n;
+      any = true;
       if (n > 0) worst = Math.min(worst, part.p);
     }
-    onPart?.(windows[i]!.page, part, total);
+    onPart?.(windows[i]!.page, part, counted, total);
   }
-  return { text: String(total), p: worst };
+  return any ? { text: String(total), p: worst * (covered / windows.length) } : { text: "not stated", p: 1 };
 }
 
 async function truthFrom(
@@ -382,13 +397,13 @@ export async function answerFromOutline(
   question: string,
   sections: { path: string; start: number; end: number }[],
   floor: number,
-  maxSpan: number,
 ): Promise<OutlineAnswer | undefined> {
   const paths = sections.map((s) => s.path);
   // A stated figure is on a page, never in the contents.
   if (kind === "passage" || kind === "number") return undefined;
 
-  const groups = [...childrenByParent(paths)].filter(([, kids]) => kids.length > 1);
+  const children = childrenByParent(paths);
+  const groups = [...children].filter(([, kids]) => kids.length > 1);
   if (groups.length === 0) return undefined;
 
   if (kind === "truth") {
@@ -425,13 +440,15 @@ export async function answerFromOutline(
   const p = g.probabilities[g.choice] ?? g.confidence;
   if (p < floor) return undefined;
 
-  // Counting bookmarks only works while they are a list rather than a set of
-  // chapters, and a long span is where that stops being true: the Fallout
-  // rulebook nests 89 of its 94 perks under the first perk, so counting the
-  // entries of any one section there is wrong. Read that section's pages instead.
-  const at = sections.find((s) => s.path === hit.parent);
-  if (!at) return undefined;
-  if (at.end - at.start + 1 > maxSpan) return { parent: hit.parent };
+  // Counting bookmarks only works while they are the list. The Fallout
+  // rulebook nests 89 of its 94 perks under the first perk, so the perks
+  // section lists one perk and six statistics; an entry with more entries
+  // under it than its parent has is where the list went. Read the pages
+  // instead. A long span alone proves nothing: Heart gives each of its five
+  // callings two pages, and five is still the count.
+  if (!sections.some((s) => s.path === hit.parent)) return undefined;
+  const swallowed = hit.kids.some((kid) => (children.get(`${hit.parent} > ${kid}`)?.length ?? 0) > hit.kids.length);
+  if (swallowed) return { parent: hit.parent };
 
   return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }
