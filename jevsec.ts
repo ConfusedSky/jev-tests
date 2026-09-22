@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { DEFAULT_MODEL, makeClient, snapshot, split } from "./shared";
 import { link, makeUi, openAt, pageUrl, searchPdf } from "./pdf";
+import { answerFrom, classify, type Kind } from "./answer";
 
 type Opts = {
   pdf: string;
@@ -13,6 +14,8 @@ type Opts = {
   model: string;
   quiet: boolean;
   open: boolean;
+  countMax: number;
+  kind?: Kind;
 };
 
 function usage(code: number): never {
@@ -31,6 +34,8 @@ the first section whose text actually answers the question.
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
+      --count-max N    largest exact count jev may answer with (default 50)
+      --kind K         force count, truth or passage instead of asking jev
 
 Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
   process.exit(code);
@@ -48,6 +53,7 @@ function parseArgs(argv: string[]): Opts {
     model: DEFAULT_MODEL,
     quiet: false,
     open: false,
+    countMax: 50,
   };
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -61,6 +67,8 @@ function parseArgs(argv: string[]): Opts {
     else if (a === "--model") o.model = next();
     else if (a === "-q" || a === "--quiet") o.quiet = true;
     else if (a === "--open") o.open = true;
+    else if (a === "--count-max") o.countMax = Number(next());
+    else if (a === "--kind") o.kind = next() as Kind;
     else if (a === "-h" || a === "--help") usage(0);
     else rest.push(a);
   }
@@ -79,12 +87,18 @@ if (!(await Bun.file(opts.pdf).exists())) {
 
 const client = await makeClient(opts.model);
 const ui = makeUi(opts.quiet);
+
+const kind = opts.kind ?? (await classify(client, opts.question));
+ui.log(`question looks like a ${kind} question`);
+
 const { hit, tried } = await searchPdf(client, opts.pdf, opts, ui);
 
 ui.clear();
 if (hit) {
+  const answer = await answerFrom(client, kind, opts.question, hit.section, hit.text, opts.countMax);
   ui.log(`total ${split(startSnap)}`);
-  console.log(`${link(hit.pdf, hit.page)}  ${hit.section}  (p=${hit.p.toFixed(2)})`);
+  const prefix = answer ? `${answer.text}  (p=${answer.p.toFixed(2)})  ` : "";
+  console.log(`${prefix}${link(hit.pdf, hit.page)}  ${hit.section}  (found p=${hit.p.toFixed(2)})`);
   if (opts.open) await openAt(pageUrl(hit.pdf, hit.page));
   process.exit(0);
 }
