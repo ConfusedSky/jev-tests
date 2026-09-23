@@ -128,6 +128,13 @@ describe.if(live)("number", () => {
     expect(await quantities("How much does the Umber cost?")).toEqual(["cost"]);
   });
 
+  test("names the subject the question is about", async () => {
+    const subject = async (q: string) => (await readQuestion(client, q)).subject;
+    expect(await subject("What is the cost, weight and damage rating of a combat rifle?")).toEqual(["combat rifle"]);
+    expect(await subject("What are the equipment tags?")).toEqual(["equipment tags"]);
+    expect(await subject("How does netrunning work?")).toEqual(["netrunning"]);
+  });
+
   test("names the kind of thing a count counts", async () => {
     const counted = async (q: string) => (await readQuestion(client, q)).counted;
     expect(await counted("How many theme kits are there?")).toBe("theme kits");
