@@ -529,6 +529,21 @@ export async function searchPdf(
     return undefined;
   }
 
+  // The excerpt pages are gated together, a batch at a time, when the first
+  // comes up in the order: one call for twenty pages instead of one each,
+  // when every call can cost seconds.
+  type Gated = { w: Window; p: number; nouls: number[] };
+  let gatedEx: Map<number, Gated> | undefined;
+  const gateExcerpts = async (): Promise<Map<number, Gated>> => {
+    const pages = await bookText(pdf);
+    const todo = [...new Set(ranked.filter((r) => r.list === "excerpts").map((r) => ex[r.index]!.page))].filter((p) => !readPages.has(p));
+    const groups = batches(todo.map((page) => ({ page, end: page, text: pages[page - 1]! })), o.chars);
+    const t = Date.now();
+    const res = await timed("api", () => Promise.all(groups.map((g) => askPages(client, o.question, pdf.split("/").pop()!, g, gate))));
+    ui.log(`${indent}  gated ${todo.length} excerpt pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"}), ${secs(Date.now() - t)} jev`);
+    return new Map(groups.flatMap((g, i) => g.map((w, j) => [w.page, { w, p: Math.max(...res[i]![j]!), nouls: res[i]![j]! }] as const)));
+  };
+
   let below = false;
   for (const r of ranked) {
     // The floor is soft: a title that scored under it is read only while
@@ -546,9 +561,18 @@ export async function searchPdf(
     else {
       const page = ex[r.index]!.page;
       if (readPages.has(page)) continue;
+      gatedEx ??= await gateExcerpts();
       const name = around(page)?.path ?? `p.${page}`;
-      const text = (await bookText(pdf))[page - 1]!;
-      out = await scan([{ page, end: page, text }], name, () => `${name} p.${page} (excerpt)`);
+      const label = `${name} p.${page} (excerpt)`;
+      const { w, p, nouls } = gatedEx.get(page)!;
+      readPages.add(page);
+      tried.push({ name, page, p });
+      const yes = p >= o.threshold;
+      ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${label}`);
+      if (yes) {
+        const settled = await settle({ w, p, nouls, label }, name);
+        out = settled === "spent" ? "spent" : settled && took(settled) ? "stop" : undefined;
+      }
     }
     if (out === "spent" || out === "stop") return done();
   }

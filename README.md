@@ -149,7 +149,9 @@ first, which is what tells a list of skills from a page that mentions one.
 The twenty best pages
 go into the ranking call as `excerpts`, each as its page number and that line,
 and the model scores them on the rubric the titles get. A page that wins is
-read on its own, named for the section it lies in. A page read once is never
+read on its own, named for the section it lies in; the excerpt pages are
+gated together, a batch at a time, when the first of them comes up, one
+call for twenty pages rather than one each. A page read once is never
 read again under its section, and the other way round (a window of several
 pages under `--whole-windows` is read whole). A count ranks the
 titles alone: a page dense with the subject is as likely a fragment of the
