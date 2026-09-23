@@ -41,7 +41,7 @@ bun install
 echo 'OPENROUTER_API_KEY=sk-or-v1-...' > .env
 ```
 
-Needs `mutool` (mupdf) and `pdftotext`/`pdfinfo` (poppler) on `PATH`. The key is
+Needs `mutool` (mupdf) and `pdftotext` (poppler) on `PATH`. The key is
 read from the environment, or from `.env` next to the scripts, so the tools work
 from any directory.
 
