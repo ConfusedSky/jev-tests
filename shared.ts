@@ -1,4 +1,5 @@
 import { TypeSafeClient, score, type ScoreResponse } from "@typesafe-ai/sdk";
+import { makeSemifClient } from "./semif";
 
 export const RUBRIC = [
   "Unrelated to the question",
@@ -18,6 +19,8 @@ async function keyFromScriptEnv(): Promise<string | undefined> {
 }
 
 export async function makeClient(model: string): Promise<TypeSafeClient> {
+  // --model semif answers from semif/server.py instead of jev; see README.
+  if (model === "semif") return makeSemifClient(process.env.JEV_SEMIF_URL ?? "http://127.0.0.1:8765");
   const apiKey = process.env.OPENROUTER_API_KEY ?? (await keyFromScriptEnv());
   if (!apiKey) {
     console.error("OPENROUTER_API_KEY is not set");
