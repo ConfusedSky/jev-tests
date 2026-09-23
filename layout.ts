@@ -82,6 +82,9 @@ const text = (l: Line) => l.spans.map((s) => s.text).join("");
  * change of size, or a bullet; a line in type well above the body's is a
  * heading of its own.
  */
+const BULLET = /^[•·▪‣□●○■◆◇▫⁃◦-]/;
+const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦-]$/;
+
 export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
   const { height, lines: all } = page;
   if (all.length === 0) return [];
@@ -90,7 +93,23 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   // modest type, or hugs the right edge whatever its type; a chapter title
   // sits up there too, in display type, and stays.
   const { width } = page;
-  const lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85));
+  let lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85));
+  // A bullet set as a line of its own leads the line beside it; left apart,
+  // the two sit side by side and read as a table row. A drop cap is a letter
+  // of its own in display type, flush against the line it opens, in a block
+  // of its own; it leads that line with no space between.
+  const overlap = (a: Line, b: Line) => Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > Math.min(a.y1 - a.y0, b.y1 - b.y0) / 2;
+  const cap = (l: Line) => /^\p{L}$/u.test(text(l).trim()) && l.size > body * 1.5;
+  const lead = (l: Line) => BULLET_ONLY.test(text(l).trim()) || cap(l);
+  for (const g of lines.filter(lead)) {
+    const mate = lines
+      .filter((l) => l !== g && !lead(l) && l.x0 > g.x0 && overlap(l, g) && (cap(g) ? l.x0 - g.x1 < body * 0.3 : l.block === g.block))
+      .sort((a, b) => a.x0 - b.x0)[0];
+    if (!mate) continue;
+    mate.spans.unshift(...g.spans, ...(cap(g) ? [] : [{ text: " ", bold: false, italic: false, font: "" }]));
+    mate.x0 = g.x0;
+    lines = lines.filter((l) => l !== g);
+  }
   // Column anchors: left edges within a body-size of each other are one edge;
   // an edge fewer than three lines start at is an indent, not a column, and
   // so is one the lines of the column before mostly run past: a bullet
@@ -112,6 +131,10 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     for (const [i, a] of anchors.entries()) if (a <= l.x0 + body * 0.5) best = i;
     return best;
   };
+  // A line set across two columns, a heading or an intro, bands the page:
+  // what stands above it in either column is read before it.
+  const wide = anchors.length > 1 ? lines.filter((l) => l.x0 < anchors[1]! && l.x1 > anchors[1]! + body).map((l) => l.y0) : [];
+  const band = (y: number) => wide.filter((w) => w <= y + 0.5).length;
   // A centred table cell's top says nothing of its row, but mutool keeps a
   // cell's lines in one block. Blocks of one column whose spans overlap are
   // one row; a row with two lines side by side, overlapping by more than
@@ -131,9 +154,9 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     blockOf.set(l, b);
   }
   const rows: Block[][] = [];
-  for (const b of [...byKey.values()].sort((a, b) => a.col - b.col || a.y0 - b.y0)) {
+  for (const b of [...byKey.values()].sort((a, b) => band(a.y0) - band(b.y0) || a.col - b.col || a.y0 - b.y0)) {
     const r = rows.at(-1);
-    if (r && r[0]!.col === b.col && b.y0 < Math.max(...r.map((x) => x.y1))) r.push(b);
+    if (r && r[0]!.col === b.col && band(r[0]!.y0) === band(b.y0) && b.y0 < Math.max(...r.map((x) => x.y1))) r.push(b);
     else rows.push([b]);
   }
   for (const [i, r] of rows.entries()) {
@@ -199,7 +222,7 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       const newColumn = column(prev) !== column(l);
       const gap = l.y0 - prev.y1 > pitch * 0.6;
       const resize = Math.abs(l.size - prev.size) > 0.5;
-      const bullet = /^[•·▪‣□-]/.test(text(l).trim());
+      const bullet = BULLET.test(text(l).trim());
       // A table row is one paragraph, whatever its cells' gaps and sizes.
       const [bp, bl] = [blockOf.get(prev)!, blockOf.get(l)!];
       if (bp.row !== bl.row ? bp.table || bl.table || newColumn || gap || resize || bullet : !bl.table && (gap || resize || bullet)) flush();

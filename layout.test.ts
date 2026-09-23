@@ -143,6 +143,54 @@ describe("paragraphs", () => {
     ]);
   });
 
+  // Necromunda's game structure: a list set in two columns under a
+  // full-width intro, and the phase heading across the page below it.
+  test("a line set across the columns bands the page: both columns above it come first", () => {
+    const block = (...lines: string[]) => `<block>${lines.join("")}</block>`;
+    const xml = `<page id="p" width="612" height="792">${[
+      block(body(50, 100, "A round is split into three phases, which are resolved one at a time.")),
+      block(body(50, 120, "1: PRIORITY PHASE"), body(50, 134, "Roll for Priority"), body(50, 148, "Ready Fighters")),
+      block(body(320, 120, "2: ACTION PHASE"), body(320, 134, "Activate Fighters"), body(320, 148, "3: END PHASE")),
+      block(stextLine(200, 180, 24, "Display", "PRIORITY PHASE")),
+      block(body(50, 220, "The Priority phase has two steps."), body(50, 234, "Then fighters are Readied.")),
+      block(body(320, 220, "The Action phase follows."), body(320, 234, "Fighters activate in turn.")),
+    ].join("")}</page>`;
+    expect(paragraphs(parseStext(xml)).map((p) => p.text)).toEqual([
+      "A round is split into three phases, which are resolved one at a time.",
+      "1: PRIORITY PHASE Roll for Priority Ready Fighters",
+      "2: ACTION PHASE Activate Fighters 3: END PHASE",
+      "PRIORITY PHASE",
+      "The Priority phase has two steps. Then fighters are Readied.",
+      "The Action phase follows. Fighters activate in turn.",
+    ]);
+  });
+
+  test("a bullet set as a line of its own leads the line beside it, and starts a paragraph", () => {
+    const lines = [
+      body(50, 100, "A list of things to do, set out with bullets of their own."),
+      body(50, 114, "Second line of the intro to give the column its anchor."),
+      body(58, 132, "●"),
+      body(81, 130, "1: PRIORITY PHASE"),
+      body(94, 146, "○"),
+      body(117, 144, "Roll for Priority"),
+    ];
+    expect(paragraphs(parseStext(page(lines))).map((p) => p.text).slice(1)).toEqual(["● 1: PRIORITY PHASE", "○ Roll for Priority"]);
+  });
+
+  // Cyberpunk Red's weapons chapter opens "Ranged Weapons" with a drop cap
+  // in a block of its own, which read as "R anged".
+  test("a drop cap leads its line with no space", () => {
+    const block = (...lines: string[]) => `<block>${lines.join("")}</block>`;
+    const xml = `<page id="p" width="612" height="792">${[
+      block(body(63, 100, "These are things that shoot, in the body type of the page.")),
+      block(body(63, 114, "Guns, lasers, gyrojets, even the little hand-crossbows.")),
+      block(body(63, 128, "If something comes out of it and causes damage, it is ranged.")),
+      block(stextLine(60, 160, 34, "Display", "R", 22)),
+      block(stextLine(82, 160, 13, "Display", "anged Weapons")),
+    ].join("")}</page>`;
+    expect(paragraphs(parseStext(xml)).map((p) => p.text).at(-1)).toBe("Ranged Weapons");
+  });
+
   // Cyberpunk Red's exotic weapons: centred cells whose description sits
   // higher than its name, and a name wrapped across two blocks of its own.
   test("a table row is read left to right as one paragraph, whatever its cells' tops", () => {
