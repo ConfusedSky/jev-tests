@@ -152,13 +152,13 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
               o.question,
               section,
               windows,
+              read.counted,
               o.answerFloor,
               (page, part, counted, running) =>
                 ui.log(
                   `    ${counted ? "+" : "?"}${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  ` +
                     (counted ? `running ${running}` : "unsure, left out"),
                 ),
-              read.counted,
             ),
           );
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };

@@ -112,8 +112,10 @@ beside "Survival covers foraging in" at 0.5; shown one at a time, 0.9 and 0.1.
 The kind is read off the question in the same call that classifies it, so the
 scraps are asked whether each is "one trope" rather than "one of the things
 the question asks about"; asked the second way, the theme kits listed under
-each trope counted as tropes. A number is a figure the page does state ("how much does it cost", "how
-many rads are lethal"), so the choices are the figures on that page, digits or
+each trope counted as tropes.
+
+A number is a figure the page does state ("how much does it cost", "how many
+rads are lethal"), so the choices are the figures on that page, digits or
 words, each shown with the text around it; nothing is summed, and a page
 without figures is `not stated` without a call.
 

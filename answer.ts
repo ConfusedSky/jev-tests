@@ -112,8 +112,10 @@ export function cellsIn(text: string, maxLen = 60, maxWords = 4): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const line of text.split("\n")) {
-    for (const raw of line.split(/\s{3,}|[,;:.()]|\s(?:and|or)\s/)) {
-      const cell = raw.trim();
+    // A list's first item hides behind its introduction: "The classes are the Cleaver, ...".
+    for (const raw of line.split(/\s{3,}|[,;:.()]|\s(?:and|or|is|are|includes?|including|such as)\s/)) {
+      // "the Cleaver, the Deadwalker": a name behind an article is still a name.
+      const cell = raw.trim().replace(/^(?:the|a|an)\s+/i, "");
       if (!cell || cell.length > maxLen || !/^[A-Z]/.test(cell) || cell.split(/\s+/).length > maxWords) continue;
       const key = cell.toLowerCase();
       if (seen.has(key)) continue;
@@ -353,13 +355,13 @@ export async function countAcross(
   question: string,
   section: string,
   windows: { page: number; text: string }[],
+  kind = "",
   floor = 0,
   onPart?: (page: number, part: Answer, counted: boolean, running: number) => void,
-  counted = "",
 ): Promise<Answer> {
   // One span for the parallel calls, so the timing split stays under wall time.
   const parts = await timed("api", () =>
-    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, counted))),
+    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, kind))),
   );
   const seen = new Set<string>();
   let worst = 1;
@@ -427,8 +429,10 @@ async function truthFrom(
   const c = res.answers.contradicted.noul;
   const a = res.answers.absent.noul;
   if (s >= 0.5 && s >= c) return { text: "true", p: s };
-  if (c >= 0.5) return { text: "false", p: c };
-  if (a >= 0.5) return { text: "false", p: a };
+  // A false needs a contradiction or a list without the name; once it has
+  // one, how sure the model is that the claim is not stated counts too:
+  // "witch hunter" beside "Witch" was absent at 0.69 and not stated at 0.97.
+  if (c >= 0.5 || a >= 0.5) return { text: "false", p: Math.max(c, a, 1 - s) };
   return { text: "not stated", p: 1 - Math.max(s, c, a) };
 }
 
@@ -598,9 +602,13 @@ export async function answerFromOutline(
   if (swallowed) return { parent: hit.parent };
   // Or jev picked that entry itself: "Aquaboy/Aquagirl" listing 89 perks is
   // the perks section's list, and the section is what the pages should cover.
+  // Its siblings are leaves, statistics parked beside it. A list under a
+  // small parent looks the same by counts alone, Heart's nine classes beside
+  // its five callings, but there the sibling has children of its own.
   const above = hit.parent.slice(0, Math.max(0, hit.parent.lastIndexOf(" > ")));
-  const siblings = children.get(above)?.length ?? Infinity;
-  if (siblings < hit.kids.length) return { parent: above };
+  const siblings = (children.get(above) ?? []).filter((s) => `${above} > ${s}` !== hit.parent);
+  const leaves = siblings.every((s) => !children.has(`${above} > ${s}`));
+  if (siblings.length > 0 && siblings.length < hit.kids.length && leaves) return { parent: above };
 
   return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }

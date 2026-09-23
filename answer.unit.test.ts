@@ -172,8 +172,8 @@ describe("cellsIn", () => {
 
   test("a list one per line yields the name before the comma, not the clause after it", () => {
     expect(cellsIn("      The Cleave, a berserker who fights with fury.\n      The Witch, who bargains with the powers below.")).toEqual([
-      "The Cleave",
-      "The Witch",
+      "Cleave",
+      "Witch",
     ]);
   });
 
@@ -181,8 +181,19 @@ describe("cellsIn", () => {
     expect(cellsIn("Gunslinger      Awareness\nCombat Rifle    5C    Physical")).toEqual(["Gunslinger", "Awareness", "Combat Rifle", "Physical"]);
   });
 
+  // The bug this guards: "the Cleaver, the Deadwalker, the Deep Apiarist" cut
+  // to nothing, and the page counted one class at p=1.00.
+  test("a name behind an article is a name", () => {
+    expect(cellsIn("The classes are the Cleaver, the Deadwalker, the Deep Apiarist and the Witch.")).toEqual([
+      "Cleaver",
+      "Deadwalker",
+      "Deep Apiarist",
+      "Witch",
+    ]);
+  });
+
   test("drops prose too long to be a name, cells not starting with a capital, and repeats", () => {
-    expect(cellsIn("Aegis\n20\naegis\nThe Bulwark is a field device\n" + "A".repeat(61))).toEqual(["Aegis"]);
+    expect(cellsIn("Aegis\n20\naegis\nThe Bulwark fits in any standard pack\n" + "A".repeat(61))).toEqual(["Aegis"]);
   });
 });
 
@@ -238,11 +249,17 @@ describe("a statement", () => {
   });
 
   test("contradicted is false", async () => {
-    expect(await ask(0.1, 0.8)).toEqual({ text: "false", p: 0.8 });
+    expect(await ask(0.1, 0.8)).toEqual({ text: "false", p: 0.9 });
   });
 
   test("missing from the list of its kind is false", async () => {
-    expect(await ask(0.1, 0.3, 0.85)).toEqual({ text: "false", p: 0.85 });
+    expect(await ask(0.1, 0.3, 0.85)).toEqual({ text: "false", p: 0.9 });
+  });
+
+  // The bug this guards: "witch hunter" beside "Witch" fell from 0.97 to 0.70
+  // when only the absent noul was reported.
+  test("a false is as sure as the model is that the claim is not stated", async () => {
+    expect(await ask(0.03, 0.2, 0.69)).toEqual({ text: "false", p: 0.97 });
   });
 
   // The bug this guards: a page that never mentions the claim answered false
@@ -418,7 +435,7 @@ describe("a count from the contents", () => {
   const picker = (word: string) =>
     ({
       systemOne: async ({ questions }: { questions: { group: { criteria: Record<string, string> } } }) => {
-        const choice = Object.entries(questions.group.criteria).find(([, d]) => d.includes(word))![0];
+        const choice = Object.entries(questions.group.criteria).find(([, d]) => d.includes(`${word}" lists`))![0];
         return { answers: { group: { type: "choice", choice, confidence: 0.9, probabilities: { [choice]: 0.9 } } } };
       },
     }) as unknown as TypeSafeClient;
@@ -439,6 +456,17 @@ describe("a count from the contents", () => {
     expect(r).toEqual({ parent: "Perks" });
   });
 
+  // The bug this guards: the rule below sent Heart's nine classes to the
+  // pages because their parent has two children. Callings has children too,
+  // so Classes is a list beside a list, not a swallowed entry.
+  test("counts a list beside another list under a small parent", async () => {
+    const paths = ["Characters", "Characters > Callings", "Characters > Classes"];
+    for (const c of ["Adventure", "Enlightenment", "Forced", "Heartsong", "Penitent"]) paths.push(`Characters > Callings > ${c}`);
+    for (let i = 0; i < 9; i++) paths.push(`Characters > Classes > Class ${i}`);
+    const r = await answerFromOutline(picker("Classes"), "count", "How many classes?", at(paths), 0.7);
+    expect(r).toEqual({ answer: { text: "9", p: 0.9 }, parent: "Characters > Classes" });
+  });
+
   // The bug this guards: picking the swallowed entry itself answered 89 of
   // 94 perks at p=0.93, the entry's own list being the one that fit.
   test("reads the parent's pages when the picked entry is where the list went", async () => {
@@ -453,7 +481,7 @@ describe("countAcross", () => {
   const sure = (n: number, p = 0.9) => Array.from({ length: n }, () => p);
 
   test("leaves out a part below the floor and keeps the confidence of the rest", async () => {
-    const a = await countAcross(stubCells([[1, 0.9], [37, 0.55], [1, 0.8]]), "q", "s", ws(3), 0.7);
+    const a = await countAcross(stubCells([[1, 0.9], [37, 0.55], [1, 0.8]]), "q", "s", ws(3), "", 0.7);
     expect(a.text).toBe("2");
     expect(a.p).toBeCloseTo(2 / 3);
   });
@@ -462,13 +490,13 @@ describe("countAcross", () => {
   // classes at p=0.77, a confident undercount of nine.
   test("a count covering little of the section is not confident", async () => {
     const parts = [[1, 0.9], [1, 0.8], [1, 0.8], [10, 0.55], [8, 0.6], [3, 0.5]] as [number, number][];
-    const a = await countAcross(stubCells(parts), "q", "s", ws(6), 0.7);
+    const a = await countAcross(stubCells(parts), "q", "s", ws(6), "", 0.7);
     expect(a.text).toBe("3");
     expect(a.p).toBeCloseTo(3 / 6);
   });
 
   test("every part below the floor is not stated", async () => {
-    const a = await countAcross(stubCells([[10, 0.55], [30, 0.6]]), "q", "s", ws(2), 0.7);
+    const a = await countAcross(stubCells([[10, 0.55], [30, 0.6]]), "q", "s", ws(2), "", 0.7);
     expect(a.text).toBe("not stated");
   });
 
@@ -503,7 +531,7 @@ describe("countAcross", () => {
 
   test("reports each part as it lands", async () => {
     const seen: number[] = [];
-    await countAcross(stubCells([sure(2), sure(3)]), "q", "s", ws(2), 0, (_p, _a, _c, running) => seen.push(running));
+    await countAcross(stubCells([sure(2), sure(3)]), "q", "s", ws(2), "", 0, (_p, _a, _c, running) => seen.push(running));
     expect(seen).toEqual([2, 5]);
   });
 });
