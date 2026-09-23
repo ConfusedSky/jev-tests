@@ -363,6 +363,39 @@ describe("columns", () => {
     ]);
   });
 
+  test("reads three columns in turn", () => {
+    const three = [
+      "BLOCK: +1 Blood         EXPENSIVE: When you      RANGED: This item",
+      "protection.            roll the maximum,        can be used at range.",
+      "                       mark D6 stress.",
+      "BRUTAL: Roll two dice  LOUD: Mark D6 stress     RELOAD: Reload it",
+      "and pick the highest.  to Fortune.              between uses.",
+      "CONDUIT: Mark D4       OBSCURING: Reduce the    SMOKE: As Obscuring,",
+      "stress to Mind.        damage by 1 step.        but only when used.",
+    ].join("\n");
+    expect(columns(three).split("\n").filter(Boolean)).toEqual([
+      "BLOCK: +1 Blood",
+      "protection.",
+      "BRUTAL: Roll two dice",
+      "and pick the highest.",
+      "CONDUIT: Mark D4",
+      "stress to Mind.",
+      "EXPENSIVE: When you",
+      "roll the maximum,",
+      "mark D6 stress.",
+      "LOUD: Mark D6 stress",
+      "to Fortune.",
+      "OBSCURING: Reduce the",
+      "damage by 1 step.",
+      "RANGED: This item",
+      "can be used at range.",
+      "RELOAD: Reload it",
+      "between uses.",
+      "SMOKE: As Obscuring,",
+      "but only when used.",
+    ]);
+  });
+
   test("leaves a single column alone", () => {
     const one = "Radiation damage is permanent until treated with RadAway. Exposure above two hundred rads is lethal without\ntreatment, and exposure above fifty rads causes lasting fatigue. A dweller carries a personal dosimeter\nRadAway is stocked in the vault clinic and is dispensed by the doctor on request. RadX taken in advance reduces\nrads absorbed during a trip to the surface, but it does nothing for rads already absorbed.\nmore lines of the same width keep the page a single column of text without any gutter running down it";
     expect(columns(one)).toBe(one);

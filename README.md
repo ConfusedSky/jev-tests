@@ -152,9 +152,9 @@ $ bun jevsec.ts manual.pdf "How is radiation treated?"
 ```
 
 The text a passage is read from is the page's `-layout` text with its columns
-put one after the other, splitting each line at the gutter most lines share
-and letting a line that runs across it, a heading or a table row, end both
-columns. No extractor read these books in order on its own: `pdftotext`
+put one after the other, splitting each line at the gutters most lines share,
+two of them on Heart's three-column equipment tags page, and letting a line
+that runs across one, a heading or a table row, end every column. No extractor read these books in order on its own: `pdftotext`
 interleaved the Fallout and Heart columns line by line, its `-raw` order
 glued words together on Legend in the Mist, and `mutool` glued words on
 Heart.
