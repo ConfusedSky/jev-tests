@@ -60,7 +60,9 @@ function content(line: string, first: Term | undefined): string {
  * line, ranked by how much of the question that line holds. A phrase is
  * also looked for across a line and the next, since -layout breaks a table
  * cell and a hyphenated word over two lines. A page counts only if its best
- * line names the subject, or two terms when the question named none.
+ * line names the subject, or two terms when the question named none, and
+ * the more of its lines name the subject the higher it ranks: for "skills"
+ * every page of a rulebook has a line, and the list has forty.
  */
 export function excerpts(pages: string[], ts: Term[], { limit = 20, within }: { limit?: number; within?: (page: number) => boolean } = {}): Excerpt[] {
   const needsSubject = ts.some((t) => t.subject);
@@ -71,16 +73,18 @@ export function excerpts(pages: string[], ts: Term[], { limit = 20, within }: { 
     const lines = text.split("\n");
     const stemmed = lines.map(stems);
     let best: Excerpt | undefined;
+    let dense = 0;
     lines.forEach((line, j) => {
       const own = stemmed[j]!;
       const joined = own.concat(stemmed[j + 1] ?? []);
       const matched = ts.filter((t) => (t.words.length > 1 ? holds(joined, t) : holds(own, t)));
       if (matched.length === 0) return;
       if (needsSubject ? !matched.some((t) => t.subject) : matched.length < 2) return;
+      dense++;
       const score = matched.reduce((sum, t) => sum + t.weight, 0);
       if (!best || score > best.score) best = { page, content: content(line, matched[0]), score };
     });
-    if (best) out.push(best);
+    if (best) out.push({ ...best, score: best.score + Math.log1p(dense) });
   });
   return out.sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
 }
