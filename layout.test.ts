@@ -101,6 +101,33 @@ describe("paragraphs", () => {
     expect(paras.map((p) => p.text)).not.toContain("97");
   });
 
+  // The bug this guards: wrapped bullet lines hanging two ems in became a
+  // column of their own and were read after the whole list.
+  test("a hanging indent is not a column", () => {
+    const lines = [
+      body(51, 100, "Some prose before the list runs here."),
+      body(51, 116, "• First item that wraps onto the next"),
+      body(71, 130, "first continues."),
+      body(51, 146, "• Second item that wraps onto the next"),
+      body(71, 160, "second continues."),
+      body(51, 176, "• Third item that wraps onto the next"),
+      body(71, 190, "third continues."),
+      body(51, 210, "After the list the prose goes on here."),
+    ];
+    expect(paragraphs(parseStext(page(lines))).map((p) => p.text)).toEqual([
+      "Some prose before the list runs here.",
+      "• First item that wraps onto the next first continues.",
+      "• Second item that wraps onto the next second continues.",
+      "• Third item that wraps onto the next third continues.",
+      "After the list the prose goes on here.",
+    ]);
+  });
+
+  test("the last line of a column with a narrow bottom margin is body text, not a footer", () => {
+    const lines = [...skills, body(50, 730, "The last line of the page at 730.")];
+    expect(paragraphs(parseStext(page(lines))).map((p) => p.text)).toContain("The last line of the page at 730.");
+  });
+
   test("a bullet starts a paragraph and a word broken at the margin is mended", () => {
     const lines = [
       body(51, 208, "• Think of their four themes."),

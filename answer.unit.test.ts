@@ -287,6 +287,8 @@ describe("nameKey", () => {
     expect(nameKey("REPAIR", "skills")).toBe("repair");
     expect(nameKey("Repair skill", "skills")).toBe("repair");
     expect(nameKey("Theme Kit", "theme kits")).toBe("theme");
+    expect(nameKey("Cleaver Class", "classes")).toBe("cleaver");
+    expect(nameKey("Wild Ability", "abilities")).toBe("wild");
   });
 
   test("leaves a name alone when no kind is known", () => {
@@ -320,34 +322,42 @@ describe("a count off the page", () => {
 });
 
 describe("a statement", () => {
-  const stub = (stated: number, contradicted: number, absent: number) =>
+  const stub = (stated: number, contradicted: number, kind: number) =>
     ({
-      systemOne: async () => ({ answers: { stated: { noul: stated }, contradicted: { noul: contradicted }, absent: { noul: absent } } }),
+      systemOne: async () => ({ answers: { stated: { noul: stated }, contradicted: { noul: contradicted }, kind: { noul: kind } } }),
     }) as unknown as Parameters<typeof answerFrom>[0];
-  const ask = (s: number, c: number, a = 0.1) => answerFrom(stub(s, c, a), "truth", "Witch is a class.", "Classes", "text");
+  const ask = (s: number, c: number, a = 0.1, text = "Cleaver\nDeadwalker\nVermissian Knight") =>
+    answerFrom(stub(s, c, a), "truth", "Is knight a class?", "Classes", text);
 
   test("stated is true", async () => {
     expect(await ask(0.9, 0.1)).toEqual({ text: "true", p: 0.9 });
   });
 
-  test("contradicted is false", async () => {
-    expect(await ask(0.1, 0.8)).toEqual({ text: "false", p: 0.9 });
+  test("contradicted is false, as sure as the contradiction", async () => {
+    expect(await ask(0.1, 0.8)).toEqual({ text: "false", p: 0.8 });
   });
 
-  test("missing from the list of its kind is false", async () => {
-    expect(await ask(0.1, 0.3, 0.85)).toEqual({ text: "false", p: 0.9 });
+  test("missing from the list of its kind is false, as sure as the list", async () => {
+    expect(await ask(0.1, 0.3, 0.85)).toEqual({ text: "false", p: 0.85 });
   });
 
-  // The bug this guards: "witch hunter" beside "Witch" fell from 0.97 to 0.70
-  // when only the absent noul was reported.
-  test("a false is as sure as the model is that the claim is not stated", async () => {
-    expect(await ask(0.03, 0.2, 0.69)).toEqual({ text: "false", p: 0.97 });
+  // The bug this guards: a page that never mentioned the claim, stated 0.02,
+  // read false at 0.98 once its list noul crossed 0.5.
+  test("a weak list without the name is a weak false, whatever the stated noul", async () => {
+    expect(await ask(0.02, 0.2, 0.51)).toEqual({ text: "false", p: 0.51 });
   });
 
   // The bug this guards: a page that never mentions the claim answered false
   // at p=0.96, since "does not state" and "contradicts" were one criterion.
   test("none of them is silence, not a false", async () => {
     expect(await ask(0.1, 0.2, 0.3)).toEqual({ text: "not stated", p: 0.7 });
+  });
+
+  // The exact name is a string comparison: a list holding "Vermissian
+  // Knight" does not name "knight", and one holding "Knight" does.
+  test("a list of the kind that names the thing is no false", async () => {
+    expect(await ask(0.4, 0.1, 0.9, "Cleaver\nKnight\nWitch")).toEqual({ text: "not stated", p: 0.6 });
+    expect(await ask(0.4, 0.1, 0.9)).toEqual({ text: "false", p: 0.9 });
   });
 });
 
@@ -425,16 +435,20 @@ describe("a stated figure", () => {
     expect(await answerFrom(never, "number", "q", "s", "no figures here")).toEqual({ text: "not stated", p: 1 });
   });
 
-  test("a value on two rows is two options, and the pick maps back to the value", async () => {
-    const rows = "Damage 5 max\nCombat Rifle 5C";
+  test("a value on two rows is two options, and their probabilities add up for the value", async () => {
+    const rows = "Damage 5 max\nCombat Rifle 5C\nCost 80";
     const pick = {
       systemOne: async ({ questions }: { questions: Record<string, { criteria: Record<string, string> }> }) => {
         const keys = Object.keys(Object.values(questions)[0]!.criteria);
-        expect(keys).toEqual(["5", "5 #2", "not stated"]);
-        return { answers: { q0: { type: "choice", choice: "5 #2", confidence: 0.9, probabilities: { "5 #2": 0.9 } } } };
+        // Integer keys come first, in numeric order: that is JavaScript, not the text.
+        expect(keys).toEqual(["5", "80", "5 #2", "not stated"]);
+        // 80 leads any one option, but the two rows of 5 together lead it.
+        return { answers: { q0: { type: "choice", choice: "80", confidence: 0.5, probabilities: { "5": 0.45, "5 #2": 0.4, "80": 0.5, "not stated": 0.05 } } } };
       },
     } as unknown as Parameters<typeof answerFrom>[0];
-    expect(await answerFrom(pick, "number", "q", "s", rows)).toEqual({ text: "5", p: 0.9 });
+    const a = await answerFrom(pick, "number", "q", "s", rows);
+    expect(a.text).toBe("5");
+    expect(a.p).toBeCloseTo(0.85);
   });
 });
 
@@ -563,8 +577,18 @@ describe("a count from the contents", () => {
   test("reads the parent's pages when the picked entry is where the list went", async () => {
     const paths = ["Perks", "Perks > Aquaboy", "Perks > Carry Weight", "Perks > Defense"];
     for (let i = 0; i < 10; i++) paths.push(`Perks > Aquaboy > Perk ${i}`);
-    const r = await answerFromOutline(picker("Aquaboy"), "count", "How many perks?", at(paths), 0.7);
+    const r = await answerFromOutline(picker("Aquaboy"), "count", "How many perks?", at(paths), 0.7, "perks");
     expect(r).toEqual({ parent: "Perks" });
+  });
+
+  // The bug this guards: a Classes list beside two childless sections sent
+  // the whole Characters chapter to the pages, since the rule above looked
+  // only at the siblings.
+  test("keeps a list whose chapter is not about the kind counted", async () => {
+    const paths = ["Characters", "Characters > Classes", "Characters > Ancestry", "Characters > Advancement"];
+    for (let i = 0; i < 9; i++) paths.push(`Characters > Classes > Class ${i}`);
+    const r = await answerFromOutline(picker("Classes"), "count", "How many classes?", at(paths), 0.7, "classes");
+    expect(r).toEqual({ answer: { text: "9", p: 0.9 }, parent: "Characters > Classes" });
   });
 });
 

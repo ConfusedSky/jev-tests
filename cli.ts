@@ -1,7 +1,7 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
 import { pageParagraphs, type Para } from "./layout";
-import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -135,7 +135,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   if (kind === "count" && read.counted) ui.log(`counts ${read.counted}`);
   const fromOutline = o.noToc
     ? undefined
-    : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
+    : (sections: Section[]) =>
         answerFromOutline(client, kind, o.question, sections, o.answerFloor, read.counted);
   // "not stated" is a refusal, not an answer, so it never settles a walk
   // however confident the model is that it cannot say; for a passage it

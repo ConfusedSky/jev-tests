@@ -141,9 +141,9 @@ const CELLS_PER_CALL = 150;
  * headlines an entry and a page that mentions it count it once.
  */
 export function nameKey(name: string, counted: string): string {
-  const kind = counted.split(/\s+/).at(-1)?.toLowerCase().replace(/s$/, "") ?? "";
+  const last = counted.split(/\s+/).at(-1)?.toLowerCase() ?? "";
   const bare = name.toLowerCase().replace(/^(?:the|a|an)\s+/, "");
-  return kind ? bare.replace(new RegExp(`\\s+${kind}s?$`), "") : bare;
+  return last ? bare.replace(new RegExp(`\\s+(?:${singular(last)}|${last})$`), "") : bare;
 }
 
 // A cell at or above YES is counted. One at or above SURE is decided; one
@@ -205,11 +205,6 @@ async function rawCount(client: TypeSafeClient, question: string, section: strin
   const doubt = ps.filter((p) => p >= DOUBT && p < SURE).length;
   return { text: String(names.length), p: sure / (sure + doubt), names };
 }
-
-const countFrom = async (client: TypeSafeClient, question: string, section: string, text: string, counted: string) => {
-  const { names: _, ...a } = await timed("api", () => rawCount(client, question, section, text, counted));
-  return a;
-};
 
 const SMALL: Record<string, number> = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -317,9 +312,12 @@ async function numberFrom(
   // Option names are sent to the model and must be unique, so a value's
   // second row is "5 #2"; code maps the pick back to the value.
   const valueOf = new Map<string, string>();
+  const rows = new Map<string, number>();
   const criteria: Record<string, string> = {};
   for (const f of figures) {
-    const key = valueOf.has(f.value) ? `${f.value} #${[...valueOf.values()].filter((v) => v === f.value).length + 1}` : f.value;
+    const n = (rows.get(f.value) ?? 0) + 1;
+    rows.set(f.value, n);
+    const key = n === 1 ? f.value : `${f.value} #${n}`;
     valueOf.set(key, f.value);
     criteria[key] = `The answer is ${f.value}, as in: …${f.context}…`;
   }
@@ -336,9 +334,17 @@ async function numberFrom(
     ]),
   );
   const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
+  // A value on several rows splits its probability across their options;
+  // the value's probability is their sum.
   const parts = asked.map((name, i) => {
     const a = res.answers[`q${i}`] as { choice: string; confidence: number; probabilities: Record<string, number> };
-    return { name, text: valueOf.get(a.choice) ?? a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+    const byValue = new Map<string, number>();
+    for (const [key, prob] of Object.entries(a.probabilities)) {
+      const v = valueOf.get(key) ?? key;
+      byValue.set(v, (byValue.get(v) ?? 0) + prob);
+    }
+    const [text, p] = [...byValue.entries()].sort((x, y) => y[1] - x[1])[0] ?? [valueOf.get(a.choice) ?? a.choice, a.confidence];
+    return { name, text, p };
   });
   if (parts.length === 1) return { text: parts[0]!.text, p: parts[0]!.p };
   const stated = parts.filter((x) => x.text !== "not stated");
@@ -389,6 +395,17 @@ export async function countAcross(
 }
 
 /**
+ * Whether a page names the thing a membership claim is about, as a whole
+ * cell of its own: "Vermissian Knight" does not name "knight". A claim not
+ * shaped as membership names nothing, and the page's list noul decides.
+ */
+function named(text: string, question: string): boolean {
+  const subject = /^(?:is )?(?:the )?(.+?)(?: is)? (?:a|an|one of the) /.exec(normalize(question))?.[1];
+  if (!subject) return false;
+  return cellsIn(text, 80, 6).some((cell) => normalize(cell) === subject);
+}
+
+/**
  * Whether the text states the claim, contradicts it, or lists its kind
  * without it are three judgments, so they are three nouls in one call.
  * Silence is none of them: a page that does not speak to the claim is "not
@@ -424,29 +441,24 @@ async function truthFrom(
           true: "`text` says otherwise",
           false: "`text` agrees with the claim, or does not speak to it at all",
         }),
-        // Whole names again: with "not among them", a list holding
-        // "Vermissian Knight" had "knight" absent at 0.38; this way, 0.88.
-        absent: noul(
-          "`text` lists things called by the same kind-word `question` uses (a class, a perk, a spell), " +
-            "and no entry's whole name is exactly the name `question` gives",
-          {
-            true:
-              "`text` lists things of exactly that kind, and none of them is that exact whole name. An entry whose longer name " +
-              "contains it is not it: a list with 'Vermissian Knight' does not have 'knight'",
-            false: "`text` lists no things of that kind, whatever other kinds it lists, or an entry's whole name is exactly that name",
-          },
-        ),
+        // Whether the page lists things of that kind is the model's; whether
+        // the exact name is among them is a string comparison, code's.
+        kind: noul("`text` lists or headlines things called by the same kind-word `question` uses (a class, a perk, a calling)", {
+          true: "Things of exactly that kind are listed or headlined there",
+          false: "No list of things of that kind, whatever other kinds `text` lists",
+        }),
       },
     }),
   );
   const s = res.answers.stated.noul;
   const c = res.answers.contradicted.noul;
-  const a = res.answers.absent.noul;
+  const a = named(text, question) ? 0 : res.answers.kind.noul;
   if (s >= 0.5 && s >= c) return { text: "true", p: s };
-  // A false needs a contradiction or a list without the name; once it has
-  // one, how sure the model is that the claim is not stated counts too:
-  // "witch hunter" beside "Witch" was absent at 0.69 and not stated at 0.97.
-  if (c >= 0.5 || a >= 0.5) return { text: "false", p: Math.max(c, a, 1 - s) };
+  // A false is as sure as the contradiction or the list without the name.
+  // Folding in 1 - stated read 0.96 off a page that never mentioned the
+  // claim once its list noul crossed 0.5, and one noul's complement is not
+  // another noul's probability.
+  if (c >= 0.5 || a >= 0.5) return { text: "false", p: Math.max(c, a) };
   return { text: "not stated", p: 1 - Math.max(s, c, a) };
 }
 
@@ -459,7 +471,7 @@ export function answerFrom(
   text: string,
   read: Partial<Pick<Reading, "quantities" | "counted">> = {},
 ): Promise<Answer> {
-  if (kind === "count") return countFrom(client, question, section, text, read.counted ?? "");
+  if (kind === "count") return timed("api", () => rawCount(client, question, section, text, read.counted ?? "")).then(({ names: _, ...a }) => a);
   if (kind === "number") return numberFrom(client, question, section, text, read.quantities ?? []);
   return truthFrom(client, question, section, text);
 }
@@ -518,24 +530,34 @@ export function unitsOf(paras: Para[]): Unit[] {
  * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
  * and a whole Fallout chems page between 0.4 and 0.7.
  */
-async function passageFrom(client: TypeSafeClient, question: string, section: string, paras: Para[]): Promise<Answer> {
+export async function readPassage(client: TypeSafeClient, question: string, section: string, paras: Para[]): Promise<Answer> {
   const units = unitsOf(paras);
   if (units.length === 0) return { text: "not stated", p: 1 };
   const text = paras.map((p) => p.text).join("\n\n");
-  const questions = Object.fromEntries(
-    units.map((u, i) => [
-      `s${i}`,
-      noul(
-        { sentence: u.text, ask: "`sentence` is part of the answer to `question`" },
-        {
-          true: "It states, explains or lists something `question` asks for, or is the heading or lead-in of the passage that does",
-          false: "It is about something else, or merely sits near the answer",
-        },
+  const chunks: number[][] = [];
+  for (let i = 0; i < units.length; i += CELLS_PER_CALL) chunks.push(units.slice(i, i + CELLS_PER_CALL).map((_, j) => i + j));
+  const ps = (
+    await timed("api", () =>
+      Promise.all(
+        chunks.map(async (idx) => {
+          const questions = Object.fromEntries(
+            idx.map((i) => [
+              `s${i}`,
+              noul(
+                { sentence: units[i]!.text, ask: "`sentence` is part of the answer to `question`" },
+                {
+                  true: "It states, explains or lists something `question` asks for, or is the heading or lead-in of the passage that does",
+                  false: "It is about something else, or merely sits near the answer",
+                },
+              ),
+            ]),
+          );
+          const res = await client.systemOne({ state: { question, section, text }, questions });
+          return idx.map((i) => (res.answers[`s${i}`] as { noul: number }).noul);
+        }),
       ),
-    ]),
-  );
-  const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
-  const ps = units.map((_, i) => (res.answers[`s${i}`] as { noul: number }).noul);
+    )
+  ).flat();
   const run = bestRun(ps);
   if (!run) return { text: "not stated", p: 1 };
   const chosen = ps.slice(run.start, run.end);
@@ -557,9 +579,6 @@ async function passageFrom(client: TypeSafeClient, question: string, section: st
     passage: passage.map(({ heading, text, style, lines }) => ({ heading, text, style, lines })),
   };
 }
-
-/** A passage question reads the answering stretch off the page rather than a value. */
-export const readPassage = passageFrom;
 
 const normalize = (s: string) =>
   s
@@ -682,9 +701,10 @@ export async function answerFromOutline(
 
   // Option names are sent to the model, so they carry the section name; the
   // index keeps them unique when two parents end in the same word.
-  const keyed = groups.map(([parent, kids], i) => ({ key: `${i}:${parent.split(" > ").at(-1)}`, parent, kids }));
+  // A Choice takes at most 255 options; one is spent on "none of these".
+  const keyed = groups.slice(0, 254).map(([parent, kids], i) => ({ key: `${i}:${parent.split(" > ").at(-1)}`, parent, kids }));
   const criteria: Record<string, string> = Object.fromEntries(
-    keyed.map(({ key, parent, kids }) => [key, `"${parent}" lists ${kids.length} entries: ${kids.join(", ")}`]),
+    keyed.map(({ key, parent, kids }, i) => [key, `"${parent}" lists the ${kids.length} entries in \`sections[${i}].entries\``]),
   );
   criteria["none of these"] = "No section's entries are what the question is about";
 
@@ -696,10 +716,10 @@ export async function answerFromOutline(
   const grouped = Object.fromEntries(
     keyed.map((k, i) => [
       `g${i}`,
-      noul(
-        { entries: k.kids, ask: `\`entries\` are groups, categories or kinds of ${things}, each holding several, rather than ${things} themselves, one each` },
-        { true: "Each entry names a group of them", false: "Each entry is one of them" },
-      ),
+      noul(`\`sections[${i}].entries\` are groups, categories or kinds of ${things}, each holding several, rather than ${things} themselves, one each`, {
+        true: "Each entry names a group of them",
+        false: "Each entry is one of them",
+      }),
     ]),
   );
   const picked = await timed("api", () =>
@@ -726,7 +746,6 @@ export async function answerFromOutline(
   // under it than its parent has is where the list went. Read the pages
   // instead. A long span alone proves nothing: Heart gives each of its five
   // callings two pages, and five is still the count.
-  if (!sections.some((s) => s.path === hit.parent)) return undefined;
   const swallowed = hit.kids.some((kid) => (children.get(`${hit.parent} > ${kid}`)?.length ?? 0) > hit.kids.length);
   if (swallowed) return { parent: hit.parent };
   // Or jev picked that entry itself: "Aquaboy/Aquagirl" listing 89 perks is
@@ -734,10 +753,15 @@ export async function answerFromOutline(
   // Its siblings are leaves, statistics parked beside it. A list under a
   // small parent looks the same by counts alone, Heart's nine classes beside
   // its five callings, but there the sibling has children of its own.
+  // And the section above must be the one about the kind counted, "Step 4:
+  // Choose Your First Perk" for perks, else a Classes list beside two
+  // childless sections would send the whole Characters chapter to the pages.
   const above = hit.parent.slice(0, Math.max(0, hit.parent.lastIndexOf(" > ")));
   const siblings = (children.get(above) ?? []).filter((s) => `${above} > ${s}` !== hit.parent);
   const leaves = siblings.every((s) => !children.has(`${above} > ${s}`));
-  if (siblings.length > 0 && siblings.length < hit.kids.length && leaves) return { parent: above };
+  const kindWord = counted.split(/\s+/).at(-1) ?? "";
+  const aboutKind = !kindWord || [kindWord, singular(kindWord)].some((w) => mentions(above.split(" > ").at(-1)!, w));
+  if (siblings.length > 0 && siblings.length < hit.kids.length && leaves && aboutKind) return { parent: above };
 
   return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }

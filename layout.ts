@@ -85,13 +85,22 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   // modest type, or hugs the right edge whatever its type; a chapter title
   // sits up there too, in display type, and stays.
   const { width } = page;
-  const lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.92) && l.size < body * 1.5) || l.x0 > width * 0.85));
+  const lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85));
   // Column anchors: left edges within a body-size of each other are one edge;
-  // an edge fewer than three lines start at is an indent, not a column.
+  // an edge fewer than three lines start at is an indent, not a column, and
+  // so is one the lines of the column before mostly run past: a bullet
+  // list's wrapped lines hang two ems in and are not a second column.
   const anchors: number[] = [];
+  const near = (x: number) => lines.filter((l) => Math.abs(l.x0 - x) < body * 1.5);
   for (const x of [...lines.map((l) => l.x0)].sort((a, b) => a - b)) {
-    if (anchors.length && x - anchors.at(-1)! < body * 1.5) continue;
-    if (lines.filter((l) => Math.abs(l.x0 - x) < body * 1.5).length >= 3) anchors.push(x);
+    const prev = anchors.at(-1);
+    if (prev !== undefined && x - prev < body * 1.5) continue;
+    if (near(x).length < 3) continue;
+    if (prev !== undefined) {
+      const before = near(prev);
+      if (before.filter((l) => l.x1 > x + body).length > before.length * 0.4) continue;
+    }
+    anchors.push(x);
   }
   const column = (l: Line) => {
     let best = 0;

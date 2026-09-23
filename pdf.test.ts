@@ -335,7 +335,7 @@ describe("highlighted", () => {
   test("copies the PDF into the cache with the lines marked on the page", async () => {
     process.env.XDG_CACHE_HOME = Bun.fileURLToPath(new URL("fixture", import.meta.url));
     const copy = await highlighted(manual, 3, [{ x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
-    expect(copy.endsWith("/fixture/jev/manual.pdf")).toBe(true);
+    expect(copy).toMatch(/\/fixture\/jev\/[0-9a-z]+-manual\.pdf$/);
     const count = `${copy}.js`;
     await Bun.write(count, "var d = Document.openDocument(scriptArgs[0]); print(d.loadPage(2).getAnnotations().length);");
     expect((await run(["mutool", "run", count, copy])).trim()).toBe("1");

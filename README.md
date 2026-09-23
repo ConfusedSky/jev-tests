@@ -145,11 +145,16 @@ words, each shown with the text around it; nothing is summed, and a page
 without figures is `not stated` without a call.
 
 A statement asks three `noul`s of a page in one call: does the text state the
-claim, does it contradict it, and does it list things of that kind without
-the one named. Stated is `true`, the other two are `false`, and none of them
-is silence: the page is dropped and the walk goes on, rather than a page that
-never mentions the claim answering `false`. Each names the kind-word, since
-the classes page otherwise had "Is heretic a calling?" stated at 0.5.
+claim, does it contradict it, and does it list things of the kind the claim
+names. Stated is `true`; contradicted is `false`, and so is a list of the
+kind that does not name the thing, where whether it names it is a string
+comparison over the page's cells, in code, so "Vermissian Knight" does not
+name "knight". None of them is silence: the page is dropped and the walk
+goes on, rather than a page that never mentions the claim answering `false`.
+A `false` is as sure as the contradiction or the list; folding in the stated
+noul's complement read 0.96 off a page that never mentioned the claim once
+its list noul crossed 0.5. Each names the kind-word, since the classes page
+otherwise had "Is heretic a calling?" stated at 0.5.
 
 A question can ask for several figures. "What is the cost, weight and damage
 rating of a combat rifle?" is split into words and each word is asked, in the
@@ -221,8 +226,12 @@ rather than the things; they were, so the pages are read instead, and count
 nests 89 of its 94 perks under the first perk, so its perks section lists one
 perk and six statistics; an entry with more entries under it than its parent
 has is where the list went, and the contents are abandoned for that section's
-pages, whether jev picked the section or the entry the list went into. How many pages an entry takes is no signal: Heart gives each of its five
-callings two pages, and five is the count.
+pages, whether jev picked the section or the entry the list went into; the
+latter only when the section above is about the kind counted, "Step 4:
+Choose Your First Perk" for perks, else a Classes list beside two childless
+sections would send its whole chapter to the pages. How many pages an entry
+takes is no signal: Heart gives each of its five callings two pages, and
+five is the count.
 
 Membership is decided in code, not by the model. "Is witch a class?" names a
 category (`class`, matching the section `Classes`) and a subject (`witch`, the
@@ -248,7 +257,7 @@ Is witch hunter a class?      false (p=0.98)   contents said no, Classes pages a
 ```
 
 A page confirms a negative only by contradicting the claim or by listing the
-things of its kind without the name, whole names only, so a page that never
+things of its kind without the name, whole cells only, so a page that never
 speaks to the claim is dropped and the walk goes on; this is what makes a
 positive off a fragment ("knight" beside "Vermissian Knight") stay false.
 
@@ -408,7 +417,9 @@ the same calls and is less sharp, so it is only there for comparison.
   groups of the things.
 - **Counting is only as good as the scraps.** A name over four words or 60
   characters, one not starting with a capital, or one split across a line
-  break is never offered, so it is never counted. Measured against the
+  break is never offered, so it is never counted, and a name with "and" in
+  it, "Sword and Board", is cut in two, since the inline list "Science and
+  Survival" has to be. Measured against the
   choice-over-numbers method it replaced, on two-column rulebooks. Fallout:
   the 94 perks over 16 pages came back as 95 at p=0.80 (a stray "GUNS" off
   an illustration counted; Dogmeat's perk and his stat block are one name,
@@ -519,7 +530,8 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 
 ## Highlighting the answer
 
-`--highlight` links to a copy of the PDF, in `~/.cache/jev/`, with the
+`--highlight` links to a copy of the PDF, in `~/.cache/jev/` under a name
+that carries a hash of the path so two shelves' `manual.pdf` stay apart, with the
 passage's lines marked by a highlight annotation on its page, so the link
 lands on the answer rather than the page. Any viewer that draws annotations
 shows it. The copy is made afresh each run, since a highlight saved into it

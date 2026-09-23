@@ -8,7 +8,6 @@ export type Hit = { pdf: string; section: string; page: number; p: number; text:
 /** A window that answered, with whatever the answer layer read out of it. */
 export type Candidate = { hit: Hit; answer: Answer };
 export type Tried = { name: string; page: number; p: number };
-/** Windows that held the pages but yielded no answer to fall back on, such as a count "not stated". */
 /** `hits` holds every window taken, best first; `hit` is the first of them. */
 export type Outcome = { hit?: Hit; hits: Hit[]; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
 
@@ -110,7 +109,8 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
  */
 export async function highlighted(pdf: string, page: number, lines: Box[], fresh = true): Promise<string> {
   const dir = `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
-  const copy = `${dir}/${pdf.split("/").pop()}`;
+  // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
+  const copy = `${dir}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
   if (fresh) await Bun.write(copy, Bun.file(pdf));
   const quads = lines.map((l) => [l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]);
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
@@ -375,10 +375,12 @@ export async function searchPdf(
   if (o.fromOutline) {
     const outlineSnap = snapshot();
     const toc = await o.fromOutline(sections);
-    if (toc?.answer) {
-      const at = sections.find((s) => s.path === toc.parent)!;
+    // A parent bookmark with no destination is not among the sections, but
+    // its children are; the answer then links to the first of them.
+    const under = sections.filter((s) => s.path === toc?.parent || s.path.startsWith(`${toc?.parent} > `));
+    if (toc?.answer && under.length > 0) {
       ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
-      took({ pdf, section: toc.parent, page: at.start, p: toc.answer.p, text: "", answer: toc.answer });
+      took({ pdf, section: toc.parent, page: Math.min(...under.map((s) => s.start)), p: toc.answer.p, text: "", answer: toc.answer });
       return done();
     }
     if (toc) {
@@ -394,7 +396,7 @@ export async function searchPdf(
   const above = all.filter((r) => r.score >= floor).length;
   ui.log(
     `${indent}ranked ${all.length} sections in ${split(rankSnap)}, ` +
-      `${above} above title floor ${floor}` +
+      (floor === -Infinity ? "confined by the contents" : `${above} above title floor ${floor}`) +
       (all.length > above ? ` (${all.length - above} below)` : ""),
   );
 

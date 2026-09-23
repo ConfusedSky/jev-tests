@@ -20,7 +20,7 @@ type Case = {
   book: "heart" | "fallout" | "litm" | "cpr";
   question: string;
   /** A count's true number, a statement's truth, a figure question's true answer text. */
-  truth: number | "true" | "false" | string;
+  truth: number | string;
   /** Strings a passage must contain, in this order. */
   contains?: string[];
   /** Strings a passage must not contain. */
@@ -125,10 +125,12 @@ const picked = CASES.filter((c) => only.length === 0 || only.some((o) => c.book.
 const client = await makeClient(DEFAULT_MODEL);
 const ui = makeUi(true);
 const results: Result[] = [];
+let skipped = 0;
 for (const c of picked) {
   const pdf = process.env[BOOKS[c.book]] ?? "";
   if (!pdf || !(await Bun.file(pdf).exists())) {
     console.error(`skip ${c.book}: ${BOOKS[c.book]} unset or missing`);
+    skipped++;
     continue;
   }
   const t = Date.now();
@@ -139,14 +141,16 @@ for (const c of picked) {
   } catch (e) {
     console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);
   }
-  const hit = r?.hit ?? r?.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a))?.hit;
-  const answer = r?.hit?.answer ?? r?.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a))?.answer;
-  const got = answer?.text;
-  const page = hit?.page;
+  // The hit, or failing that the best of what was kept, or nothing.
+  const best = r?.hit ? { hit: r.hit, answer: r.hit.answer } : r?.rejected.length ? r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a)) : undefined;
+  const got = best?.answer?.text;
+  const page = best?.hit.page;
+  const answer = best?.answer;
   results.push({ book: c.book, question: c.question, truth: c.truth, got, p: answer?.p, page, score: score(c, got, page), ms: Date.now() - t, known: c.known });
 }
 
-const file = Bun.file("bench/latest.json");
+const snapshot = Bun.fileURLToPath(new URL("bench/latest.json", import.meta.url));
+const file = Bun.file(snapshot);
 const last: Run | undefined = (await file.exists()) ? await file.json() : undefined;
 const previous = new Map(last?.results.map((r) => [r.question, r]) ?? []);
 
@@ -168,10 +172,11 @@ const mean = results.reduce((s, r) => s + r.score, 0) / Math.max(1, results.leng
 const lastMean = last ? last.results.reduce((s, r) => s + r.score, 0) / Math.max(1, last.results.length) : undefined;
 console.log(`\nmean score ${pct(mean)}${lastMean !== undefined ? ` (last ${pct(lastMean)}, ${last!.commit} ${last!.at.slice(0, 10)})` : ""}, ${regressions} regression${regressions === 1 ? "" : "s"}`);
 
-if (save && only.length === 0) {
+// A partial run is not a baseline: a skipped case would vanish from the record.
+if (save && only.length === 0 && skipped === 0) {
   const commit = (await Bun.$`git rev-parse --short HEAD`.text()).trim();
   const run: Run = { at: new Date().toISOString(), commit, model: DEFAULT_MODEL, results };
-  await Bun.write("bench/latest.json", `${JSON.stringify(run, null, 2)}\n`);
+  await Bun.write(snapshot, `${JSON.stringify(run, null, 2)}\n`);
   console.log("wrote bench/latest.json");
-}
+} else if (skipped) console.log("not saved: a book was skipped");
 process.exit(regressions > 0 ? 1 : 0);
