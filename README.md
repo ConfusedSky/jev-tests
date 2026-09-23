@@ -403,10 +403,14 @@ first, not the first page over the threshold.
 A count still sums the pages of a section, counted in parallel.
 
 `--whole-windows` gates a window of `--chars` characters at a time instead, one
-`noul` per call. A window is tagged with its first page, so a hit in a 16-page
-section then links to where the section starts; at `--chars 12000` a 28-page
-PDF becomes 6 windows and a hit lands on page 10 rather than page 1. It costs
-the same calls and is less sharp, so it is only there for comparison.
+`noul` per call. A window is tagged with its first page, so a count or figure
+hit in a 16-page section then links to where the section starts; at `--chars
+12000` a 28-page PDF becomes 6 windows and a hit lands on page 10 rather than
+page 1. A passage is read across every page of the window and links to, and
+highlights, the page it starts on. It costs the same calls and is less sharp,
+so it is only there for comparison: at `--chars 12000` the equipment tags
+question stopped at the first window over 0.7, the equipment examples on
+p.99, where page by page it reads the tags on p.102.
 
 ## Limits
 

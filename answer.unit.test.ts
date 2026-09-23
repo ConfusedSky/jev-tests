@@ -235,7 +235,7 @@ describe("bestRun", () => {
 
 describe("a passage", () => {
   const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
-  const box = (y: number, start: number, end: number) => ({ x0: 72, y0: y, x1: 300, y1: y + 12, start, end });
+  const box = (y: number, start: number, end: number) => ({ page: 3, x0: 72, y0: y, x1: 300, y1: y + 12, start, end });
   const page = [
     plain("Chapter III: Radiation", true),
     plain("Radiation damage is permanent until treated with RadAway. A dweller carries a dosimeter."),
@@ -260,12 +260,14 @@ describe("a passage", () => {
     expect(a.passage).toEqual([
       { heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54), lines: [box(130, 0, 33), box(142, 34, 61)] },
     ]);
+    expect(a.pages).toEqual([3]);
     expect(a.p).toBeCloseTo(0.85);
   });
 
-  test("carries only the lines the chosen sentences sit on", async () => {
+  test("carries only the lines the chosen sentences sit on, and names their page", async () => {
     const a = await readPassage(stub({ "RadX reduces rads absorbed.": 0.9 }), "q", "s", page);
     expect(a.passage?.[0]?.lines).toEqual([box(142, 34, 61)]);
+    expect(a.pages).toEqual([3]);
   });
 
   test("a heading is a unit of its own and keeps its line", async () => {

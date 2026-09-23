@@ -576,6 +576,8 @@ export async function readPassage(client: TypeSafeClient, question: string, sect
   return {
     text: passage.map((p) => p.text).join("\n"),
     p: chosen.reduce((a, b) => a + b, 0) / chosen.length,
+    // A window of several pages links to the page the passage starts on.
+    pages: [...new Set(passage.flatMap((p) => p.lines.map((l) => l.page)))],
     passage: passage.map(({ heading, text, style, lines }) => ({ heading, text, style, lines })),
   };
 }

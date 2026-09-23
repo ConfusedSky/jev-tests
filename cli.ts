@@ -144,12 +144,16 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     ...a,
     verdict: a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
   });
-  // A passage is read off the page as mutool lays it out, columns and
-  // weights and all, not the -layout text the walk gates on; see layout.ts.
+  // A passage is read off the window's pages as mutool lays them out,
+  // columns and weights and all, not the -layout text the walk gates on;
+  // see layout.ts. Under --whole-windows a window spans pages.
   const verify: SearchOpts["verify"] =
     kind === "passage"
-      ? async (section, page, _text, pdf) =>
-          judge(await readPassage(client, o.question, section, await timed("extract", () => pageParagraphs(pdf, page))))
+      ? async (section, page, _text, pdf, end) => {
+          const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
+          const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
+          return judge(await readPassage(client, o.question, section, paras));
+        }
       : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
@@ -251,7 +255,7 @@ export async function report(
     const at = async (hit: Hit): Promise<Hit> => {
       const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? [];
       if (!o.highlight || lines.length === 0) return hit;
-      const copy = await highlighted(hit.pdf, hit.page, lines, !copies.has(hit.pdf));
+      const copy = await highlighted(hit.pdf, lines, !copies.has(hit.pdf));
       copies.add(hit.pdf);
       return { ...hit, pdf: copy };
     };

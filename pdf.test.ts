@@ -48,12 +48,15 @@ describe("windows", () => {
     const ws = await windows(manual, { path: "", start: 2, end: 2 }, 48000);
     expect(ws).toHaveLength(1);
     expect(ws[0]!.page).toBe(2);
+    expect(ws[0]!.end).toBe(2);
     expect(ws[0]!.text).toContain("Gunslinger");
   });
 
   test("splits on page boundaries once a window would overflow", async () => {
     const ws = await windows(manual, { path: "", start: 1, end: 3 }, 200);
     expect(ws.length).toBeGreaterThan(1);
+    // Each window ends where the next begins, and the last on the section's last page.
+    expect(ws.map((w) => w.end)).toEqual([...ws.slice(1).map((w) => w.page - 1), 3]);
     expect(ws.map((w) => w.page)).toEqual([...ws.map((w) => w.page)].sort((a, b) => a - b));
     expect(ws[0]!.page).toBe(1);
   });
@@ -331,10 +334,26 @@ describe("confine", () => {
   });
 });
 
+describe("a whole window's pages", () => {
+  // The bug this guards: under --whole-windows a passage was read from the
+  // window's first page only, and an answer on its third came back not stated.
+  test("are all handed to the verifier", async () => {
+    const seen: [number, number][] = [];
+    const verify = async (_s: string, page: number, _t: string, _pdf: string, end: number) => {
+      seen.push([page, end]);
+      return { text: "x", p: 0.9, verdict: "take" as const };
+    };
+    const only = (t: string) => (t === "Characters" ? 3 : 0);
+    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 1, chars: 48000, batch: 40, perPage: false, verify };
+    await searchPdf(stubClient(only), toc, opts, { log: () => {}, trying: () => {}, clear: () => {} });
+    expect(seen).toEqual([[2, 3]]);
+  });
+});
+
 describe("highlighted", () => {
   test("copies the PDF into the cache with the lines marked on the page", async () => {
     process.env.XDG_CACHE_HOME = Bun.fileURLToPath(new URL("fixture", import.meta.url));
-    const copy = await highlighted(manual, 3, [{ x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
+    const copy = await highlighted(manual, [{ page: 3, x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
     expect(copy).toMatch(/\/fixture\/jev\/[0-9a-z]+-manual\.pdf$/);
     const count = `${copy}.js`;
     await Bun.write(count, "var d = Document.openDocument(scriptArgs[0]); print(d.loadPage(2).getAnnotations().length);");
@@ -344,7 +363,7 @@ describe("highlighted", () => {
 });
 
 describe("batches", () => {
-  const page = (n: number, len: number) => ({ page: n, text: "x".repeat(len) });
+  const page = (n: number, len: number) => ({ page: n, end: n, text: "x".repeat(len) });
 
   test("packs pages up to the limit, in order", () => {
     const out = batches([page(1, 40), page(2, 40), page(3, 40), page(4, 40)], 100);

@@ -7,8 +7,8 @@
 
 export type Span = { text: string; bold: boolean; italic: boolean };
 export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[] };
-/** A line's box on the page, and which characters of its paragraph's text it holds. */
-export type Box = { x0: number; y0: number; x1: number; y1: number; start: number; end: number };
+/** A line's box, the page it is on, and which characters of its paragraph's text it holds. */
+export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number };
 /**
  * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
  * for both and " " for neither, and the boxes of its lines for highlighting.
@@ -77,7 +77,7 @@ const text = (l: Line) => l.spans.map((s) => s.text).join("");
  * change of size, or a bullet; a line in type well above the body's is a
  * heading of its own.
  */
-export function paragraphs(page: { width: number; height: number; lines: Line[] }): Para[] {
+export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
   const { height, lines: all } = page;
   if (all.length === 0) return [];
   const body = mode(all.map((l) => Math.round(l.size)));
@@ -131,7 +131,7 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       const start = t.length;
       t += lt;
       st += ls;
-      boxes.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, start, end: t.length });
+      boxes.push({ page: pageNumber, x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, start, end: t.length });
       if (i < cur.length - 1) {
         // A word broken at the margin is mended; otherwise the break is a space.
         if (/[\p{L}][‐\u00ad-]$/u.test(t)) {
@@ -193,5 +193,5 @@ export async function pageParagraphs(pdf: string, page: number): Promise<Para[]>
   const p = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", "-", pdf, String(page)], { stdout: "pipe", stderr: "pipe" });
   const [xml, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   if ((await p.exited) !== 0) throw new Error(`mutool failed: ${err.trim()}`);
-  return paragraphs(parseStext(xml));
+  return paragraphs(parseStext(xml), page);
 }

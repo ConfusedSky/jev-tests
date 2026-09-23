@@ -53,7 +53,8 @@ export async function outline(pdf: string): Promise<Section[]> {
   return parseOutline(await run(["mutool", "run", script, pdf]));
 }
 
-export type Window = { page: number; text: string };
+/** A stretch of pages, `page` through `end`, small enough for one call. */
+export type Window = { page: number; end: number; text: string };
 
 /**
  * Section text split into windows small enough for one call, each tagged with
@@ -73,13 +74,13 @@ export async function windows(pdf: string, s: Section, chars: number): Promise<W
   let first = s.start;
   text.split("\f").forEach((page, i) => {
     if (buf && buf.length + page.length > chars) {
-      out.push({ page: first, text: buf });
+      out.push({ page: first, end: s.start + i - 1, text: buf });
       buf = "";
       first = s.start + i;
     }
     buf += page;
   });
-  if (buf.trim()) out.push({ page: first, text: buf });
+  if (buf.trim()) out.push({ page: first, end: s.end, text: buf });
   return out.filter((w) => w.text.trim().length > 200);
 }
 
@@ -107,14 +108,17 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
  * copies afresh, since a highlight saved into the copy stays there; several
  * hits in one file each add theirs to the same copy.
  */
-export async function highlighted(pdf: string, page: number, lines: Box[], fresh = true): Promise<string> {
+export async function highlighted(pdf: string, lines: Box[], fresh = true): Promise<string> {
   const dir = `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
   // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
   const copy = `${dir}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
   if (fresh) await Bun.write(copy, Bun.file(pdf));
-  const quads = lines.map((l) => [l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]);
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
-  await run(["mutool", "run", script, copy, String(page), JSON.stringify(quads)]);
+  // A passage read across a window's pages is marked on each of them.
+  for (const page of new Set(lines.map((l) => l.page))) {
+    const quads = lines.filter((l) => l.page === page).map((l) => [l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]);
+    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quads)]);
+  }
   return copy;
 }
 
@@ -200,7 +204,7 @@ export function batches(pages: Window[], chars: number): Window[][] {
  * about skills while the count inside it comes back at p=0.32. A "keep"
  * verdict lets the walk go on instead of settling for that.
  */
-export type Verify = (section: string, page: number, text: string, pdf: string) => Promise<Judged>;
+export type Verify = (section: string, page: number, text: string, pdf: string, end: number) => Promise<Judged>;
 
 export type SearchOpts = {
   question: string;
@@ -331,7 +335,7 @@ export async function searchPdf(
         ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
       }
       check = o.countAcross(name, all);
-    } else check = o.verify?.(name, w.page, w.text, pdf);
+    } else check = o.verify?.(name, w.page, w.text, pdf, w.end);
     if (!check) return hit;
     const { verdict, pages, ...answer } = await check;
     if (pages?.length) {
