@@ -135,6 +135,12 @@ describe.if(live)("number", () => {
     expect(await subject("How does netrunning work?")).toEqual(["netrunning"]);
   });
 
+  test("names the game a question is asked of, apart from its subject", async () => {
+    const read = await readQuestion(client, "What are the available perks in fallout?");
+    expect(read.subject).toEqual(["perks"]);
+    expect(read.game).toEqual(["fallout"]);
+  });
+
   test("names the kind of thing a count counts", async () => {
     const counted = async (q: string) => (await readQuestion(client, q)).counted;
     expect(await counted("How many theme kits are there?")).toBe("theme kits");

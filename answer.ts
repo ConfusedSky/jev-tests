@@ -18,10 +18,13 @@ export const STOPWORDS = new Set(
 /**
  * What jev reads off the question's wording alone, in one call: the shape of
  * answer wanted, the quantities a number question names, the kind of thing a
- * count question counts ("theme kits" in "how many theme kits") and the
- * subject whose entry is wanted ("combat rifle"), which the text search looks for.
+ * count question counts ("theme kits" in "how many theme kits"), the subject
+ * whose entry is wanted ("combat rifle"), which the text search looks for,
+ * and the game or book the question names, which it must not: "fallout" is
+ * on every page of the Fallout book and on a few of every other, so as a
+ * search term it ranks the others.
  */
-export type Reading = { kind: Kind; quantities: string[]; counted: string; subject: string[] };
+export type Reading = { kind: Kind; quantities: string[]; counted: string; subject: string[]; game: string[] };
 
 type Word = { word: string; ends: boolean };
 
@@ -82,7 +85,15 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
         `s${i}`,
         noul(
           `\`words[${i}]\` ("${w.word}") is part of the name of the thing \`question\` is about, whose entry, rule or ` +
-            "values are wanted, such as plasma pistol, armour qualities or feats. Not the quantity asked for, not a verb, not a joining word.",
+            "values are wanted, such as plasma pistol, armour qualities or feats. Not the game or book it is asked of, " +
+            "not the quantity asked for, not a verb, not a joining word.",
+        ),
+      ],
+      [
+        `g${i}`,
+        noul(
+          `\`words[${i}]\` ("${w.word}") is part of the name of the game, book or setting \`question\` is asked of, ` +
+            "such as Fallout, Cyberpunk Red or Heart. Not the thing asked about, not a joining word.",
         ),
       ],
     ]),
@@ -99,6 +110,7 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
     // A count counts one kind of thing; the first name is it.
     counted: namesFrom(words, passed("k"))[0] ?? "",
     subject: namesFrom(words, passed("s")),
+    game: namesFrom(words, passed("g")),
   };
 }
 

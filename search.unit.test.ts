@@ -16,6 +16,11 @@ describe("terms", () => {
     expect(ts.filter((t) => t.subject).map((t) => t.words.join(" "))).toEqual(["hunting rifle", "hunting", "rifle"]);
   });
 
+  test("the game's name is never a term, subject or not", () => {
+    const ts = terms("What are the available perks in fallout?", ["perks", "fallout"], ["fallout"]);
+    expect(ts.map((t) => t.words.join(" "))).toEqual(["perk", "available"]);
+  });
+
   test("matches in singular lower-case stems", () => {
     expect(stems("The Equipment Tags:")).toEqual(["equipment", "tag"]);
     expect(terms("What are the equipment tags?", ["equipment tags"])[0]!.words).toEqual(["equipment", "tag"]);
