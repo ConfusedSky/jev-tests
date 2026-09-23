@@ -402,24 +402,33 @@ async function truthFrom(
     client.systemOne({
       state: { question, section, text },
       questions: {
+        // The whole-name clause sits in the instruction, not only the false
+        // criterion: with it there alone, "Is knight a class?" was stated at
+        // 0.40 beside "Vermissian Knight"; with it here, 0.09.
         stated: noul(
-          "`text` states the claim made in `question`, using the same name and the same kind-word (class, perk, calling, spell) the claim uses",
+          "`text` states the claim made in `question`: the exact, whole name the claim gives, no longer and no shorter, " +
+            "is named there as one of the kind-word (class, perk, calling, spell) the claim uses",
           {
-            true: "`text` says this, in those terms",
+            true: "That exact whole name is there, as that kind",
             false:
-              "`text` does not say this, says it of another kind, or only names something whose name merely contains the term in the claim. " +
-              "A longer name is a different thing: 'fire bolt' is not 'bolt'.",
+              "`text` does not say this, says it of another kind, or only has a longer name that contains the claim's name as a part: " +
+              "'Vermissian Knight' is not 'knight', 'fire bolt' is not 'bolt'.",
           },
         ),
         contradicted: noul("`text` contradicts the claim made in `question`", {
           true: "`text` says otherwise",
           false: "`text` agrees with the claim, or does not speak to it at all",
         }),
+        // Whole names again: with "not among them", a list holding
+        // "Vermissian Knight" had "knight" absent at 0.38; this way, 0.88.
         absent: noul(
-          "`text` lists things called by the same kind-word `question` uses (a class, a perk, a spell), and the one `question` names is not among them",
+          "`text` lists things called by the same kind-word `question` uses (a class, a perk, a spell), " +
+            "and no entry's whole name is exactly the name `question` gives",
           {
-            true: "`text` lists things of exactly that kind, and that exact name is not on the list; a longer name that merely contains it is not it",
-            false: "`text` lists no things of that kind, whatever other kinds it lists, or that exact name is on the list",
+            true:
+              "`text` lists things of exactly that kind, and none of them is that exact whole name. An entry whose longer name " +
+              "contains it is not it: a list with 'Vermissian Knight' does not have 'knight'",
+            false: "`text` lists no things of that kind, whatever other kinds it lists, or an entry's whole name is exactly that name",
           },
         ),
       },

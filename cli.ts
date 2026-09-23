@@ -161,7 +161,8 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
                 ),
             ),
           );
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };
+  const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
+  return { ...o, kind, verify, fromOutline, countAcross: across, gate };
 }
 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>

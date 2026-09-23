@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
+import { batches, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -299,6 +299,35 @@ describe("a section-wide count", () => {
     const { rejected, dropped } = await searchPdf(stubClient(byTitle), toc, { ...base, countAcross, verify }, ui);
     expect(rejected.map((c) => c.hit.section)).toEqual(["Characters"]);
     expect(dropped.map((c) => c.hit.section)).toEqual(["Characters > Classes > Witch"]);
+  });
+});
+
+describe("confine", () => {
+  const sections = [
+    { path: "Characters", start: 14, end: 75 },
+    { path: "Characters > Callings", start: 21, end: 30 },
+    { path: "Characters > Callings > Adventure", start: 21, end: 22 },
+    { path: "Characters > Classes", start: 31, end: 75 },
+    { path: "Rules", start: 76, end: 90 },
+  ];
+
+  // The bug this guards: no page under Callings lists all five callings; the
+  // list is on p.14, in the chapter's opening, and the walk never read it.
+  test("adds the parent chapter's opening pages before its first section", () => {
+    expect(confine(sections, "Characters > Callings")).toEqual([
+      { path: "Characters > Callings", start: 21, end: 30 },
+      { path: "Characters > Callings > Adventure", start: 21, end: 22 },
+      { path: "Characters (opening)", start: 14, end: 20 },
+    ]);
+  });
+
+  test("adds nothing when the first section starts with the chapter", () => {
+    const flush = sections.map((s) => (s.path === "Characters" ? { ...s, start: 21 } : s));
+    expect(confine(flush, "Characters > Callings").map((s) => s.path)).toEqual(["Characters > Callings", "Characters > Callings > Adventure"]);
+  });
+
+  test("a top-level section has no chapter above it", () => {
+    expect(confine(sections, "Rules")).toEqual([{ path: "Rules", start: 76, end: 90 }]);
   });
 });
 

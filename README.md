@@ -175,13 +175,22 @@ contents settles the question. Not finding one settles nothing, because
 contents summarize and a section may list three of its four classes, so a
 negative is handed to the pages of that section, and only that section, to
 confirm or overturn. Reading the whole book instead let the classes page answer
-"Is heretic a calling?" with true:
+"Is heretic a calling?" with true. The section's chapter gets a say too, its
+opening pages before its first section: Heart's callings each get two pages
+of their own and none lists all five, but the Characters chapter does, on its
+first page.
 
 ```console
 Is witch a class in heart?    true  (p=1.00)   contents, no page opened
-Is knight a class in heart?   false (p=0.97)   contents said no, Classes pages agreed
-Is heretic a calling?         false (p=0.96)   contents said no, Callings pages agreed
+Is knight a class in heart?   false (p=0.90)   contents said no, the Vermissian Knight page agreed
+Is heretic a calling?         false (p=0.95)   contents said no, the Characters opening agreed
+Is witch hunter a class?      false (p=0.98)   contents said no, Classes pages agreed
 ```
+
+A page confirms a negative only by contradicting the claim or by listing the
+things of its kind without the name, whole names only, so a page that never
+speaks to the claim is dropped and the walk goes on; this is what makes a
+positive off a fragment ("knight" beside "Vermissian Knight") stay false.
 
 A count the contents cannot settle is confined the same way: they say which
 section holds the list, and the pages of that section are read to count it.
@@ -220,6 +229,11 @@ section is expected to have some. A part below `--answer-floor` is left out
 and marked `?`. The confidence is then scaled by the share of the section that
 was counted, so three sure pages of a 36-page section do not pass as a count
 of it.
+
+A statement changes the gate as well: a negative has no answer for a page to
+contain, so Heart's class list gated at 0.32 for "Is knight a class?" and at
+0.76 once asked whether it settles the claim, by stating it, contradicting it,
+or naming the things of its kind.
 
 A count also changes what a window has to satisfy to be worth reading. No page
 says "there are 94 perks", so asking whether a window "contains the answer"

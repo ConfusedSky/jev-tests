@@ -135,6 +135,10 @@ export type Gate = (of: string) => string;
 export const GATE = {
   answer: (of) => `${of} contains the answer to \`question\``,
   list: (of) => `${of} lists entries of the kind \`question\` asks how many there are`,
+  // A negative has no answer on the page to contain: Heart's class list
+  // gated at 0.32 for "Is knight a class?" asked the first way, 0.76 this way.
+  claim: (of) =>
+    `${of} settles the claim in \`question\`: states it, contradicts it, or names the things of its kind so that the one named can be checked against them`,
 } satisfies Record<string, Gate>;
 
 async function askWindow(client: TypeSafeClient, question: string, section: string, text: string, gate: Gate) {
@@ -201,6 +205,25 @@ export type SearchOpts = {
   /** Counts a whole section at once, for a list too long to fit one window. */
   countAcross?: (section: string, windows: Window[]) => Promise<Judged>;
 };
+
+/**
+ * The sections a contents pointer confines the walk to: the section, its
+ * descendants, and the pages of its parent that come before the parent's
+ * first section. Heart's callings each get two pages of their own and no
+ * page under Callings lists all five; the list is in the Characters chapter
+ * opening, before Callings begins.
+ */
+export function confine(sections: Section[], parent: string): Section[] {
+  const pool = sections.filter((s) => s.path === parent || s.path.startsWith(`${parent} > `));
+  const cut = parent.lastIndexOf(" > ");
+  if (cut < 0) return pool;
+  const above = parent.slice(0, cut);
+  const chapter = sections.find((s) => s.path === above);
+  if (!chapter) return pool;
+  const first = Math.min(...sections.filter((s) => s.path.startsWith(`${above} > `)).map((s) => s.start));
+  if (first > chapter.start) pool.push({ path: `${above} (opening)`, start: chapter.start, end: first - 1 });
+  return pool;
+}
 
 /**
  * Rank a PDF's outline by title, then read sections in that order until one
@@ -340,7 +363,7 @@ export async function searchPdf(
       return done();
     }
     if (toc) {
-      pool = sections.filter((s) => s.path === toc.parent || s.path.startsWith(`${toc.parent} > `));
+      pool = confine(sections, toc.parent);
       floor = -Infinity;
       ui.log(`${indent}  toc   reading ${toc.parent} (${pool.length} sections)  in ${split(outlineSnap)}`);
     }
@@ -356,7 +379,7 @@ export async function searchPdf(
       (all.length > above ? ` (${all.length - above} below)` : ""),
   );
 
-  const byPath = new Map(sections.map((s) => [s.path, s]));
+  const byPath = new Map([...sections, ...pool].map((s) => [s.path, s]));
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
