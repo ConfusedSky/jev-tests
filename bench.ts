@@ -88,7 +88,7 @@ const CASES: Case[] = [
     question: "How many skills are there in the game?",
     truth: 66,
     page: 132,
-    known: "runs the contents do not confine may count the four healing skills under Needed Skills instead",
+    known: "counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead",
   },
   {
     book: "cpr",

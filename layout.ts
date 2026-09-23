@@ -84,7 +84,8 @@ const text = (l: Line) => l.spans.map((s) => s.text).join("");
  */
 // A bullet, or the "1." of a numbered list, starts a paragraph.
 const BULLET = /^(?:[•·▪‣□●○■◆◇▫⁃◦-]|\d{1,2}[.)]\s)/;
-const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦-]$/;
+// A lone "-" is a table's empty cell as often as a bullet, so it stays put.
+const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦]$/;
 
 export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
   const { height, lines: all } = page;
@@ -107,9 +108,8 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       .filter((l) => l !== g && !lead(l) && l.x0 > g.x0 && overlap(l, g) && (cap(g) ? l.x0 - g.x1 < body * 0.3 : l.block === g.block))
       .sort((a, b) => a.x0 - b.x0)[0];
     if (!mate) continue;
-    mate.spans.unshift(...g.spans, ...(cap(g) ? [] : [{ text: " ", bold: false, italic: false, font: "" }]));
-    mate.x0 = g.x0;
-    lines = lines.filter((l) => l !== g);
+    const led = { ...mate, x0: g.x0, spans: [...g.spans, ...(cap(g) ? [] : [{ text: " ", bold: false, italic: false, font: "" }]), ...mate.spans] };
+    lines = lines.filter((l) => l !== g).map((l) => (l === mate ? led : l));
   }
   // Column anchors: left edges within a body-size of each other are one edge;
   // an edge fewer than three lines start at is an indent, not a column, and
