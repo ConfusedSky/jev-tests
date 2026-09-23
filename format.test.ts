@@ -4,6 +4,8 @@ import type { Ranked } from "./shared";
 
 const row = (name: string, score = 1, reason = "Unrelated to the question"): Ranked => ({
   name,
+  list: "candidates",
+  index: 0,
   score,
   confidence: 0.5,
   reason,

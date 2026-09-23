@@ -1,6 +1,7 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
-import { rankTitles, secs, snapshot, split, timed } from "./shared";
+import { rank, secs, snapshot, split, timed } from "./shared";
+import { excerpts, weighted, type Term } from "./search";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
 
@@ -265,6 +266,8 @@ export type SearchOpts = {
   gate?: Gate;
   /** Counts a whole section at once, for a list too long to fit one window. */
   countAcross?: (section: string, windows: Window[], pdf: string) => Promise<Judged>;
+  /** What the text search looks for; unset, only the titles are ranked. */
+  terms?: Term[];
 };
 
 /**
@@ -391,33 +394,32 @@ export async function searchPdf(
     return rejected.length >= maxAnswers ? "spent" : undefined;
   };
 
+  // Extraction overlaps the outline and contents calls.
+  const text = bookText(pdf);
   const sections = await outline(pdf);
-  if (sections.length === 0) {
-    const scanSnap = snapshot();
-    const ws = await pageScan(pdf, chars);
-    if (ws.length === 0) {
-      ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-      return done();
+  // Pages already gated, by a section or an excerpt; a page never answers twice.
+  const readPages = new Set<number>();
+  const nameOf = (ws: Window[], w: Window, i: number) => {
+    const next = ws[i + 1];
+    return o.perPage ? `p.${w.page}` : next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
+  };
+  /** Reads windows in order under `name`, or each under its own page name when there is none. */
+  const scan = async (ws: Window[], name = "", label = (w: Window, i: number) => `${nameOf(ws, w, i)} (window ${i + 1}/${ws.length})`) => {
+    for (const w of ws) for (let p = w.page; p <= w.end; p++) readPages.add(p);
+    for await (const c of passed(ws, name, label)) {
+      const out = await settle(c, name || nameOf(ws, c.w, ws.indexOf(c.w)));
+      if (out === "spent") return "spent";
+      if (out && took(out)) return "stop";
     }
-    ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
-    const nameOf = (w: Window, i: number) => {
-      const next = ws[i + 1];
-      return o.perPage ? `p.${w.page}` : next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
-    };
-    for await (const c of passed(ws, "", (w, i) => `${nameOf(w, i)} (window ${i + 1}/${ws.length})`)) {
-      const out = await settle(c, nameOf(c.w, ws.indexOf(c.w)));
-      if (out === "spent") break;
-      if (out && took(out)) return done();
-    }
-    return done();
-  }
+    return undefined;
+  };
 
   // The contents may settle the question, or only say which section can. In
   // the second case the walk is confined to that section and its children,
   // and the title floor no longer applies: the section was already picked.
   let pool = sections;
   let floor = o.titleFloor;
-  if (o.fromOutline) {
+  if (o.fromOutline && sections.length > 0) {
     const outlineSnap = snapshot();
     const toc = await o.fromOutline(sections);
     // A parent bookmark with no destination is not among the sections, but
@@ -435,20 +437,82 @@ export async function searchPdf(
     }
   }
 
+  // Pages that mention the subject are ranked beside the titles, as their
+  // own candidates: a table the contents file under "Small Arms" answers
+  // "hunting rifle" and no title says so. When the contents already named
+  // the section, only its pages count, or the walk would read the page the
+  // confinement was there to keep it off.
+  const pages = await text;
+  const confined = pool !== sections;
+  const ex = o.terms
+    ? excerpts(pages, weighted(o.terms, pages), { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })
+    : [];
   const rankSnap = snapshot();
-  const all = await rankTitles(client, o.question, pool.map((s) => s.path), o.batch, "section");
-  const ranked = all.slice(0, o.max);
-  const above = all.filter((r) => r.score >= floor).length;
-  ui.log(
-    `${indent}ranked ${all.length} sections in ${split(rankSnap)}, ` +
-      (floor === -Infinity ? "confined by the contents" : `${above} above title floor ${floor}`) +
-      (all.length > above ? ` (${all.length - above} below)` : ""),
+  const all = pool.length + ex.length === 0 ? [] : await rank(
+    client,
+    o.question,
+    [
+      // The titles stay under `candidates`: as `sections`, Fallout's perk list
+      // ranked its child bookmark above the chapter itself, every run.
+      { key: "candidates", noun: "section", items: pool.map((s) => ({ label: s.path, value: s.path })) },
+      { key: "excerpts", noun: "page excerpt", items: ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) },
+    ],
+    o.batch,
   );
+  // --max bounds the sections read; the excerpts are bounded by their own
+  // limit, or a spread of twenty pages would push a section out of reach.
+  let sectionsLeft = o.max;
+  const ranked = all.filter((r) => r.list === "excerpts" || sectionsLeft-- > 0);
+  const above = all.filter((r) => r.score >= floor).length;
+  if (all.length > 0)
+    ui.log(
+      `${indent}ranked ${pool.length} sections and ${ex.length} excerpts in ${split(rankSnap)}, ` +
+        (confined ? "confined by the contents" : `${above} above title floor ${floor}`) +
+        (all.length > above ? ` (${all.length - above} below)` : ""),
+    );
 
   const byPath = new Map([...sections, ...pool].map((s) => [s.path, s]));
+  /** The narrowest bookmarked section a page falls in, for naming an excerpt's page. */
+  const around = (page: number) =>
+    sections.filter((s) => page >= s.start && page <= s.end).sort((a, b) => a.end - a.start - (b.end - b.start))[0];
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
+
+  /** Reads a section's windows best-first; a count reads all of them, anything else skips pages already read. */
+  async function readSection(name: string, s: Section): Promise<"spent" | "stop" | undefined> {
+    const under = counted.find((c) => name.startsWith(`${c} > `));
+    if (under) {
+      ui.log(`${indent}  --    ${name}  already counted under ${under}`);
+      return undefined;
+    }
+    if (read.has(`${s.start}-${s.end}`)) return undefined;
+    read.add(`${s.start}-${s.end}`);
+    const sectionSnap = snapshot();
+    const all = await windows(pdf, s, chars);
+    const ws = o.countAcross ? all : all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
+    if (ws.length === 0) {
+      ui.clear();
+      ui.log(`${indent}  --    ${split(sectionSnap)}  ${name}  p.${s.start}-${s.end}  ${all.length ? "already read" : "no extractable text"}`);
+      return undefined;
+    }
+    const wholeSection = Boolean(o.countAcross && ws.length > 1);
+    const label = (w: Window, i: number) => `${name} p.${w.page}${ws.length > 1 ? ` (window ${i + 1}/${ws.length})` : ""}`;
+    for (const w of ws) for (let p = w.page; p <= w.end; p++) readPages.add(p);
+    for await (const c of passed(ws, name, label)) {
+      const out = await settle(c, name, ws);
+      if (out === "spent") return "spent";
+      if (out && took(out)) {
+        ui.log(`${indent}section ${split(sectionSnap)}`);
+        return "stop";
+      }
+      // A section-wide count already read every window, so the rest are spent.
+      if (wholeSection) break;
+    }
+    if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${name}`);
+    return undefined;
+  }
+
   let below = false;
   for (const r of ranked) {
     // The floor is soft: a title that scored under it is read only while
@@ -461,34 +525,29 @@ export async function searchPdf(
       if (!below) ui.log(`${indent}  nothing above the title floor answered; reading on below it`);
       below = true;
     }
-    const s = byPath.get(r.name)!;
-    const under = counted.find((c) => r.name.startsWith(`${c} > `));
-    if (under) {
-      ui.log(`${indent}  --    ${r.name}  already counted under ${under}`);
-      continue;
-    }
-    if (read.has(`${s.start}-${s.end}`)) continue;
-    read.add(`${s.start}-${s.end}`);
-    const sectionSnap = snapshot();
-    const ws = await windows(pdf, s, chars);
-    if (ws.length === 0) {
-      ui.clear();
-      ui.log(`${indent}  --    ${split(sectionSnap)}  ${r.name}  p.${s.start}-${s.end}  no extractable text`);
-      continue;
-    }
-    const wholeSection = Boolean(o.countAcross && ws.length > 1);
-    const label = (w: Window, i: number) => `${r.name} p.${w.page}${ws.length > 1 ? ` (window ${i + 1}/${ws.length})` : ""}`;
-    for await (const c of passed(ws, r.name, label)) {
-      const out = await settle(c, r.name, ws);
-      if (out === "spent") return done();
-      if (out && took(out)) {
-        ui.log(`${indent}section ${split(sectionSnap)}`);
-        return done();
+    let out: "spent" | "stop" | undefined;
+    if (r.list === "candidates") out = await readSection(r.name, byPath.get(r.name)!);
+    else {
+      const page = ex[r.index]!.page;
+      const s = around(page);
+      if (readPages.has(page)) continue;
+      // A list outruns a page, so a count reads the section the page is in.
+      if (o.countAcross && s) out = await readSection(s.path, s);
+      else {
+        const name = s?.path ?? `p.${page}`;
+        const w = { page, end: page, text: pages[page - 1]! };
+        out = await scan([w], name, () => `${name} p.${page} (excerpt)`);
       }
-      // A section-wide count already read every window, so the rest are spent.
-      if (wholeSection) break;
     }
-    if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${r.name}`);
+    if (out === "spent" || out === "stop") return done();
+  }
+  // With no outline the rest of the book is read in page order.
+  if (sections.length === 0 && hits.length < wanted) {
+    const scanSnap = snapshot();
+    const ws = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
+    if (ws.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
+    else ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
+    await scan(ws);
   }
   return done();
 }

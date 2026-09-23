@@ -3,6 +3,7 @@ import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPa
 import { pageParagraphs, type Para } from "./layout";
 import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
+import { terms } from "./search";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
 export type Flags<O> = Record<string, (o: O, next: () => string, fail: (why: string) => never) => void>;
@@ -53,6 +54,8 @@ export type ReadOpts = SearchOpts & {
   maxAnswers: number;
   perPage: boolean;
   hits: number;
+  /** Search the text for the question's subject and rank the pages found beside the titles. */
+  search: boolean;
   kind?: Kind;
 };
 
@@ -72,6 +75,7 @@ export const readDefaults = (): ReadOpts => ({
   maxAnswers: 5,
   perPage: true,
   hits: 1,
+  search: true,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -89,6 +93,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--highlight": (o) => (o.highlight = true),
   "--whole-windows": (o) => (o.perPage = false),
   "--no-toc": (o) => (o.noToc = true),
+  "--no-search": (o) => (o.search = false),
   "--kind": (o, next, fail) => {
     const k = next();
     if (!KINDS.some((x) => x === k)) fail(`must be one of ${KINDS.join(", ")}`);
@@ -111,6 +116,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --answer-floor P confidence an answer read off a page must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
+      --no-search      rank outline titles only, without searching the text
       --kind K         force count, number, truth or passage instead of asking jev`;
 
 /**
@@ -133,6 +139,8 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
   if (kind === "count" && read.counted) ui.log(`counts ${read.counted}`);
+  const found = o.search ? terms(o.question, read.subject) : undefined;
+  if (found && read.subject.length) ui.log(`searches for ${read.subject.join(", ")}`);
   const fromOutline = o.noToc
     ? undefined
     : (sections: Section[]) =>
@@ -178,7 +186,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
             ),
           );
   const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate };
+  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found };
 }
 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
