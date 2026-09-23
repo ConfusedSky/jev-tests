@@ -484,6 +484,33 @@ head (`v2.5`, `p12`). A figure on several rows is offered once per row, up to
 three, since the `5` in the header and the `5` in the Combat Rifle row are told
 apart only by their rows and jev cannot pick a row it was never shown.
 
+## Tables as records
+
+A table on the page is read into a record a row before the model sees it,
+in `layout.ts`: a head of three or more short bold cells set apart across
+the page (a head two lines tall, "WEAPON" over "TYPE", is one head), then
+each line below goes to the column whose centre is nearest its own, the
+first column's lines start the rows, and a cell of several lines joins the
+row whose band holds it. A row prints as one line of JSON, keys as the book
+sets them:
+
+```
+{"SMALL GUN":"Combat Rifle","WEAPON TYPE":"Small Guns","DAMAGE RATING":"5 D C","DAMAGE EFFECTS":"–","DAMAGE TYPE":"Physical","FIRE RATE":"2","RANGE":"M","QUALITIES":"Two-Handed","WEIGHT":"11","COST":"117","RARITY":"2"}
+```
+
+A number question reads its page this way, so a figure sits beside its
+column head rather than loose on a line; a passage that lands on a table
+prints its rows as records, each row one sentence of the passage. The
+table ends at a heading, a line of prose set across its columns, or a gap
+of three rows. A row that lacks a column nearly every row has, a name
+wrapped over lines set as far apart as rows or a description that pushed
+its cost down a line, joins the nearer row that has it. Two lists side by
+side under the same heads keep their cells apart under numbered heads
+("Skill 2"). A group heading set inside a table as a row of its own
+("RECEIVER MODS" above the receiver mods) joins the row below it. A letter
+in a column ("RANGE": "M") is not a figure and a number question cannot
+read it yet.
+
 ## The exact page
 
 Every page of a section is gated on its own, so the hit is the page that

@@ -14,7 +14,7 @@ export type Box = { page: number; x0: number; y0: number; x1: number; y1: number
  * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
  * for both and " " for neither, and the boxes of its lines for highlighting.
  */
-export type Para = { heading: boolean; text: string; style: string; lines: Box[] };
+export type Para = { heading: boolean; text: string; style: string; lines: Box[]; table?: true };
 
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -87,6 +87,134 @@ const BULLET = /^(?:[•·▪‣□●○■◆◇▫⁃◦-]|\d{1,2}[.)]\s)/;
 // A lone "-" is a table's empty cell as often as a bullet, so it stays put.
 const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦]$/;
 
+/** A table read off the page: its column heads and, per row, the cell text under each head and the lines it was read from. */
+export type Table = { columns: string[]; rows: { cells: Record<string, string>; lines: Line[] }[]; x0: number; x1: number; y0: number; y1: number; lines: Line[] };
+
+const words = (l: Line) => text(l).trim().split(/\s+/).length;
+
+/**
+ * Tables, found by their heads: a row of three or more short bold cells set
+ * apart across the page, a head of two lines ("WEAPON" over "TYPE") joined.
+ * Each line below goes to the column whose centre is nearest its own; the
+ * first column's lines start the rows, lines with tight leading one row
+ * ("Constitution Arms / Hurricane Assault / Weapon"), and every other cell
+ * joins the row whose band holds it. The table ends at a heading, a line
+ * of prose set across the columns, or a gap of three rows.
+ */
+export function tables(lines: Line[], body: number): Table[] {
+  const out: Table[] = [];
+  const height = (l: Line) => l.y1 - l.y0;
+  const centre = (l: Line) => (l.x0 + l.x1) / 2;
+  const headish = (l: Line) => l.spans.every((s) => s.bold || !s.text.trim()) && words(l) <= 4 && text(l).trim().length <= 30;
+  const sorted = [...lines].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  let taken = new Set<Line>();
+  for (const first of sorted) {
+    if (taken.has(first) || !headish(first)) continue;
+    // The head: bold short cells within two line heights of the first, in
+    // one or two bands, three or more of them side by side.
+    const head = sorted.filter((l) => !taken.has(l) && headish(l) && l.y0 >= first.y0 - 1 && l.y0 < first.y0 + height(first) * 2.2);
+    const spread = head.filter((l) => head.some((m) => m !== l && Math.abs(m.y0 - l.y0) < height(l) / 2));
+    if (spread.length < 3) continue;
+    // Columns: head cells whose spans overlap are one column.
+    const columns: { cells: Line[]; x0: number; x1: number }[] = [];
+    for (const c of [...head].sort((a, b) => a.x0 - b.x0)) {
+      const col = columns.find((k) => c.x0 < k.x1 && c.x1 > k.x0);
+      if (col) {
+        col.cells.push(c);
+        col.x0 = Math.min(col.x0, c.x0);
+        col.x1 = Math.max(col.x1, c.x1);
+      } else columns.push({ cells: [c], x0: c.x0, x1: c.x1 });
+    }
+    if (columns.length < 3) continue;
+    const names = columns.map((k) => k.cells.sort((a, b) => a.y0 - b.y0).map((c) => text(c).trim()).join(" "));
+    // Two lists side by side under the same heads ("Skill Level Cost" twice
+    // across a character sheet) keep their cells apart by a numbered head.
+    for (const [i, n] of names.entries()) {
+      const before = names.slice(0, i).filter((m) => m === n || m.startsWith(`${n} `)).length;
+      if (before > 0) names[i] = `${n} ${before + 1}`;
+    }
+    const centres = columns.map((k) => (k.x0 + k.x1) / 2);
+    const nearest = (l: Line) => centres.reduce((best, c, i) => (Math.abs(c - centre(l)) < Math.abs(centres[best]! - centre(l)) ? i : best), 0);
+    const headBottom = Math.max(...head.map((l) => l.y1));
+    // The body: every line below the head until the table plainly ends.
+    const bodyLines: Line[] = [];
+    let last = headBottom;
+    for (const l of sorted) {
+      if (taken.has(l) || head.includes(l) || l.y0 < headBottom - 1) continue;
+      if (l.x1 < columns[0]!.x0 - body * 2 || l.x0 > columns.at(-1)!.x1 + body * 2) continue;
+      const prose = l.x0 < centres[1]! && l.x1 > centres[1]! + body && nearest(l) === 0 && words(l) > 4;
+      // A heading ends the table; a lone glyph in display type (Fallout's dice) is a cell.
+      const heading = l.size > body * 1.25 && text(l).trim().length > 2;
+      if (heading || prose || l.y0 - last > height(l) * 3) break;
+      if (bodyLines.length > 0 && headish(l) && sorted.filter((m) => headish(m) && Math.abs(m.y0 - l.y0) < height(l) / 2).length >= 3) break;
+      bodyLines.push(l);
+      last = Math.max(last, l.y1);
+    }
+    // Rows start at the first column's lines; tight leading keeps a wrapped
+    // name in one row. A row's band reaches halfway to the names above and
+    // below it, since a cell of several lines sits centred on its row.
+    const starts = bodyLines.filter((l) => nearest(l) === 0);
+    const names0: { y0: number; y1: number }[] = [];
+    for (const l of starts) {
+      const prev = names0.at(-1);
+      if (prev && l.y0 - prev.y1 <= height(l) * 0.5) prev.y1 = l.y1;
+      else names0.push({ y0: l.y0, y1: l.y1 });
+    }
+    if (names0.length < 2) continue;
+    const bounds = names0.map((n, i) => (i === 0 ? -Infinity : (names0[i - 1]!.y1 + n.y0) / 2));
+    const rowOf = (l: Line) => {
+      const y = (l.y0 + l.y1) / 2;
+      let r = -1;
+      for (const [i, top] of bounds.entries()) if (y >= top) r = i;
+      return r;
+    };
+    const rows: Line[][] = names0.map(() => []);
+    for (const l of bodyLines) {
+      const r = rowOf(l);
+      if (r >= 0) rows[r]!.push(l);
+    }
+    /** A row's cells from its lines: each column's lines in reading order, in column order. */
+    const cellsOf = (ls: Line[]): Record<string, string> => {
+      const cells: Record<string, string> = {};
+      for (const l of [...ls].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+        const name = names[nearest(l)]!;
+        cells[name] = cells[name] ? `${cells[name]} ${text(l).trim()}` : text(l).trim();
+      }
+      return Object.fromEntries(names.filter((n) => n in cells).map((n) => [n, cells[n]!]));
+    };
+    // A name wrapped over lines set as far apart as rows, or a row whose
+    // description wrapped and pushed its cost down a line, makes rows that
+    // lack a column most rows have; each joins the nearer neighbour that
+    // has it, the lines read back in order.
+    const common = names.filter((n) => rows.filter((r) => n in cellsOf(r)).length * 2 > rows.length);
+    const gap = (a: Line[], b: Line[]) => Math.min(...a.flatMap((l) => b.map((m) => Math.max(l.y0 - m.y1, m.y0 - l.y1))));
+    for (const [i, r] of rows.entries()) {
+      const has = cellsOf(r);
+      if (r.length === 0 || common.every((n) => n in has)) continue;
+      const near = [rows[i - 1], rows[i + 1]]
+        .filter((n): n is Line[] => n !== undefined && n.length > 0 && common.every((c) => c in cellsOf(n)))
+        .sort((a, b) => gap(a, r) - gap(b, r))[0];
+      if (!near) continue;
+      near.push(...r);
+      r.length = 0;
+    }
+    const filled = rows.filter((r) => Object.keys(cellsOf(r)).length >= 2).map((r) => ({ cells: cellsOf(r), lines: r }));
+    if (filled.length < 2) continue;
+    const all = [...head, ...bodyLines];
+    for (const l of all) taken.add(l);
+    out.push({
+      columns: names,
+      rows: filled,
+      x0: Math.min(...all.map((l) => l.x0)),
+      x1: Math.max(...all.map((l) => l.x1)),
+      y0: first.y0,
+      y1: Math.max(...all.map((l) => l.y1)),
+      lines: all,
+    });
+  }
+  return out;
+}
+
 export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
   const { height, lines: all } = page;
   if (all.length === 0) return [];
@@ -95,7 +223,12 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   // modest type, or hugs the right edge whatever its type; a chapter title
   // sits up there too, in display type, and stays.
   const { width } = page;
-  let lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85));
+  const onPage = all.filter((l) => !((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5));
+  // Tables come first, before the right edge is cleared: a last column's
+  // cells hug it as a page number does.
+  const found = tables(onPage, body);
+  const inTable = new Set(found.flatMap((t) => t.lines));
+  let lines = onPage.filter((l) => !inTable.has(l) && l.x0 <= width * 0.85);
   // A bullet set as a line of its own leads the line beside it; left apart,
   // the two sit side by side and read as a table row. A drop cap is a letter
   // of its own in display type, flush against the line it opens, in a block
@@ -231,7 +364,18 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     cur.push(l);
   }
   flush();
-  return out.filter((p) => p.text.length > 0);
+  const paras = out.filter((p) => p.text.length > 0);
+  // Each row is a record, one line of JSON, set where the table stood: before
+  // the first paragraph that starts below its head within its width.
+  for (const t of found) {
+    const rows: Para[] = t.rows.map((r) => {
+      const json = JSON.stringify(r.cells);
+      return { heading: false, table: true, text: json, style: " ".repeat(json.length), lines: r.lines.map((l) => ({ page: pageNumber, x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, start: 0, end: json.length })) };
+    });
+    const at = paras.findIndex((p) => p.lines[0] && p.lines[0].y0 > t.y0 && p.lines[0].x1 > t.x0 && p.lines[0].x0 < t.x1);
+    paras.splice(at < 0 ? paras.length : at, 0, ...rows);
+  }
+  return paras;
 }
 
 /** Trims and single-spaces `text`, keeping `style` in step; a space keeps its span's weight. */
