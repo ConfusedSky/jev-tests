@@ -233,6 +233,13 @@ would have trailed the passage at 0.5, while a heading's 0.43 dip inside the
 Fallout RadAway entry is outweighed by the sentences around it and kept. A
 page with no sentence of the answer is dropped and the walk goes on.
 
+A passage that reaches the edge of its page goes on past it: the next page
+(or the one before) is laid out and its sentences asked, up to two pages
+each way, and the run is taken over the whole. Necromunda's phases of a
+round begin at the foot of one page and end at the head of the next. The
+link lands on the page the passage starts on, and `--highlight` marks every
+page it covers.
+
 ```console
 $ bun jevsec.ts manual.pdf "How is radiation treated?"
 (p=0.93)  manual.pdf p.3  Chapter III: Radiation  (found p=0.97)
@@ -244,7 +251,13 @@ The text a passage is read from is the page as `mutool` lays it out, in
 the left edges most lines share (three of them on Heart's equipment tags
 page), into paragraphs by the gaps between lines, with running headers and
 page numbers dropped from the margins and the weight of every character
-kept. A heading is a line in display type; a bold entry name stays bold. In
+kept. A heading is a line in display type; a bold entry name stays bold. A
+line set across the columns, a heading or an intro, bands the page: what
+stands above it in either column is read before it, so a list set in two
+columns under an intro reads left column then right, not the right column
+after the whole left one. A bullet set as a line of its own leads the line
+beside it, and a drop cap leads its line with no space, where each had read
+as a table cell next to its text. In
 a terminal the passage prints wrapped to the window with its headings and
 bold runs in bold; piped, it is plain text, a paragraph a line. A space
 mutool drops between two words is put back from the gap in their character

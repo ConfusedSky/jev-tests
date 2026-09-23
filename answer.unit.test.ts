@@ -278,6 +278,34 @@ describe("a passage", () => {
     expect(a.passage?.map((p) => p.heading)).toEqual([true, false]);
   });
 
+  // The bug this guards: Necromunda's phases of a round start at the foot of
+  // one page and go on at the top of the next, and the passage stopped short.
+  test("a passage reaching the page's end grows onto the next page, and only that page's sentences are asked", async () => {
+    const asked: string[] = [];
+    const nouls = { "RadX reduces rads absorbed.": 0.9, "Take one dose per day.": 0.9, "Unrelated.": 0.1 };
+    const client = stub(nouls);
+    const spy = {
+      systemOne: async (r: { questions: Record<string, { instructions: { sentence: string } }> }) => {
+        asked.push(...Object.values(r.questions).map((q) => q.instructions.sentence));
+        return (client.systemOne as (x: unknown) => Promise<unknown>)(r);
+      },
+    } as unknown as typeof client;
+    const next = [plain("Take one dose per day. Unrelated.")];
+    const seen: string[] = [];
+    const more = async (dir: "before" | "after") => (seen.push(dir), dir === "after" && seen.filter((d) => d === "after").length === 1 ? next : []);
+    const a = await readPassage(spy, "q", "s", page, more);
+    expect(a.text).toBe("RadX reduces rads absorbed.\nTake one dose per day.");
+    expect(asked.filter((s) => s === "Take one dose per day.")).toHaveLength(1);
+    expect(asked.filter((s) => s === "RadX reduces rads absorbed.")).toHaveLength(1);
+  });
+
+  test("a passage that starts at the page's top grows onto the page before", async () => {
+    const before = [plain("Ignore this. Radiation is treated with chems.")];
+    const more = async (dir: "before" | "after") => (dir === "before" ? before : []);
+    const a = await readPassage(stub({ "Chapter III: Radiation": 0.9, "Radiation is treated with chems.": 0.9 }), "q", "s", page, more);
+    expect(a.text).toBe("Radiation is treated with chems.\nChapter III: Radiation");
+  });
+
   test("a page with no sentence of the answer is not stated", async () => {
     expect(await readPassage(stub({}), "q", "s", page)).toEqual({ text: "not stated", p: 1 });
   });

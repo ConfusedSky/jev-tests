@@ -600,21 +600,30 @@ export function unitsOf(paras: Para[]): Unit[] {
  * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
  * and a whole Fallout chems page between 0.4 and 0.7.
  */
-export async function readPassage(client: TypeSafeClient, question: string, section: string, paras: Para[]): Promise<Answer> {
-  const units = unitsOf(paras);
+/** Pages a passage may grow onto past the window it was found in, each way. */
+const PASSAGE_REACH = 2;
+
+export async function readPassage(
+  client: TypeSafeClient,
+  question: string,
+  section: string,
+  paras: Para[],
+  more?: (dir: "before" | "after") => Promise<Para[]>,
+): Promise<Answer> {
+  let units = unitsOf(paras);
   if (units.length === 0) return { text: "not stated", p: 1 };
-  const text = paras.map((p) => p.text).join("\n\n");
-  const chunks: number[][] = [];
-  for (let i = 0; i < units.length; i += CELLS_PER_CALL) chunks.push(units.slice(i, i + CELLS_PER_CALL).map((_, j) => i + j));
-  const ps = (
-    await timed("api", () =>
+  /** Whether each of `units` (a slice of the whole) is part of the answer, with the whole text in the state. */
+  const judge = async (us: Unit[], text: string): Promise<number[]> => {
+    const chunks: Unit[][] = [];
+    for (let i = 0; i < us.length; i += CELLS_PER_CALL) chunks.push(us.slice(i, i + CELLS_PER_CALL));
+    const ps = await timed("api", () =>
       Promise.all(
-        chunks.map(async (idx) => {
+        chunks.map(async (chunk) => {
           const questions = Object.fromEntries(
-            idx.map((i) => [
+            chunk.map((u, i) => [
               `s${i}`,
               noul(
-                { sentence: units[i]!.text, ask: "`sentence` is part of the answer to `question`" },
+                { sentence: u.text, ask: "`sentence` is part of the answer to `question`" },
                 {
                   true: "It states, explains or lists something `question` asks for, or is the heading or lead-in of the passage that does",
                   false: "It is about something else, or merely sits near the answer",
@@ -623,12 +632,35 @@ export async function readPassage(client: TypeSafeClient, question: string, sect
             ]),
           );
           const res = await client.systemOne({ state: { question, section, text }, questions });
-          return idx.map((i) => (res.answers[`s${i}`] as { noul: number }).noul);
+          return chunk.map((_, i) => (res.answers[`s${i}`] as { noul: number }).noul);
         }),
       ),
-    )
-  ).flat();
-  const run = bestRun(ps);
+    );
+    return ps.flat();
+  };
+  const whole = () => paras.map((p) => p.text).join("\n\n");
+  let ps = await judge(units, whole());
+  let run = bestRun(ps);
+  // A passage that reaches the window's edge goes on past it: the phases of
+  // a round start at the foot of one page and end on the next. Only the new
+  // page's sentences are asked; a page's units do not change by its neighbours.
+  for (const [dir, edge] of [["after", () => run!.end === units.length], ["before", () => run!.start === 0]] as const) {
+    for (let reach = 0; run && edge() && more && reach < PASSAGE_REACH; reach++) {
+      const next = await more(dir);
+      if (next.length === 0) break;
+      const fresh = unitsOf(next);
+      if (dir === "after") {
+        paras = [...paras, ...next];
+        units = [...units, ...fresh.map((u) => ({ ...u, para: u.para + paras.length - next.length }))];
+        ps = [...ps, ...(await judge(fresh, whole()))];
+      } else {
+        paras = [...next, ...paras];
+        units = [...fresh, ...units.map((u) => ({ ...u, para: u.para + next.length }))];
+        ps = [...(await judge(fresh, whole())), ...ps];
+      }
+      run = bestRun(ps);
+    }
+  }
   if (!run) return { text: "not stated", p: 1 };
   const chosen = ps.slice(run.start, run.end);
   // Sentences of one paragraph go back together, with the lines they sit
