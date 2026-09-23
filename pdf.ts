@@ -276,8 +276,11 @@ export async function searchPdf(
   const settle = async ({ w, p, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
     let hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
-    // than the window that happened to answer, and links to the first page
-    // that counted anything.
+    // than the window that happened to answer. It links to the first page
+    // that counted something and that the gate did not call a no: Heart's
+    // domains page is preceded by one that mentions a domain in passing, and
+    // the gate put that page at 0.10. The stop threshold is too strict here:
+    // the Fallout perk pages gate at 0.6 apiece with one at 0.71.
     let check: Promise<Judged> | undefined;
     if (all && all.length > 1 && o.countAcross) {
       counted.push(name);
@@ -290,8 +293,11 @@ export async function searchPdf(
       check = o.countAcross(name, all);
     } else check = o.verify?.(name, w.page, w.text);
     if (!check) return hit;
-    const { verdict, page, ...answer } = await check;
-    if (page !== undefined) hit = { ...hit, page };
+    const { verdict, pages, ...answer } = await check;
+    if (pages?.length) {
+      const gated = new Set(tried.filter((t) => t.name === name && t.p >= 0.5).map((t) => t.page));
+      hit = { ...hit, page: pages.find((p) => gated.has(p)) ?? pages[0]! };
+    }
     ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
     if (verdict === "take") return { ...hit, answer };
     (verdict === "keep" ? rejected : dropped).push({ hit, answer });

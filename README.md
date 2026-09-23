@@ -202,8 +202,10 @@ counted on its own and the parts are added up, reported as they land:
 Counting a section reads every page under it, so its subsections are skipped
 rather than re-counted, and any count already taken off one of its pages is
 dropped as a fragment of the same list rather than kept as a fallback. The
-link goes to the first page that counted anything: Heart's nine classes sit
-on the second page of their section, and the first page lists none.
+link goes to the first page that counted something and that the gate did not
+call a no (under 0.5): Heart's nine classes sit on the second page of their
+section, the first lists none, and the page before its domains list mentions
+one domain in passing at gate p=0.10.
 
 A window's count is as sure as the share of its scraps that were decided
 clearly (at or above 0.7, against those between 0.3 and 0.7), and the

@@ -92,8 +92,8 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
   };
 }
 
-/** `page` is where the answer was read, when that is not the window that passed: a count's first counted page. */
-export type Answer = { text: string; p: number; page?: number };
+/** `pages` are where the answer was read when that is not the window that passed: the pages a count counted anything on. */
+export type Answer = { text: string; p: number; pages?: number[] };
 /** A window's count with the names it counted, so a section counts each name once across its windows. */
 type Counted = Answer & { names: string[] };
 
@@ -364,8 +364,7 @@ export async function countAcross(
   const seen = new Set<string>();
   let worst = 1;
   let covered = 0;
-  // The first page that counted anything is the page the answer links to.
-  let page: number | undefined;
+  const pages: number[] = [];
   for (const [i, part] of parts.entries()) {
     const { names, ...answer } = part;
     const counted = part.p >= floor;
@@ -374,12 +373,12 @@ export async function countAcross(
     // expected in a long section, so it lowers no confidence.
     if (counted && names.length > 0) {
       for (const name of names) seen.add(name);
-      page ??= windows[i]!.page;
+      pages.push(windows[i]!.page);
       worst = Math.min(worst, part.p);
     }
     onPart?.(windows[i]!.page, answer, counted, seen.size);
   }
-  return page === undefined ? { text: "not stated", p: 1 } : { text: String(seen.size), p: worst * (covered / windows.length), page };
+  return pages.length === 0 ? { text: "not stated", p: 1 } : { text: String(seen.size), p: worst * (covered / windows.length), pages };
 }
 
 /**

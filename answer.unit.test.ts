@@ -477,20 +477,20 @@ describe("countAcross", () => {
     expect(a.text).toBe("30");
   });
 
-  test("names the first page that counted anything", async () => {
-    const a = await countAcross(stubCells([[0.05], [0.05], sure(9)]), "q", "s", ws(3));
-    expect(a).toEqual({ text: "9", p: 1, page: 3 });
+  test("names the pages that counted anything", async () => {
+    const a = await countAcross(stubCells([[0.05], sure(2), sure(7)]), "q", "s", ws(3));
+    expect(a).toEqual({ text: "9", p: 1, pages: [2, 3] });
   });
 
   test("reports the least certain part that contributed", async () => {
     const a = await countAcross(stubCells([sure(4), [...sure(3), 0.5, 0.5, 0.5]]), "q", "s", ws(2));
-    expect(a).toEqual({ text: "10", p: 0.5, page: 1 });
+    expect(a).toEqual({ text: "10", p: 0.5, pages: [1, 2] });
   });
 
   // A long list has windows holding none of it; that is expected, not doubt.
   test("a window listing none neither adds nor lowers confidence", async () => {
     const a = await countAcross(stubCells([sure(7), [0.05], [0.1]]), "q", "s", ws(3));
-    expect(a).toEqual({ text: "7", p: 1, page: 1 });
+    expect(a).toEqual({ text: "7", p: 1, pages: [1] });
   });
 
   // The bug this guards: the Fallout skills page lists all seventeen skills
@@ -498,7 +498,7 @@ describe("countAcross", () => {
   test("counts a name listed in two windows once", async () => {
     const twice = [{ page: 1, text: "Athletics\nBarter\nProse here." }, { page: 2, text: "Athletics\nBig Guns\nProse here." }];
     const a = await countAcross(stubCells([sure(2), sure(2)]), "q", "s", twice);
-    expect(a).toEqual({ text: "3", p: 1, page: 1 });
+    expect(a).toEqual({ text: "3", p: 1, pages: [1, 2] });
   });
 
   test("reports each part as it lands", async () => {

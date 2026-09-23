@@ -98,13 +98,13 @@ describe("pageUrl", () => {
  * the answer" Noul with 1, so a walk visits sections in outline order and the
  * verifier alone decides where it stops. Keeps the walk testable offline.
  */
-function stubClient(scoreOf: (title: string) => number = () => 3) {
+function stubClient(scoreOf: (title: string) => number = () => 3, noulOf: (key: string) => number = () => 1) {
   return {
     systemOne: async ({ questions }: { questions: Record<string, unknown> }) => ({
       answers: Object.fromEntries(
         Object.entries(questions).map(([k, q]) => {
           const { type, instructions } = q as { type: string; instructions: string };
-          if (type === "noul") return [k, { type, noul: 1 }];
+          if (type === "noul") return [k, { type, noul: noulOf(k) }];
           const title = /\("(.*)"\) answers/.exec(instructions)?.[1] ?? "";
           return [k, { type, score: scoreOf(title), confidence: 1, legend: {}, probabilities: {} }];
         }),
@@ -271,11 +271,24 @@ describe("a section-wide count", () => {
   // section, and the link went to the first, which listed none.
   test("links to the first page that counted anything, not the section's first page", async () => {
     const only = (t: string) => (t === "Characters" ? 3 : 0);
-    const across = async () => ({ text: "9", p: 1, verdict: "take" as const, page: 3 });
+    const across = async () => ({ text: "9", p: 1, verdict: "take" as const, pages: [3] });
     const { hit } = await searchPdf(stubClient(only), toc, { ...base, countAcross: across }, ui);
     expect(hit?.section).toBe("Characters");
     expect(hit?.page).toBe(3);
     expect(hit?.answer).toEqual({ text: "9", p: 1 });
+  });
+
+  // The bug this guards: the page before Heart's domains list mentions one
+  // domain in passing, counted 1, and took the link at gate p=0.10.
+  test("prefers a counted page the gate leaned yes on over one it called no", async () => {
+    const only = (t: string) => (t === "Characters" ? 3 : 0);
+    const across = async () => ({ text: "8", p: 1, verdict: "take" as const, pages: [2, 3] });
+    // Per page, so each page's gate has its own key for the stub to answer.
+    const link = async (p2: number) =>
+      (await searchPdf(stubClient(only, (key) => (key === "p2" ? p2 : 1)), toc, { ...base, perPage: true, countAcross: across }, ui)).hit?.page;
+    expect(await link(0.1)).toBe(3);
+    // Under the stop threshold yet above even odds is not a no.
+    expect(await link(0.6)).toBe(2);
   });
 
   // The bug this guards: 5 off one perk's page outranked 78 for the whole
