@@ -330,8 +330,9 @@ the same calls and is less sharp, so it is only there for comparison.
   characters, one not starting with a capital, or one split across a line
   break is never offered, so it is never counted. Measured against the
   choice-over-numbers method it replaced, on two-column rulebooks. Fallout:
-  the 94 perks over 16 pages came back as 95 at p=0.80 ("Dogmeat" counted;
-  the old method said 80 at p=0.36); the 17 skills as 17 at p=1.00 (old 16);
+  the 94 perks over 16 pages came back as 95 at p=0.80 (a stray "GUNS" off
+  an illustration counted; Dogmeat's perk and his stat block are one name,
+  so he counts once; the old method said 80 at p=0.36); the 17 skills as 17 at p=1.00 (old 16);
   the 6 origins over 7 pages as 6 at p=0.32 (old 12). Legend in the Mist:
   the 20 theme types on one page as 19 at p=0.89 (old refused); the 153 theme
   kits over two pages as 94, the first page right (94 counted, 91 there,
