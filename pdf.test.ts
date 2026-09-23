@@ -105,7 +105,7 @@ function stubClient(scoreOf: (title: string) => number = () => 3) {
         Object.entries(questions).map(([k, q]) => {
           const { type, instructions } = q as { type: string; instructions: string };
           if (type === "noul") return [k, { type, noul: 1 }];
-          const title = /"(.*)" answers/.exec(instructions)?.[1] ?? "";
+          const title = /\("(.*)"\) answers/.exec(instructions)?.[1] ?? "";
           return [k, { type, score: scoreOf(title), confidence: 1, legend: {}, probabilities: {} }];
         }),
       ),

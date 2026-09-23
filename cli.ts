@@ -1,5 +1,5 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, classify, countAcross, KINDS, quantitiesOf, type Answer, type Judged, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, countAcross, KINDS, readQuestion, type Answer, type Judged, type Kind } from "./answer";
 import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
@@ -117,7 +117,9 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
  * value to be confident about, so a passage question gets no verifier.
  */
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
-  const kind = o.kind ?? (await classify(client, o.question));
+  // Kind and quantities come off the wording alone, so one call reads both.
+  const read = await readQuestion(client, o.question);
+  const kind = o.kind ?? read.kind;
   ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
   // A count, number or statement has one answer; only a passage question has
   // several places worth reading.
@@ -126,7 +128,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     process.exit(2);
   }
   // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
-  const wanted = kind === "number" ? await quantitiesOf(client, o.question) : [];
+  const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
   const fromOutline = o.noToc
     ? undefined

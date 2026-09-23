@@ -90,7 +90,7 @@ export async function rankTitles(
   const scored = await timed("api", () => Promise.all(
     chunks.map(async (chunk) => {
       const questions = Object.fromEntries(
-        chunk.map((name, i) => [`f${i}`, score(`The ${subject} "${name}" answers the question`, RUBRIC)]),
+        chunk.map((name, i) => [`f${i}`, score(`The ${subject} \`candidates[${i}]\` ("${name}") answers \`question\``, RUBRIC)]),
       );
       const res = await client.systemOne({
         state: { question, candidates: chunk },

@@ -108,10 +108,18 @@ does it cost", "how many rads are lethal"), so the choices are the figures on
 that page, digits or words, each shown with the text around it; nothing is
 summed, and a page without figures is `not stated` without a call.
 
+A statement asks three `noul`s of a page in one call: does the text state the
+claim, does it contradict it, and does it list things of that kind without
+the one named. Stated is `true`, the other two are `false`, and none of them
+is silence: the page is dropped and the walk goes on, rather than a page that
+never mentions the claim answering `false`. Each names the kind-word, since
+the classes page otherwise had "Is heretic a calling?" stated at 0.5.
+
 A question can ask for several figures. "What is the cost, weight and damage
-rating of a combat rifle?" is first split into words and each word is asked,
-in one call, whether it names a quantity the question wants; adjacent words
-that do form one name, so `damage rating` stays one. Then one choice per name
+rating of a combat rifle?" is split into words and each word is asked, in the
+same call that classifies the question, whether it names a quantity the
+question wants; adjacent words that do form one name, so `damage rating` stays
+one. Then one choice per name
 goes out in one call over the page, and the answer reads `cost 410, weight 34,
 damage rating not stated`, with the confidence of its least certain stated
 part. `N` is
@@ -262,7 +270,9 @@ from its label. A figure's choice now carries its row: "5, as in: Combat Rifle
 5C …", and on the Fallout weapons table the cost and weight of a combat rifle
 went from p=0.59 to p=1.00, the damage rating from unanswered to 5 at p=0.95.
 A figure may carry a unit on its tail (`5CD`, `10mm`) but never a letter on its
-head (`v2.5`, `p12`).
+head (`v2.5`, `p12`). A figure on several rows is offered once per row, up to
+three, since the `5` in the header and the `5` in the Combat Rifle row are told
+apart only by their rows and jev cannot pick a row it was never shown.
 
 ## The exact page
 

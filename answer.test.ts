@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, classify, countAcross, quantitiesOf, type Kind } from "./answer";
+import { answerFrom, countAcross, readQuestion, type Kind } from "./answer";
 import { pageScan, searchPdf } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
 
@@ -20,7 +20,7 @@ beforeAll(async () => {
   manualText = (await pageScan(fixture("manual.pdf"), 48000))[0]!.text;
 });
 
-describe.if(live)("classify", () => {
+describe.if(live)("readQuestion", () => {
   test.each([
     ["How many skills does a vault dweller have?", "count"],
     ["How many themes does a hero have?", "count"],
@@ -33,7 +33,7 @@ describe.if(live)("classify", () => {
     ["How do I treat radiation sickness?", "passage"],
     ["What does the Lockpick skill cover?", "passage"],
   ] as [string, Kind][])("%s is a %s question", async (question, kind) => {
-    expect(await classify(client, question)).toBe(kind);
+    expect((await readQuestion(client, question)).kind).toBe(kind);
   });
 });
 
@@ -120,12 +120,9 @@ describe.if(live)("number", () => {
   });
 
   test("names the quantities a question asks for", async () => {
-    expect(await quantitiesOf(client, "What is the cost, weight and damage rating of a combat rifle?")).toEqual([
-      "cost",
-      "weight",
-      "damage rating",
-    ]);
-    expect(await quantitiesOf(client, "How much does the Umber cost?")).toEqual(["cost"]);
+    const quantities = async (q: string) => (await readQuestion(client, q)).quantities;
+    expect(await quantities("What is the cost, weight and damage rating of a combat rifle?")).toEqual(["cost", "weight", "damage rating"]);
+    expect(await quantities("How much does the Umber cost?")).toEqual(["cost"]);
   });
 
   test("reads several figures off one page", async () => {

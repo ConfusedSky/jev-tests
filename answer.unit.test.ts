@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, childrenByParent, countAcross, figuresIn, membershipFromContents, mentions, quantitiesOf, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, readQuestion, subjectOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -164,6 +164,46 @@ describe("a count above the ceiling", () => {
   });
 });
 
+describe("a statement", () => {
+  const stub = (stated: number, contradicted: number, absent: number) =>
+    ({
+      systemOne: async () => ({ answers: { stated: { noul: stated }, contradicted: { noul: contradicted }, absent: { noul: absent } } }),
+    }) as unknown as Parameters<typeof answerFrom>[0];
+  const ask = (s: number, c: number, a = 0.1) => answerFrom(stub(s, c, a), "truth", "Witch is a class.", "Classes", "text", 50);
+
+  test("stated is true", async () => {
+    expect(await ask(0.9, 0.1)).toEqual({ text: "true", p: 0.9 });
+  });
+
+  test("contradicted is false", async () => {
+    expect(await ask(0.1, 0.8)).toEqual({ text: "false", p: 0.8 });
+  });
+
+  test("missing from the list of its kind is false", async () => {
+    expect(await ask(0.1, 0.3, 0.85)).toEqual({ text: "false", p: 0.85 });
+  });
+
+  // The bug this guards: a page that never mentions the claim answered false
+  // at p=0.96, since "does not state" and "contradicts" were one criterion.
+  test("none of them is silence, not a false", async () => {
+    expect(await ask(0.1, 0.2, 0.3)).toEqual({ text: "not stated", p: 0.7 });
+  });
+});
+
+describe("figureLimit", () => {
+  test("offers every figure when the page is small", () => {
+    expect(figureLimit(4000, 1, 60)).toBe(254);
+  });
+
+  test("shrinks as more quantities each repeat the list", () => {
+    expect(figureLimit(4000, 5, 60)).toBeLessThan(figureLimit(4000, 1, 60));
+  });
+
+  test("never offers fewer than one", () => {
+    expect(figureLimit(500_000, 9, 60)).toBe(1);
+  });
+});
+
 describe("figuresIn", () => {
   const values = (t: string) => figuresIn(t).map((f) => f.value);
 
@@ -175,10 +215,18 @@ describe("figuresIn", () => {
     expect(values("two hundred rads, fifty rads, twenty-one perks, one thousand and five caps")).toEqual(["200", "50", "21", "1005"]);
   });
 
-  test("keeps the first appearance of a repeated figure, with its context", () => {
+  test("a figure repeated on one line is one figure, with its first context", () => {
     const [f] = figuresIn("Weight: 1 pounds. Cost: 1 cap.");
     expect(figuresIn("Weight: 1 pounds. Cost: 1 cap.")).toHaveLength(1);
     expect(f!.context).toContain("Weight: 1 pounds");
+  });
+
+  // The bug this guards: "5" in the header row hid the "5" in the Combat
+  // Rifle row, so the damage rating was a choice the model was never offered.
+  test("a figure repeated on another line is another option, with that row", () => {
+    const fs = figuresIn("Damage 5 max\nCombat Rifle 5C\nLaser 5C\nPistol 5C");
+    expect(fs.map((f) => f.value)).toEqual(["5", "5", "5"]);
+    expect(fs[1]!.context).toContain("Combat Rifle");
   });
 
   test("ignores a number glued to a word, such as a version", () => {
@@ -215,33 +263,52 @@ describe("a stated figure", () => {
     const never = { systemOne: async () => { throw new Error("asked"); } } as unknown as Parameters<typeof answerFrom>[0];
     expect(await answerFrom(never, "number", "q", "s", "no figures here", 50)).toEqual({ text: "not stated", p: 1 });
   });
+
+  test("a value on two rows is two options, and the pick maps back to the value", async () => {
+    const rows = "Damage 5 max\nCombat Rifle 5C";
+    const pick = {
+      systemOne: async ({ questions }: { questions: Record<string, { criteria: Record<string, string> }> }) => {
+        const keys = Object.keys(Object.values(questions)[0]!.criteria);
+        expect(keys).toEqual(["5", "5 #2", "not stated"]);
+        return { answers: { q0: { type: "choice", choice: "5 #2", confidence: 0.9, probabilities: { "5 #2": 0.9 } } } };
+      },
+    } as unknown as Parameters<typeof answerFrom>[0];
+    expect(await answerFrom(pick, "number", "q", "s", rows, 50)).toEqual({ text: "5", p: 0.9 });
+  });
 });
 
-describe("quantitiesOf", () => {
-  /** Says yes to exactly the listed words. */
-  const stub = (yes: string[]) =>
+describe("readQuestion", () => {
+  /** Says yes to exactly the listed words, and calls every question the given kind. */
+  const stub = (kind: string, quantities: string[]) =>
     ({
-      systemOne: async ({ questions }: { questions: Record<string, { instructions: string }> }) => ({
+      systemOne: async ({ questions }: { questions: Record<string, { type: string; instructions: string }> }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([k, q]) => {
-            const word = /The word "(.*?)"/.exec(q.instructions)![1]!;
-            return [k, { type: "noul", noul: yes.includes(word) ? 0.9 : 0.1 }];
+            if (q.type === "choice") return [k, { type: "choice", choice: kind, confidence: 1, probabilities: { [kind]: 1 } }];
+            const word = /^`words\[\d+\]` \("(.*?)"\)/.exec(q.instructions)![1]!;
+            const yes = quantities.includes(word);
+            return [k, { type: "noul", noul: yes ? 0.9 : 0.1 }];
           }),
         ),
       }),
-    }) as unknown as Parameters<typeof quantitiesOf>[0];
+    }) as unknown as Parameters<typeof readQuestion>[0];
+  const quantities = async (yes: string[], q: string) => (await readQuestion(stub("number", yes), q)).quantities;
+
+  test("reads the kind and the quantities in one call", async () => {
+    expect(await readQuestion(stub("number", ["cost"]), "How much does the Umber cost?")).toEqual({ kind: "number", quantities: ["cost"] });
+  });
 
   test("joins adjacent words into one name and splits names at commas", async () => {
-    const names = await quantitiesOf(stub(["cost", "weight", "damage", "rating"]), "What is the cost, weight and damage rating of a combat rifle?");
+    const names = await quantities(["cost", "weight", "damage", "rating"], "What is the cost, weight and damage rating of a combat rifle?");
     expect(names).toEqual(["cost", "weight", "damage rating"]);
   });
 
   test("a question naming no quantity yields none", async () => {
-    expect(await quantitiesOf(stub([]), "How does it work?")).toEqual([]);
+    expect(await quantities([], "How does it work?")).toEqual([]);
   });
 
   test("grammar words never name a quantity, whatever the model says, and they end a name", async () => {
-    const names = await quantitiesOf(stub(["What", "cost", "weight", "of"]), "What is the cost and weight of the Lantern?");
+    const names = await quantities(["What", "cost", "weight", "of"], "What is the cost and weight of the Lantern?");
     expect(names).toEqual(["cost", "weight"]);
   });
 });
@@ -253,7 +320,7 @@ describe("several figures at once", () => {
       systemOne: async ({ questions }: { questions: Record<string, { instructions: string }> }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([k, q]) => {
-            const name = /is the (.*?) the question/.exec(q.instructions)![1]!;
+            const name = /is the (.*?) that/.exec(q.instructions)![1]!;
             const [choice, p] = picks[name]!;
             return [k, { type: "choice", choice, confidence: p, probabilities: { [choice]: p } }];
           }),

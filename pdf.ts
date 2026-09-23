@@ -133,13 +133,13 @@ export async function openAt(url: string): Promise<void> {
  */
 export type Gate = (of: string) => string;
 export const GATE = {
-  answer: (of) => `${of} contains the answer to the question`,
-  list: (of) => `${of} lists entries of the kind the question asks about`,
+  answer: (of) => `${of} contains the answer to \`question\``,
+  list: (of) => `${of} lists entries of the kind \`question\` asks how many there are`,
 } satisfies Record<string, Gate>;
 
 async function askWindow(client: TypeSafeClient, question: string, section: string, text: string, gate: Gate) {
   const res = await timed("api", () =>
-    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate("The text")) } }),
+    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate("`text`")) } }),
   );
   return res.answers.answers.noul;
 }
@@ -153,7 +153,7 @@ async function askPages(client: TypeSafeClient, question: string, section: strin
   const key = (w: Window) => `p${w.page}`;
   const res = await client.systemOne({
     state: { question, section, pages: Object.fromEntries(pages.map((w) => [key(w), w.text])) },
-    questions: Object.fromEntries(pages.map((w) => [key(w), noul(gate(`Page ${key(w)}`))])),
+    questions: Object.fromEntries(pages.map((w) => [key(w), noul(gate(`\`pages.${key(w)}\``))])),
   });
   return pages.map((w) => res.answers[key(w)]!.noul);
 }

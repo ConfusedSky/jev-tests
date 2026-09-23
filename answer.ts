@@ -6,22 +6,74 @@ export type Kind = (typeof KINDS)[number];
 /** The kinds that yield a value to be confident about; a passage is satisfied by the page itself. */
 export type Valued = Exclude<Kind, "passage">;
 
-/** What shape of answer the question wants, decided once from its wording. */
-export async function classify(client: TypeSafeClient, question: string): Promise<Kind> {
-  const res = await timed("api", () =>
-    client.systemOne({
-      state: { question },
-      questions: {
-        kind: choice("What shape of answer does this question want?", {
-          count: "Asks how many of something there are: a tally of entries, items or options to be counted up",
-          number: "Asks for a figure the text states outright: a cost, a weight, a rating, a distance, a limit, how much of something",
-          truth: "States something that is either true or false, or asks whether something is the case",
-          passage: "Asks what, how or why, and wants an explanation or the place it is written",
-        }),
-      },
-    }),
+const STOPWORDS = new Set(
+  (
+    "a an the and or of for to in on at by with from as is are was were be been does do did has have had " +
+    "what which who whom whose how much many when where why it its this that these those there their his her " +
+    "my your our i you he she we they them me us can could would should will shall may might"
+  ).split(" "),
+);
+
+/**
+ * What jev reads off the question's wording alone, in one call: the shape of
+ * answer wanted and the quantities a number question names.
+ */
+export type Reading = { kind: Kind; quantities: string[] };
+
+type Word = { word: string; ends: boolean };
+
+/** Adjacent words that passed form one name, and a comma ends a name. */
+function namesFrom(words: Word[], passed: (i: number) => boolean): string[] {
+  const names: string[] = [];
+  let run: string[] = [];
+  words.forEach((w, i) => {
+    const yes = !STOPWORDS.has(w.word.toLowerCase()) && passed(i);
+    if (yes) run.push(w.word);
+    if ((!yes || w.ends) && run.length) {
+      names.push(run.join(" "));
+      run = [];
+    }
+  });
+  if (run.length) names.push(run.join(" "));
+  return names;
+}
+
+/**
+ * What shape of answer the question wants, and which quantities it names:
+ * "the cost, weight and damage rating of a combat rifle" names three. Both
+ * come from the wording alone, so they go out together and the quantities are
+ * ignored unless the kind turns out to be a number.
+ *
+ * A noul per word. Asked word by word the model lets "what" and "of" through
+ * at p=0.5 or so; grammar words can never name a quantity, and they end a name.
+ */
+export async function readQuestion(client: TypeSafeClient, question: string): Promise<Reading> {
+  const words = question
+    .split(/\s+/)
+    .map((raw) => ({ word: raw.replace(/[^\w'-]/g, ""), ends: /[,;]$/.test(raw) }))
+    .filter((w) => w.word);
+  const kind = choice("What shape of answer does `question` want?", {
+    count: "Asks how many of something there are: a tally of entries, items or options to be counted up",
+    number: "Asks for a figure the text states outright: a cost, a weight, a rating, a distance, a limit, how much of something",
+    truth: "States something that is either true or false, or asks whether something is the case",
+    passage: "Asks what, how or why, and wants an explanation or the place it is written",
+  });
+  const perWord: Record<string, ReturnType<typeof noul>> = Object.fromEntries(
+    words.map((w, i) => [
+      `w${i}`,
+      noul(
+        `\`words[${i}]\` ("${w.word}") names the quantity whose value \`question\` asks for, such as a cost, weight, ` +
+          'rating, range, duration or amount; "how much does it cost" asks for a cost. Not the thing measured, not a joining word.',
+      ),
+    ]),
   );
-  return res.answers.kind.choice;
+  const res = await timed("api", () =>
+    client.systemOne({ state: { question, words: words.map((w) => w.word) }, questions: { kind, ...perWord } }),
+  );
+  // The spread hides the per-word keys from the answer type.
+  const perWordAnswers = res.answers as unknown as Record<string, { noul: number }>;
+  const passed = (prefix: string) => (i: number) => perWordAnswers[`${prefix}${i}`]!.noul >= 0.5;
+  return { kind: res.answers.kind.choice, quantities: namesFrom(words, passed("w")) };
 }
 
 export type Answer = { text: string; p: number };
@@ -110,85 +162,62 @@ function wordsToNumber(s: string): number {
 
 export type Figure = { value: string; context: string };
 
+// A value that recurs on several rows gets each row as its own option, up to
+// this many; the model cannot pick a row it was never shown.
+const ROWS_PER_VALUE = 3;
+
 /**
  * Every figure the text states, digits or words, with a scrap of the text
- * around its first appearance. These are the only numbers a stated-figure
- * question can be answered with, so they are the choices offered.
+ * around it. These are the only numbers a stated-figure question can be
+ * answered with, so they are the choices offered. A figure repeated on one
+ * line is one figure; repeated on another line it is another option, since
+ * the "5" in a table's header row and the "5" in the Combat Rifle row are
+ * told apart only by their rows.
  */
 export function figuresIn(text: string, around = 60): Figure[] {
-  const seen = new Map<string, Figure>();
+  const rows = new Map<string, number>();
+  const out: Figure[] = [];
   // Line by line: with -layout a table row is a line, so a figure's context is
   // its row, label included, rather than whatever sat above and below it.
   for (const line of text.split("\n")) {
     const flat = line.replace(/\s+/g, " ").trim();
+    const onLine = new Set<string>();
     for (const m of flat.matchAll(NUMBER)) {
       const raw = m[0];
       const value = /^\d/.test(raw) ? raw.replace(/,/g, "") : String(wordsToNumber(raw));
-      if (seen.has(value)) continue;
+      if (onLine.has(value) || (rows.get(value) ?? 0) >= ROWS_PER_VALUE) continue;
+      onLine.add(value);
+      rows.set(value, (rows.get(value) ?? 0) + 1);
       const at = m.index!;
       const context = flat.slice(Math.max(0, at - around), Math.min(flat.length, at + raw.length + around)).trim();
-      seen.set(value, { value, context });
+      out.push({ value, context });
     }
   }
-  return [...seen.values()];
+  return out;
 }
 
 // A Choice takes at most 255 options; one is spent on "not stated".
 const FIGURE_LIMIT = 254;
+// Jev takes 32k tokens for the state plus its longest question and 64k for the
+// state plus every question, about four characters a token. Kept under both
+// with room to spare, since the text is sent as well.
+const LONGEST_CHARS = 100_000;
+const TOTAL_CHARS = 200_000;
 
-const STOPWORDS = new Set(
-  (
-    "a an the and or of for to in on at by with from as is are was were be been does do did has have had " +
-    "what which who whom whose how much many when where why it its this that these those there their his her " +
-    "my your our i you he she we they them me us can could would should will shall may might"
-  ).split(" "),
-);
-
-/**
- * The quantities a question asks the value of: "the cost, weight and damage
- * rating of a combat rifle" names three. One call, a noul per word; adjacent
- * words that pass form one name, and a comma ends a name. Decided once per
- * question, not per page.
- */
-export async function quantitiesOf(client: TypeSafeClient, question: string): Promise<string[]> {
-  const words = question
-    .split(/\s+/)
-    .map((raw) => ({ word: raw.replace(/[^\w'-]/g, ""), ends: /[,;]$/.test(raw) }))
-    .filter((w) => w.word);
-  if (words.length === 0) return [];
-  // Asked word by word the model lets "what" and "of" through at p=0.5 or so;
-  // grammar words can never name a quantity, and they end a name.
-  const grammar = (w: string) => STOPWORDS.has(w.toLowerCase());
-  const questions = Object.fromEntries(
-    words.map((w, i) => [
-      `w${i}`,
-      noul(
-        `The word "${w.word}" names a quantity whose value the question asks for, ` +
-          "such as a cost, weight, rating, range, duration or amount. Not the thing measured, not a verb, not a joining word.",
-      ),
-    ]),
-  );
-  const res = await timed("api", () => client.systemOne({ state: { question }, questions }));
-  const names: string[] = [];
-  let run: string[] = [];
-  words.forEach((w, i) => {
-    const yes = !grammar(w.word) && res.answers[`w${i}`]!.noul >= 0.5;
-    if (yes) run.push(w.word);
-    if ((!yes || w.ends) && run.length) {
-      names.push(run.join(" "));
-      run = [];
-    }
-  });
-  if (run.length) names.push(run.join(" "));
-  return names;
+/** How many figures fit the request budget when `asked` choices each list them all. */
+export function figureLimit(textLength: number, asked: number, around: number): number {
+  const perOption = 2 * around + 40;
+  const longest = Math.floor((LONGEST_CHARS - textLength) / perOption);
+  const total = Math.floor((TOTAL_CHARS - textLength) / (asked * perOption));
+  return Math.max(1, Math.min(FIGURE_LIMIT, longest, total));
 }
 
 /**
  * A stated figure is one of the numbers on the page, so those are the choices,
- * each shown with the words around it. A count offers 0 through N instead
- * because the total of a list is not written anywhere on the page. A question
- * naming several quantities asks one choice per quantity, in one call, and
- * answers "cost 53, weight 4"; the confidence is the least certain part.
+ * each shown with the words around it. A count never asks this: the total of
+ * a list is not written anywhere on the page. A question naming several
+ * quantities asks one choice per quantity, in one call, and answers
+ * "cost 53, weight 4"; the confidence is the least certain part.
  */
 async function numberFrom(
   client: TypeSafeClient,
@@ -197,23 +226,35 @@ async function numberFrom(
   text: string,
   wanted: string[],
 ): Promise<Answer> {
-  const figures = figuresIn(text).slice(0, FIGURE_LIMIT);
-  if (figures.length === 0) return { text: "not stated", p: 1 };
-  const criteria: Record<string, string> = Object.fromEntries(
-    figures.map((f) => [f.value, `The answer is ${f.value}, as in: …${f.context}…`]),
-  );
-  criteria["not stated"] = "None of these figures is it";
   const asked = wanted.length > 0 ? wanted : [""];
+  const around = 60;
+  const figures = figuresIn(text, around).slice(0, figureLimit(text.length, asked.length, around));
+  if (figures.length === 0) return { text: "not stated", p: 1 };
+  // Option names are sent to the model and must be unique, so a value's
+  // second row is "5 #2"; code maps the pick back to the value.
+  const valueOf = new Map<string, string>();
+  const criteria: Record<string, string> = {};
+  for (const f of figures) {
+    const key = valueOf.has(f.value) ? `${f.value} #${[...valueOf.values()].filter((v) => v === f.value).length + 1}` : f.value;
+    valueOf.set(key, f.value);
+    criteria[key] = `The answer is ${f.value}, as in: …${f.context}…`;
+  }
+  criteria["not stated"] = "None of these figures is it";
   const questions = Object.fromEntries(
     asked.map((name, i) => [
       `q${i}`,
-      choice(name ? `Which figure from the text is the ${name} the question asks for?` : "Which figure from the text answers the question?", criteria),
+      choice(
+        name
+          ? `Which figure from \`text\` is the ${name} that \`question\` asks for?`
+          : "Which figure from `text` answers `question`?",
+        criteria,
+      ),
     ]),
   );
   const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
   const parts = asked.map((name, i) => {
-    const a = res.answers[`q${i}`]!;
-    return { name, text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
+    const a = res.answers[`q${i}`] as { choice: string; confidence: number; probabilities: Record<string, number> };
+    return { name, text: valueOf.get(a.choice) ?? a.choice, p: a.probabilities[a.choice] ?? a.confidence };
   });
   if (parts.length === 1) return { text: parts[0]!.text, p: parts[0]!.p };
   const stated = parts.filter((x) => x.text !== "not stated");
@@ -262,6 +303,15 @@ export async function countAcross(
   return any ? { text: String(total), p: worst * (covered / windows.length) } : { text: "not stated", p: 1 };
 }
 
+/**
+ * Whether the text states the claim, contradicts it, or lists its kind
+ * without it are three judgments, so they are three nouls in one call.
+ * Silence is none of them: a page that does not speak to the claim is "not
+ * stated" and the walk goes on, rather than a confident false read off the
+ * wrong page. The kind is named in each, since the classes page put
+ * "Is heretic a calling?" at 0.5 stated until the question said a calling is
+ * not a class.
+ */
 async function truthFrom(
   client: TypeSafeClient,
   question: string,
@@ -272,17 +322,36 @@ async function truthFrom(
     client.systemOne({
       state: { question, section, text },
       questions: {
-        truth: noul("The statement in the question is true according to the text", {
-          true: "The text states this, using the same name or term the statement uses",
-          false:
-            "The text does not state this, contradicts it, or only names something whose name merely contains " +
-            "the term in the statement. A longer name is a different thing: 'fire bolt' is not 'bolt'.",
+        stated: noul(
+          "`text` states the claim made in `question`, using the same name and the same kind-word (class, perk, calling, spell) the claim uses",
+          {
+            true: "`text` says this, in those terms",
+            false:
+              "`text` does not say this, says it of another kind, or only names something whose name merely contains the term in the claim. " +
+              "A longer name is a different thing: 'fire bolt' is not 'bolt'.",
+          },
+        ),
+        contradicted: noul("`text` contradicts the claim made in `question`", {
+          true: "`text` says otherwise",
+          false: "`text` agrees with the claim, or does not speak to it at all",
         }),
+        absent: noul(
+          "`text` lists things called by the same kind-word `question` uses (a class, a perk, a spell), and the one `question` names is not among them",
+          {
+            true: "`text` lists things of exactly that kind, and that exact name is not on the list; a longer name that merely contains it is not it",
+            false: "`text` lists no things of that kind, whatever other kinds it lists, or that exact name is on the list",
+          },
+        ),
       },
     }),
   );
-  const p = res.answers.truth.noul;
-  return { text: p >= 0.5 ? "true" : "false", p: p >= 0.5 ? p : 1 - p };
+  const s = res.answers.stated.noul;
+  const c = res.answers.contradicted.noul;
+  const a = res.answers.absent.noul;
+  if (s >= 0.5 && s >= c) return { text: "true", p: s };
+  if (c >= 0.5) return { text: "false", p: c };
+  if (a >= 0.5) return { text: "false", p: a };
+  return { text: "not stated", p: 1 - Math.max(s, c, a) };
 }
 
 export function answerFrom(
@@ -429,7 +498,7 @@ export async function answerFromOutline(
     client.systemOne({
       state: { question, sections: keyed.map((k) => ({ section: k.parent, entries: k.kids })) },
       questions: {
-        group: choice("Which section's entries are the things the question is about?", criteria),
+        group: choice("Which of `sections` has as its entries the things `question` asks how many there are?", criteria),
       },
     }),
   );
