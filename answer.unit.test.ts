@@ -202,6 +202,11 @@ describe("cellsIn", () => {
 describe("unitsOf", () => {
   const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
 
+  test("a table's row is one unit whatever its stops", () => {
+    const row = { heading: false, table: true as const, text: '{"Weapon":"Dr. Gun","Cost":"5. 000eb"}', style: "", lines: [] };
+    expect(unitsOf([row]).map((u) => u.text)).toEqual([row.text]);
+  });
+
   test("a list marker is not a sentence of its own", () => {
     expect(unitsOf([plain("2. PICK WEAPONS. The player declares.")]).map((u) => u.text)).toEqual(["2. PICK WEAPONS.", "The player declares."]);
   });

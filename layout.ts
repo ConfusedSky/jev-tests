@@ -14,7 +14,10 @@ export type Box = { page: number; x0: number; y0: number; x1: number; y1: number
  * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
  * for both and " " for neither, and the boxes of its lines for highlighting.
  */
-export type Para = { heading: boolean; text: string; style: string; lines: Box[] };
+export type Para = { heading: boolean; text: string; style: string; lines: Box[]; table?: true };
+
+/** A table as tables.py reads it: rows of cells, each row with its box on the page, the first row the heads. */
+export type Table = { page: number; bbox: [number, number, number, number]; rows: { cells: string[]; bbox: [number, number, number, number] }[] };
 
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -87,15 +90,17 @@ const BULLET = /^(?:[•·▪‣□●○■◆◇▫⁃◦-]|\d{1,2}[.)]\s)/;
 // A lone "-" is a table's empty cell as often as a bullet, so it stays put.
 const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦]$/;
 
-export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
+export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0, tables: Table[] = []): Para[] {
   const { height, lines: all } = page;
   if (all.length === 0) return [];
   const body = mode(all.map((l) => Math.round(l.size)));
   // A running header or page number sits in the top or bottom margin in
   // modest type, or hugs the right edge whatever its type; a chapter title
-  // sits up there too, in display type, and stays.
+  // sits up there too, in display type, and stays. A table's lines are
+  // read as records below, not as prose.
   const { width } = page;
-  let lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85));
+  const inTable = (l: Line) => tables.some((t) => (l.x0 + l.x1) / 2 > t.bbox[0] && (l.x0 + l.x1) / 2 < t.bbox[2] && (l.y0 + l.y1) / 2 > t.bbox[1] && (l.y0 + l.y1) / 2 < t.bbox[3]);
+  let lines = all.filter((l) => !(((l.y0 < height * 0.06 || l.y1 > height * 0.96) && l.size < body * 1.5) || l.x0 > width * 0.85 || inTable(l)));
   // A bullet set as a line of its own leads the line beside it; left apart,
   // the two sit side by side and read as a table row. A drop cap is a letter
   // of its own in display type, flush against the line it opens, in a block
@@ -231,7 +236,30 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     cur.push(l);
   }
   flush();
-  return out.filter((p) => p.text.length > 0);
+  const paras = out.filter((p) => p.text.length > 0);
+  // Each row is a record, one line of JSON keyed by the heads, set where the
+  // table stood: before the first paragraph that starts below its top within
+  // its width. A row with one cell, "Alt. Fire Modes & Special Features:
+  // None" under a weapon, stays a line of its own.
+  for (const t of tables) {
+    const [heads, ...rows] = t.rows;
+    if (!heads) continue;
+    const names = heads.cells.map((h, i) => h || `column ${i + 1}`);
+    for (const [i, n] of names.entries()) {
+      const before = names.slice(0, i).filter((m) => m === n || m.startsWith(`${n} `)).length;
+      if (before > 0) names[i] = `${n} ${before + 1}`;
+    }
+    const records: Para[] = rows.flatMap((r) => {
+      const filled = r.cells.map((c, i) => [names[i]!, c] as const).filter(([, c]) => c);
+      if (filled.length === 0) return [];
+      const text = filled.length === 1 ? filled[0]![1] : JSON.stringify(Object.fromEntries(filled));
+      const [x0, y0, x1, y1] = r.bbox;
+      return [{ heading: false, table: true, text, style: " ".repeat(text.length), lines: [{ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length }] }];
+    });
+    const at = paras.findIndex((p) => p.lines[0] && p.lines[0].y0 > t.bbox[1] && p.lines[0].x1 > t.bbox[0] && p.lines[0].x0 < t.bbox[2]);
+    paras.splice(at < 0 ? paras.length : at, 0, ...records);
+  }
+  return paras;
 }
 
 /** Trims and single-spaces `text`, keeping `style` in step; a space keeps its span's weight. */
@@ -328,6 +356,30 @@ export async function pageLines(pdf: string, page: number): Promise<{ width: num
 }
 
 /** The paragraphs of one page of a PDF, via mutool. */
+let tablesOff = false;
+
+/**
+ * The tables on the given pages, through pdfplumber in tables.py: it finds a
+ * table by its ruling lines and cell shading, which is what a rulebook draws
+ * one with, and reads a name wrapped over two lines as one cell. Without
+ * pdfplumber (`bun run tables:install`) tables are read as text, said once.
+ */
+export async function pageTables(pdf: string, pages: number[]): Promise<Table[]> {
+  if (tablesOff || pages.length === 0) return [];
+  const venv = Bun.fileURLToPath(new URL(".venv/bin/python", import.meta.url));
+  const python = (await Bun.file(venv).exists()) ? venv : "python3";
+  const script = Bun.fileURLToPath(new URL("tables.py", import.meta.url));
+  const p = Bun.spawn([python, script, pdf, ...pages.map(String)], { stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  if ((await p.exited) !== 0) {
+    tablesOff = true;
+    console.error(`tables read as text: ${err.trim().split("\n").at(-1)} (bun run tables:install)`);
+    return [];
+  }
+  return JSON.parse(out) as Table[];
+}
+
 export async function pageParagraphs(pdf: string, page: number): Promise<Para[]> {
-  return paragraphs(await pageLines(pdf, page), page);
+  const [lines, tables] = await Promise.all([pageLines(pdf, page), pageTables(pdf, [page])]);
+  return paragraphs(lines, page, tables);
 }
