@@ -11,6 +11,7 @@
  *   bun bench.ts            run every case, print the table, write bench/latest.json
  *   bun bench.ts heart      only cases whose book or question matches
  *   bun bench.ts --no-save  compare with the last run without replacing it
+ *   bun bench.ts --no-search  titles only, to see what the text search adds
  */
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
 import { makeUi, searchPdf, type Outcome } from "./pdf";
@@ -70,9 +71,8 @@ const CASES: Case[] = [
     question: "What is the cost, weight and damage rating of a combat rifle?",
     truth: "cost 117, weight 11, damage rating 5",
     page: 97,
-    opts: { max: 20 },
-    known: "the small guns table ranks 14th by title; --max 20 reaches it",
   },
+  { book: "fallout", question: "What is the cost, weight and damage rating of a hunting rifle?", truth: "cost 55, weight 10, damage rating 6", page: 97 },
   { book: "litm", question: "How many theme types are there?", truth: 20, page: 75 },
   { book: "litm", question: "How many theme kits are there?", truth: 153, page: 76, known: "the second page sits at the answer floor and is counted one run, refused the next" },
   { book: "litm", question: "How many tropes are there?", truth: 30, page: 78, known: "the contents list the ten trope groups" },
@@ -83,7 +83,13 @@ const CASES: Case[] = [
     page: 73,
     contains: ["The Simplest Way", "The Quickest Way", "The Detailed Way"],
   },
-  { book: "cpr", question: "How many skills are there in the game?", truth: 66, page: 132 },
+  {
+    book: "cpr",
+    question: "How many skills are there in the game?",
+    truth: 66,
+    page: 132,
+    known: "runs the contents do not confine may count the four healing skills under Needed Skills instead",
+  },
   {
     book: "cpr",
     question: "Show me the exotic weapons table",
@@ -127,7 +133,8 @@ function score(c: Case, got: string | undefined, page: number | undefined): numb
 }
 
 const args = Bun.argv.slice(2);
-const save = !args.includes("--no-save");
+const save = !args.includes("--no-save") && !args.includes("--no-search");
+const search = !args.includes("--no-search");
 const only = args.filter((a) => !a.startsWith("--"));
 const picked = CASES.filter((c) => only.length === 0 || only.some((o) => c.book.includes(o) || c.question.toLowerCase().includes(o.toLowerCase())));
 
@@ -145,8 +152,8 @@ for (const c of picked) {
   const t = Date.now();
   let r: Outcome | undefined;
   try {
-    const search = await answerLayer(client, { ...readDefaults(), question: c.question, quiet: true, ...c.opts }, ui);
-    r = await searchPdf(client, pdf, search, ui);
+    const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, ...c.opts }, ui);
+    r = await searchPdf(client, pdf, opts, ui);
   } catch (e) {
     console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);
   }
