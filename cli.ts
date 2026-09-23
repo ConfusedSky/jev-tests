@@ -46,7 +46,6 @@ export type ReadOpts = SearchOpts & {
   model: string;
   quiet: boolean;
   open: boolean;
-  countMax: number;
   answerFloor: number;
   noToc: boolean;
   maxAnswers: number;
@@ -65,7 +64,6 @@ export const readDefaults = (): ReadOpts => ({
   model: DEFAULT_MODEL,
   quiet: false,
   open: false,
-  countMax: 50,
   answerFloor: 0.7,
   noToc: false,
   maxAnswers: 5,
@@ -80,7 +78,6 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--max": num("max"),
   "--chars": num("chars"),
   "--batch": num("batch"),
-  "--count-max": num("countMax"),
   "--answer-floor": num("answerFloor"),
   "--max-answers": num("maxAnswers"),
   "--model": (o, next) => (o.model = next()),
@@ -106,7 +103,6 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
-      --count-max N    largest exact count jev may answer with (default 50)
       --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
@@ -130,12 +126,13 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
   const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
+  if (kind === "count" && read.counted) ui.log(`counts ${read.counted}`);
   const fromOutline = o.noToc
     ? undefined
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
         answerFromOutline(client, kind, o.question, sections, o.answerFloor);
   // "not stated" is a refusal, not an answer, so it never settles a walk
-  // however confident the model is that it cannot say. "over N" is an answer.
+  // however confident the model is that it cannot say.
   const judge = (a: Answer): Judged => ({
     ...a,
     verdict: a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
@@ -144,17 +141,24 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     kind === "passage"
       ? undefined
       : async (section, _page, text) =>
-          judge(await answerFrom(client, kind, o.question, section, text, o.countMax, wanted));
+          judge(await answerFrom(client, kind, o.question, section, text, read));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined
       : async (section, windows) =>
           judge(
-            await countAcross(client, o.question, section, windows, o.countMax, o.answerFloor, (page, part, counted, running) =>
-              ui.log(
-                `    ${counted ? "+" : "?"}${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  ` +
-                  (counted ? `running ${running}` : "unsure, left out"),
-              ),
+            await countAcross(
+              client,
+              o.question,
+              section,
+              windows,
+              o.answerFloor,
+              (page, part, counted, running) =>
+                ui.log(
+                  `    ${counted ? "+" : "?"}${part.text.padStart(3)} (p=${part.p.toFixed(2)})  p.${page}  ` +
+                    (counted ? `running ${running}` : "unsure, left out"),
+                ),
+              read.counted,
             ),
           );
   return { ...o, kind, verify, fromOutline, countAcross: across, gate: kind === "count" ? GATE.list : GATE.answer };

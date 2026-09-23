@@ -276,10 +276,10 @@ export async function searchPdf(
   const settle = async ({ w, p, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
     let hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
-    // than the window that happened to answer, and links to where it starts.
+    // than the window that happened to answer, and links to the first page
+    // that counted anything.
     let check: Promise<Judged> | undefined;
     if (all && all.length > 1 && o.countAcross) {
-      hit = { ...hit, page: all[0]!.page };
       counted.push(name);
       const fragments = rejected.filter((c) => c.hit.section.startsWith(`${name} > `));
       for (const f of fragments) {
@@ -290,7 +290,8 @@ export async function searchPdf(
       check = o.countAcross(name, all);
     } else check = o.verify?.(name, w.page, w.text);
     if (!check) return hit;
-    const { verdict, ...answer } = await check;
+    const { verdict, page, ...answer } = await check;
+    if (page !== undefined) hit = { ...hit, page };
     ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
     if (verdict === "take") return { ...hit, answer };
     (verdict === "keep" ? rejected : dropped).push({ hit, answer });

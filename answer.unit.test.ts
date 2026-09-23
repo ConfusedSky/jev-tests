@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, readQuestion, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readQuestion, subjectOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -103,18 +103,30 @@ describe("membershipFromContents", () => {
   });
 });
 
-/** Returns each queued choice in turn, so a walk's arithmetic can be checked offline. */
-function stubCounts(answers: [string, number][]) {
-  let i = 0;
+/**
+ * A window's cells and the noul each gets back, so a walk's arithmetic can be
+ * checked offline: `[n, p]` is a window listing n entries, each at p, and a
+ * longer array gives each cell its own noul; the rest of the cells say no.
+ * Windows are counted in order.
+ */
+function stubCells(answers: ([number, number] | number[])[]) {
+  let call = 0;
   return {
-    systemOne: async () => {
-      const [choice, p] = answers[i++]!;
-      return { answers: { count: { type: "choice", choice, confidence: p, probabilities: { [choice]: p } } } };
+    systemOne: async ({ questions }: { questions: Record<string, unknown> }) => {
+      const a = answers[call++]!;
+      const ps = a.length === 2 && a[0]! >= 1 && a[1]! < 1 ? Array.from({ length: a[0]! }, () => a[1]!) : a;
+      const keys = Object.keys(questions);
+      return { answers: Object.fromEntries(keys.map((k, i) => [k, { type: "noul", noul: ps[i] ?? 0.05 }])) };
     },
   } as unknown as Parameters<typeof countAcross>[0];
 }
 
-const ws = (n: number) => Array.from({ length: n }, (_, i) => ({ page: i + 1, text: "x" }));
+/** Windows of 40 entry lines each, named apart, and a line of prose, so every window has cells to ask about. */
+const ws = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    page: i + 1,
+    text: [...Array.from({ length: 40 }, (_, j) => `Entry ${i + 1}-${j}`), "Some prose, for context."].join("\n"),
+  }));
 
 describe("subjectOf", () => {
   test.each([
@@ -152,15 +164,65 @@ describe("answerFromOutline for a statement", () => {
   });
 });
 
-describe("a count above the ceiling", () => {
-  test("is asked again with the full range", async () => {
-    const client = stubCounts([["over 5", 0.8], ["200", 0.9]]);
-    expect(await answerFrom(client, "count", "q", "s", "text", 5)).toEqual({ text: "200", p: 0.9 });
+describe("cellsIn", () => {
+  test("a list inline in prose yields each name", () => {
+    const cells = cellsIn("A vault dweller has seven skills: Athletics, Barter, Lockpick, Medicine, Melee, Science and Survival. Each skill is");
+    expect(cells).toEqual(expect.arrayContaining(["Athletics", "Barter", "Lockpick", "Medicine", "Melee", "Science", "Survival"]));
   });
 
-  test("stands when the range was already full", async () => {
-    const client = stubCounts([["over 252", 0.8]]);
-    expect(await answerFrom(client, "count", "q", "s", "text", 9999)).toEqual({ text: "over 252", p: 0.8 });
+  test("a list one per line yields the name before the comma, not the clause after it", () => {
+    expect(cellsIn("      The Cleave, a berserker who fights with fury.\n      The Witch, who bargains with the powers below.")).toEqual([
+      "The Cleave",
+      "The Witch",
+    ]);
+  });
+
+  test("a -layout table row or two-column line splits at the gutter", () => {
+    expect(cellsIn("Gunslinger      Awareness\nCombat Rifle    5C    Physical")).toEqual(["Gunslinger", "Awareness", "Combat Rifle", "Physical"]);
+  });
+
+  test("drops prose too long to be a name, cells not starting with a capital, and repeats", () => {
+    expect(cellsIn("Aegis\n20\naegis\nThe Bulwark is a field device\n" + "A".repeat(61))).toEqual(["Aegis"]);
+  });
+});
+
+describe("nameKey", () => {
+  // The bug this guards: the Fallout skills pages counted "REPAIR" and
+  // "Repair skill" as two skills, and "MELEE WEAPONS" and "The Melee Weapons skill".
+  test("drops the article and the kind-word, so a mention and its headline are one name", () => {
+    expect(nameKey("The Melee Weapons skill", "skills")).toBe("melee weapons");
+    expect(nameKey("REPAIR", "skills")).toBe("repair");
+    expect(nameKey("Repair skill", "skills")).toBe("repair");
+    expect(nameKey("Theme Kit", "theme kits")).toBe("theme");
+  });
+
+  test("leaves a name alone when no kind is known", () => {
+    expect(nameKey("The Witch", "")).toBe("witch");
+  });
+});
+
+describe("a count off the page", () => {
+  const count = (cells: [number, number] | number[]) => answerFrom(stubCells([cells]), "count", "How many entries?", "s", ws(1)[0]!.text);
+
+  test("is the number of cells the model calls an entry", async () => {
+    expect(await count([7, 0.8])).toEqual({ text: "7", p: 1 });
+  });
+
+  // Six entries, three of them barely: the count is as sure as the share of
+  // cells decided clearly, not as the least sure of ninety.
+  test("is as sure as the share of its cells decided clearly", async () => {
+    expect(await count([0.9, 0.9, 0.9, 0.5, 0.5, 0.5])).toEqual({ text: "6", p: 0.5 });
+    expect(await count([0.9, 0.9, 0.35, 0.4])).toEqual({ text: "2", p: 0.5 });
+  });
+
+  test("no entry at all is not stated", async () => {
+    expect(await count([0.05, 0.1])).toEqual({ text: "not stated", p: 1 });
+    expect(await count([0.4, 0.3])).toEqual({ text: "not stated", p: 1 });
+  });
+
+  test("a page with nothing that could be a name is not stated without a call", async () => {
+    const never = { systemOne: async () => { throw new Error("asked"); } } as unknown as Parameters<typeof answerFrom>[0];
+    expect(await answerFrom(never, "count", "q", "s", "12 34\n56")).toEqual({ text: "not stated", p: 1 });
   });
 });
 
@@ -169,7 +231,7 @@ describe("a statement", () => {
     ({
       systemOne: async () => ({ answers: { stated: { noul: stated }, contradicted: { noul: contradicted }, absent: { noul: absent } } }),
     }) as unknown as Parameters<typeof answerFrom>[0];
-  const ask = (s: number, c: number, a = 0.1) => answerFrom(stub(s, c, a), "truth", "Witch is a class.", "Classes", "text", 50);
+  const ask = (s: number, c: number, a = 0.1) => answerFrom(stub(s, c, a), "truth", "Witch is a class.", "Classes", "text");
 
   test("stated is true", async () => {
     expect(await ask(0.9, 0.1)).toEqual({ text: "true", p: 0.9 });
@@ -256,12 +318,12 @@ describe("a stated figure", () => {
   const text = "The Umber is a field device. Cost: 80 caps. Weight: 1 pounds.";
 
   test("is chosen from the figures on the page", async () => {
-    expect(await answerFrom(stub("80", 0.9), "number", "How much does the Umber cost?", "s", text, 50)).toEqual({ text: "80", p: 0.9 });
+    expect(await answerFrom(stub("80", 0.9), "number", "How much does the Umber cost?", "s", text)).toEqual({ text: "80", p: 0.9 });
   });
 
   test("a page without figures is not stated, without asking", async () => {
     const never = { systemOne: async () => { throw new Error("asked"); } } as unknown as Parameters<typeof answerFrom>[0];
-    expect(await answerFrom(never, "number", "q", "s", "no figures here", 50)).toEqual({ text: "not stated", p: 1 });
+    expect(await answerFrom(never, "number", "q", "s", "no figures here")).toEqual({ text: "not stated", p: 1 });
   });
 
   test("a value on two rows is two options, and the pick maps back to the value", async () => {
@@ -273,20 +335,20 @@ describe("a stated figure", () => {
         return { answers: { q0: { type: "choice", choice: "5 #2", confidence: 0.9, probabilities: { "5 #2": 0.9 } } } };
       },
     } as unknown as Parameters<typeof answerFrom>[0];
-    expect(await answerFrom(pick, "number", "q", "s", rows, 50)).toEqual({ text: "5", p: 0.9 });
+    expect(await answerFrom(pick, "number", "q", "s", rows)).toEqual({ text: "5", p: 0.9 });
   });
 });
 
 describe("readQuestion", () => {
-  /** Says yes to exactly the listed words, and calls every question the given kind. */
-  const stub = (kind: string, quantities: string[]) =>
+  /** Says yes to the listed quantity words and kind words, and calls every question the given kind. */
+  const stub = (kind: string, quantities: string[], kinds: string[] = []) =>
     ({
       systemOne: async ({ questions }: { questions: Record<string, { type: string; instructions: string }> }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([k, q]) => {
             if (q.type === "choice") return [k, { type: "choice", choice: kind, confidence: 1, probabilities: { [kind]: 1 } }];
             const word = /^`words\[\d+\]` \("(.*?)"\)/.exec(q.instructions)![1]!;
-            const yes = quantities.includes(word);
+            const yes = (q.instructions.includes("kind of thing") ? kinds : quantities).includes(word);
             return [k, { type: "noul", noul: yes ? 0.9 : 0.1 }];
           }),
         ),
@@ -295,7 +357,15 @@ describe("readQuestion", () => {
   const quantities = async (yes: string[], q: string) => (await readQuestion(stub("number", yes), q)).quantities;
 
   test("reads the kind and the quantities in one call", async () => {
-    expect(await readQuestion(stub("number", ["cost"]), "How much does the Umber cost?")).toEqual({ kind: "number", quantities: ["cost"] });
+    expect(await readQuestion(stub("number", ["cost"]), "How much does the Umber cost?")).toEqual({ kind: "number", quantities: ["cost"], counted: "" });
+  });
+
+  test("reads what a count counts, joined into one name", async () => {
+    expect(await readQuestion(stub("count", [], ["theme", "kits"]), "How many theme kits are there?")).toEqual({
+      kind: "count",
+      quantities: [],
+      counted: "theme kits",
+    });
   });
 
   test("joins adjacent words into one name and splits names at commas", async () => {
@@ -328,7 +398,7 @@ describe("several figures at once", () => {
       }),
     }) as unknown as Parameters<typeof answerFrom>[0];
   const ask = (picks: Record<string, [string, number]>) =>
-    answerFrom(stub(picks), "number", "q", "s", text, 50, Object.keys(picks));
+    answerFrom(stub(picks), "number", "q", "s", text, { quantities: Object.keys(picks) });
 
   test("names each part and reports the least certain", async () => {
     expect(await ask({ cost: ["53", 0.95], weight: ["4", 0.8] })).toEqual({ text: "cost 53, weight 4", p: 0.8 });
@@ -368,55 +438,72 @@ describe("a count from the contents", () => {
     const r = await answerFromOutline(picker("Perks"), "count", "How many perks?", at(paths), 0.7);
     expect(r).toEqual({ parent: "Perks" });
   });
+
+  // The bug this guards: picking the swallowed entry itself answered 89 of
+  // 94 perks at p=0.93, the entry's own list being the one that fit.
+  test("reads the parent's pages when the picked entry is where the list went", async () => {
+    const paths = ["Perks", "Perks > Aquaboy", "Perks > Carry Weight", "Perks > Defense"];
+    for (let i = 0; i < 10; i++) paths.push(`Perks > Aquaboy > Perk ${i}`);
+    const r = await answerFromOutline(picker("Aquaboy"), "count", "How many perks?", at(paths), 0.7);
+    expect(r).toEqual({ parent: "Perks" });
+  });
 });
 
 describe("countAcross", () => {
+  const sure = (n: number, p = 0.9) => Array.from({ length: n }, () => p);
+
   test("leaves out a part below the floor and keeps the confidence of the rest", async () => {
-    const a = await countAcross(stubCounts([["1", 0.9], ["37", 0.04], ["1", 0.8]]), "q", "s", ws(3), 60, 0.7);
+    const a = await countAcross(stubCells([[1, 0.9], [37, 0.55], [1, 0.8]]), "q", "s", ws(3), 0.7);
     expect(a.text).toBe("2");
-    expect(a.p).toBeCloseTo(0.8 * (2 / 3));
+    expect(a.p).toBeCloseTo(2 / 3);
   });
 
   // The bug this guards: three sure pages of a 36-page section summed to 3
   // classes at p=0.77, a confident undercount of nine.
   test("a count covering little of the section is not confident", async () => {
-    const parts: [string, number][] = [["1", 0.9], ["1", 0.8], ["1", 0.8], ["10", 0.2], ["8", 0.3], ["3", 0.1]];
-    const a = await countAcross(stubCounts(parts), "q", "s", ws(6), 60, 0.7);
+    const parts = [[1, 0.9], [1, 0.8], [1, 0.8], [10, 0.55], [8, 0.6], [3, 0.5]] as [number, number][];
+    const a = await countAcross(stubCells(parts), "q", "s", ws(6), 0.7);
     expect(a.text).toBe("3");
-    expect(a.p).toBeCloseTo(0.8 * (3 / 6));
+    expect(a.p).toBeCloseTo(3 / 6);
   });
 
   test("every part below the floor is not stated", async () => {
-    const a = await countAcross(stubCounts([["10", 0.1], ["30", 0.07]]), "q", "s", ws(2), 60, 0.7);
+    const a = await countAcross(stubCells([[10, 0.55], [30, 0.6]]), "q", "s", ws(2), 0.7);
     expect(a.text).toBe("not stated");
   });
 
   test("adds the parts up", async () => {
-    const a = await countAcross(stubCounts([["10", 0.9], ["10", 0.95], ["10", 0.8]]), "q", "s", ws(3), 60);
+    const a = await countAcross(stubCells([[10, 0.9], [10, 0.95], [10, 0.8]]), "q", "s", ws(3));
     expect(a.text).toBe("30");
   });
 
+  test("names the first page that counted anything", async () => {
+    const a = await countAcross(stubCells([[0.05], [0.05], sure(9)]), "q", "s", ws(3));
+    expect(a).toEqual({ text: "9", p: 1, page: 3 });
+  });
+
   test("reports the least certain part that contributed", async () => {
-    const a = await countAcross(stubCounts([["4", 0.9], ["6", 0.42]]), "q", "s", ws(2), 60);
-    expect(a).toEqual({ text: "10", p: 0.42 });
+    const a = await countAcross(stubCells([sure(4), [...sure(3), 0.5, 0.5, 0.5]]), "q", "s", ws(2));
+    expect(a).toEqual({ text: "10", p: 0.5, page: 1 });
   });
 
   // A long list has windows holding none of it; that is expected, not doubt.
   test("a window listing none neither adds nor lowers confidence", async () => {
-    const a = await countAcross(stubCounts([["7", 0.9], ["not stated", 0.05], ["0", 0.1]]), "q", "s", ws(3), 60);
-    expect(a).toEqual({ text: "7", p: 0.9 });
+    const a = await countAcross(stubCells([sure(7), [0.05], [0.1]]), "q", "s", ws(3));
+    expect(a).toEqual({ text: "7", p: 1, page: 1 });
   });
 
-  test("a part above the full range contributes no number", async () => {
-    const a = await countAcross(stubCounts([["3", 0.9], ["over 60", 0.3], ["over 252", 0.3]]), "q", "s", ws(2), 60);
-    expect(a.text).toBe("3");
+  // The bug this guards: the Fallout skills page lists all seventeen skills
+  // and the three pages after it headline each again; the sum was 34.
+  test("counts a name listed in two windows once", async () => {
+    const twice = [{ page: 1, text: "Athletics\nBarter\nProse here." }, { page: 2, text: "Athletics\nBig Guns\nProse here." }];
+    const a = await countAcross(stubCells([sure(2), sure(2)]), "q", "s", twice);
+    expect(a).toEqual({ text: "3", p: 1, page: 1 });
   });
 
   test("reports each part as it lands", async () => {
     const seen: number[] = [];
-    await countAcross(stubCounts([["2", 0.9], ["3", 0.9]]), "q", "s", ws(2), 60, 0, (_p, _a, _c, running) =>
-      seen.push(running),
-    );
+    await countAcross(stubCells([sure(2), sure(3)]), "q", "s", ws(2), 0, (_p, _a, _c, running) => seen.push(running));
     expect(seen).toEqual([2, 5]);
   });
 });

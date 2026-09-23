@@ -267,6 +267,17 @@ describe("a section-wide count", () => {
     expect(seen.filter((c) => c.startsWith("Characters > "))).toEqual([]);
   });
 
+  // The bug this guards: Heart's nine classes sit on the second page of the
+  // section, and the link went to the first, which listed none.
+  test("links to the first page that counted anything, not the section's first page", async () => {
+    const only = (t: string) => (t === "Characters" ? 3 : 0);
+    const across = async () => ({ text: "9", p: 1, verdict: "take" as const, page: 3 });
+    const { hit } = await searchPdf(stubClient(only), toc, { ...base, countAcross: across }, ui);
+    expect(hit?.section).toBe("Characters");
+    expect(hit?.page).toBe(3);
+    expect(hit?.answer).toEqual({ text: "9", p: 1 });
+  });
+
   // The bug this guards: 5 off one perk's page outranked 78 for the whole
   // section, because the fragment was more confident.
   test("drops a fragment counted earlier once the whole section is counted", async () => {

@@ -16,9 +16,10 @@ const STOPWORDS = new Set(
 
 /**
  * What jev reads off the question's wording alone, in one call: the shape of
- * answer wanted and the quantities a number question names.
+ * answer wanted, the quantities a number question names, and the kind of
+ * thing a count question counts ("theme kits" in "how many theme kits").
  */
-export type Reading = { kind: Kind; quantities: string[] };
+export type Reading = { kind: Kind; quantities: string[]; counted: string };
 
 type Word = { word: string; ends: boolean };
 
@@ -39,13 +40,14 @@ function namesFrom(words: Word[], passed: (i: number) => boolean): string[] {
 }
 
 /**
- * What shape of answer the question wants, and which quantities it names:
- * "the cost, weight and damage rating of a combat rifle" names three. Both
- * come from the wording alone, so they go out together and the quantities are
- * ignored unless the kind turns out to be a number.
+ * What shape of answer the question wants, which quantities it names ("the
+ * cost, weight and damage rating of a combat rifle" names three) and what
+ * kind of thing it counts. All come from the wording alone, so they go out
+ * together, and the parts the kind does not need are ignored.
  *
- * A noul per word. Asked word by word the model lets "what" and "of" through
- * at p=0.5 or so; grammar words can never name a quantity, and they end a name.
+ * A noul per word for each. Asked word by word the model lets "what" and
+ * "of" through at p=0.5 or so; grammar words can never name a quantity or a
+ * kind, and they end a name.
  */
 export async function readQuestion(client: TypeSafeClient, question: string): Promise<Reading> {
   const words = question
@@ -59,12 +61,21 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
     passage: "Asks what, how or why, and wants an explanation or the place it is written",
   });
   const perWord: Record<string, ReturnType<typeof noul>> = Object.fromEntries(
-    words.map((w, i) => [
-      `w${i}`,
-      noul(
-        `\`words[${i}]\` ("${w.word}") names the quantity whose value \`question\` asks for, such as a cost, weight, ` +
-          'rating, range, duration or amount; "how much does it cost" asks for a cost. Not the thing measured, not a joining word.',
-      ),
+    words.flatMap((w, i) => [
+      [
+        `w${i}`,
+        noul(
+          `\`words[${i}]\` ("${w.word}") names the quantity whose value \`question\` asks for, such as a cost, weight, ` +
+            'rating, range, duration or amount; "how much does it cost" asks for a cost. Not the thing measured, not a joining word.',
+        ),
+      ],
+      [
+        `k${i}`,
+        noul(
+          `\`words[${i}]\` ("${w.word}") is part of the name of the kind of thing \`question\` asks how many there are, ` +
+            "such as perks, classes or theme kits. Not the owner of them, not a verb, not a joining word.",
+        ),
+      ],
     ]),
   );
   const res = await timed("api", () =>
@@ -73,59 +84,125 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
   // The spread hides the per-word keys from the answer type.
   const perWordAnswers = res.answers as unknown as Record<string, { noul: number }>;
   const passed = (prefix: string) => (i: number) => perWordAnswers[`${prefix}${i}`]!.noul >= 0.5;
-  return { kind: res.answers.kind.choice, quantities: namesFrom(words, passed("w")) };
+  return {
+    kind: res.answers.kind.choice,
+    quantities: namesFrom(words, passed("w")),
+    // A count counts one kind of thing; the first name is it.
+    counted: namesFrom(words, passed("k"))[0] ?? "",
+  };
 }
 
-export type Answer = { text: string; p: number };
+/** `page` is where the answer was read, when that is not the window that passed: a count's first counted page. */
+export type Answer = { text: string; p: number; page?: number };
+/** A window's count with the names it counted, so a section counts each name once across its windows. */
+type Counted = Answer & { names: string[] };
 
 /** How an extracted answer bears on the walk: settle, keep as a fallback, or discard. */
 export type Verdict = "take" | "keep" | "drop";
 export type Judged = Answer & { verdict: Verdict };
 
-// A Choice takes at most 255 options: 0 through 252, plus the two escapes.
-const COUNT_CEILING = 252;
-
-/** Jev writes no prose, so a count is a choice over the numbers themselves. Untimed; see countFrom. */
-async function rawCount(
-  client: TypeSafeClient,
-  question: string,
-  section: string,
-  text: string,
-  max: number,
-  partial = false,
-): Promise<Answer> {
-  const ask = async (ceiling: number): Promise<Answer> => {
-    const criteria: Record<string, string> = {};
-    for (let i = 0; i <= ceiling; i++) criteria[String(i)] = `The answer is exactly ${i}`;
-    criteria[`over ${ceiling}`] = `The answer is greater than ${ceiling}`;
-    criteria["not stated"] = partial
-      ? "This part of the text lists none of them"
-      : "The text does not give this number";
-
-    const res = await client.systemOne({
-      state: { question, section, text },
-      questions: {
-        count: choice(
-          partial
-            ? "How many does THIS part of the text list? Count only entries that appear here, not the total the document may have elsewhere."
-            : "How many, according to the text?",
-          criteria,
-        ),
-      },
-    });
-    const a = res.answers.count;
-    return { text: a.choice, p: a.probabilities[a.choice] ?? a.confidence };
-  };
-
-  const ceiling = Math.min(max, COUNT_CEILING);
-  const a = await ask(ceiling);
-  // "over N" is a real answer, but a low --count-max should not be the reason
-  // for it: one more call with the full range usually pins the number down.
-  return a.text === `over ${ceiling}` && ceiling < COUNT_CEILING ? ask(COUNT_CEILING) : a;
+/**
+ * Every scrap of the text that could be the name of one entry: a line, a cell
+ * of a table row or a column, or a phrase between commas and full stops, since
+ * a rulebook lists its seven skills inline as often as one per line. A name
+ * starts with a capital and is short; the prose fragments that survive that
+ * cut still go to jev, which tells them from names, and the count is code's.
+ */
+export function cellsIn(text: string, maxLen = 60, maxWords = 4): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    for (const raw of line.split(/\s{3,}|[,;:.()]|\s(?:and|or)\s/)) {
+      const cell = raw.trim();
+      if (!cell || cell.length > maxLen || !/^[A-Z]/.test(cell) || cell.split(/\s+/).length > maxWords) continue;
+      const key = cell.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(cell);
+    }
+  }
+  return out;
 }
 
-const countFrom = (client: TypeSafeClient, question: string, section: string, text: string, max: number) =>
-  timed("api", () => rawCount(client, question, section, text, max));
+// One request carries the text once per call, so cells travel in as few
+// calls as the question budget allows.
+const CELLS_PER_CALL = 150;
+
+/**
+ * "The Repair skill" and "REPAIR" are one skill: a name is compared without
+ * its article and without the kind-word the question used, so a page that
+ * headlines an entry and a page that mentions it count it once.
+ */
+export function nameKey(name: string, counted: string): string {
+  const kind = counted.split(/\s+/).at(-1)?.toLowerCase().replace(/s$/, "") ?? "";
+  const bare = name.toLowerCase().replace(/^(?:the|a|an)\s+/, "");
+  return kind ? bare.replace(new RegExp(`\\s+${kind}s?$`), "") : bare;
+}
+
+// A cell at or above YES is counted. One at or above SURE is decided; one
+// between DOUBT and SURE is where the count can be off by one either way.
+const YES = 0.5;
+const SURE = 0.7;
+const DOUBT = 0.3;
+
+/**
+ * jev does not tally: it recognises the shape of a count, and the error grows
+ * with the list. So the count is code's. The text's cells are the candidates,
+ * one noul per cell asks whether it names an entry of the kind in question,
+ * and the yeses are counted. Untimed; see countFrom.
+ *
+ * Each cell rides in its own question rather than in the state as a list:
+ * shown the list, jev put "Survival" at 0.4 beside "Survival covers foraging
+ * in" at 0.5; shown one entry at a time it puts them at 0.9 and 0.1. The kind
+ * is named when the question names it: with "one of the things the question
+ * asks about" the theme kits under each trope counted as tropes; with "one
+ * trope" they did not.
+ *
+ * The count is as sure as the share of its cells that were decided clearly:
+ * a page of 91 kits with 6 in doubt is a count, a page of 3 tropes with 16 in
+ * doubt is not, and the least certain of 91 cells says little about either.
+ */
+async function rawCount(client: TypeSafeClient, question: string, section: string, text: string, counted: string): Promise<Counted> {
+  const cells = cellsIn(text);
+  if (cells.length === 0) return { text: "not stated", p: 1, names: [] };
+  const one = counted ? `one ${counted}` : "one of the things `question` asks how many there are";
+  const chunks: number[][] = [];
+  for (let i = 0; i < cells.length; i += CELLS_PER_CALL) chunks.push(cells.slice(i, i + CELLS_PER_CALL).map((_, j) => i + j));
+  const nouls = await Promise.all(
+    chunks.map(async (idx) => {
+      const questions = Object.fromEntries(
+        idx.map((i) => [
+          `c${i}`,
+          noul(
+            {
+              entry: cells[i]!,
+              ask: `\`entry\` is the name of ${one}: a single entry of the list \`question\` asks to count, as \`text\` lists or headlines it.`,
+            },
+            {
+              true: `It is exactly the name of ${one} and nothing more`,
+              false:
+                "It is the name of the kind itself, a heading over a group of entries, an entry of another kind " +
+                `(including a part, option or sub-entry listed under ${one}), a sentence or phrase about an entry, or a value`,
+            },
+          ),
+        ]),
+      );
+      const res = await client.systemOne({ state: { question, section, text }, questions });
+      return idx.map((i) => (res.answers[`c${i}`] as { noul: number }).noul);
+    }),
+  );
+  const ps = nouls.flat();
+  const names = [...new Set(cells.filter((_, i) => ps[i]! >= YES).map((c) => nameKey(c, counted)))];
+  if (names.length === 0) return { text: "not stated", p: 1, names };
+  const sure = ps.filter((p) => p >= SURE).length;
+  const doubt = ps.filter((p) => p >= DOUBT && p < SURE).length;
+  return { text: String(names.length), p: sure / (sure + doubt), names };
+}
+
+const countFrom = async (client: TypeSafeClient, question: string, section: string, text: string, counted: string) => {
+  const { names: _, ...a } = await timed("api", () => rawCount(client, question, section, text, counted));
+  return a;
+};
 
 const SMALL: Record<string, number> = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -264,43 +341,45 @@ async function numberFrom(
 
 /**
  * A list longer than one window cannot be counted in one call, so each window
- * is counted on its own and the parts are added up. A part below `floor` is
- * no information and is left out: a page of prose next to the list came back
- * as 37 at p=0.04 and turned five callings into 102. The aggregate is as
- * trustworthy as its least certain counted part, scaled by the share of the
- * section that was counted: three sure pages out of thirty-six is not a count.
+ * is counted on its own and the parts are added up, each name once: the
+ * Fallout skills page lists all seventeen and the three pages after it
+ * headline each again, which summed to 34. A part below `floor` is no
+ * information and is left out. The aggregate is as trustworthy as its least
+ * certain counted part, scaled by the share of the section that was counted:
+ * three sure pages out of thirty-six is not a count.
  */
 export async function countAcross(
   client: TypeSafeClient,
   question: string,
   section: string,
   windows: { page: number; text: string }[],
-  max: number,
   floor = 0,
   onPart?: (page: number, part: Answer, counted: boolean, running: number) => void,
+  counted = "",
 ): Promise<Answer> {
   // One span for the parallel calls, so the timing split stays under wall time.
   const parts = await timed("api", () =>
-    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, max, true))),
+    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, counted))),
   );
-  let total = 0;
+  const seen = new Set<string>();
   let worst = 1;
   let covered = 0;
-  let any = false;
+  // The first page that counted anything is the page the answer links to.
+  let page: number | undefined;
   for (const [i, part] of parts.entries()) {
-    const n = Number(part.text);
+    const { names, ...answer } = part;
     const counted = part.p >= floor;
     if (counted) covered++;
-    // "not stated" and "over N" carry no number to add; a window listing none
-    // is expected in a long section, so it lowers no confidence.
-    if (counted && Number.isFinite(n)) {
-      total += n;
-      any = true;
-      if (n > 0) worst = Math.min(worst, part.p);
+    // "not stated" carries no number to add; a window listing none is
+    // expected in a long section, so it lowers no confidence.
+    if (counted && names.length > 0) {
+      for (const name of names) seen.add(name);
+      page ??= windows[i]!.page;
+      worst = Math.min(worst, part.p);
     }
-    onPart?.(windows[i]!.page, part, counted, total);
+    onPart?.(windows[i]!.page, answer, counted, seen.size);
   }
-  return any ? { text: String(total), p: worst * (covered / windows.length) } : { text: "not stated", p: 1 };
+  return page === undefined ? { text: "not stated", p: 1 } : { text: String(seen.size), p: worst * (covered / windows.length), page };
 }
 
 /**
@@ -354,17 +433,17 @@ async function truthFrom(
   return { text: "not stated", p: 1 - Math.max(s, c, a) };
 }
 
+/** `read` supplies what the question named: the quantities a number wants, the kind a count counts. */
 export function answerFrom(
   client: TypeSafeClient,
   kind: Valued,
   question: string,
   section: string,
   text: string,
-  countMax: number,
-  wanted: string[] = [],
+  read: Partial<Pick<Reading, "quantities" | "counted">> = {},
 ): Promise<Answer> {
-  if (kind === "count") return countFrom(client, question, section, text, countMax);
-  if (kind === "number") return numberFrom(client, question, section, text, wanted);
+  if (kind === "count") return countFrom(client, question, section, text, read.counted ?? "");
+  if (kind === "number") return numberFrom(client, question, section, text, read.quantities ?? []);
   return truthFrom(client, question, section, text);
 }
 
@@ -518,6 +597,11 @@ export async function answerFromOutline(
   if (!sections.some((s) => s.path === hit.parent)) return undefined;
   const swallowed = hit.kids.some((kid) => (children.get(`${hit.parent} > ${kid}`)?.length ?? 0) > hit.kids.length);
   if (swallowed) return { parent: hit.parent };
+  // Or jev picked that entry itself: "Aquaboy/Aquagirl" listing 89 perks is
+  // the perks section's list, and the section is what the pages should cover.
+  const above = hit.parent.slice(0, Math.max(0, hit.parent.lastIndexOf(" > ")));
+  const siblings = children.get(above)?.length ?? Infinity;
+  if (siblings < hit.kids.length) return { parent: above };
 
   return { answer: { text: String(hit.kids.length), p }, parent: hit.parent };
 }

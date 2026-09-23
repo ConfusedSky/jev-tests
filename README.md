@@ -97,16 +97,25 @@ follows.
 | "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.99)` + link |
 | "How do I create a hero?" | passage | link only |
 
-Because jev emits no text, a count is a `choice` over the numbers themselves
-(`0`…`N`, plus `over N` and `not stated`), and a statement is a `noul`. Both
-come back with a probability per option rather than a sentence.
+Because jev emits no text, every answer is a decision over options code
+prepared, and the arithmetic stays in code. jev does not tally: it recognises
+the shape of a count rather than counting, and the error grows with the list.
 
 A count and a number are different questions. A count is a tally the page does
-not state ("how many classes"), so the choices are `0`…`N` and a long list is
-summed across its pages. A number is a figure the page does state ("how much
-does it cost", "how many rads are lethal"), so the choices are the figures on
-that page, digits or words, each shown with the text around it; nothing is
-summed, and a page without figures is `not stated` without a call.
+not state ("how many classes"). The page is cut into every scrap that could be
+a name, a line, a cell of a table row, a phrase between commas, starting with
+a capital and at most four words, and one `noul` per scrap asks whether it is
+exactly the name of one entry of the kind asked about; the yeses are counted,
+and a long list is summed across its pages. Each scrap rides in its own
+question: shown the whole list of scraps at once, jev put "Survival" at 0.4
+beside "Survival covers foraging in" at 0.5; shown one at a time, 0.9 and 0.1.
+The kind is read off the question in the same call that classifies it, so the
+scraps are asked whether each is "one trope" rather than "one of the things
+the question asks about"; asked the second way, the theme kits listed under
+each trope counted as tropes. A number is a figure the page does state ("how much does it cost", "how
+many rads are lethal"), so the choices are the figures on that page, digits or
+words, each shown with the text around it; nothing is summed, and a page
+without figures is `not stated` without a call.
 
 A statement asks three `noul`s of a page in one call: does the text state the
 claim, does it contradict it, and does it list things of that kind without
@@ -119,13 +128,10 @@ A question can ask for several figures. "What is the cost, weight and damage
 rating of a combat rifle?" is split into words and each word is asked, in the
 same call that classifies the question, whether it names a quantity the
 question wants; adjacent words that do form one name, so `damage rating` stays
-one. Then one choice per name
-goes out in one call over the page, and the answer reads `cost 410, weight 34,
-damage rating not stated`, with the confidence of its least certain stated
-part. `N` is
-`--count-max` (default 50); an `over N` answer is asked once more with the full
-range of 252, so a low ceiling costs a call rather than the answer. `not stated`
-is a refusal, not an answer: the window is dropped and the walk goes on.
+one. Then one choice per name goes out in one call over the page, and the
+answer reads `cost 410, weight 34, damage rating not stated`, with the
+confidence of its least certain stated part. `not stated` is a refusal, not an
+answer: the window is dropped and the walk goes on.
 
 Two probabilities print, and they mean different things: the answer's own
 confidence, and `found p=…` for the window that produced it. Finding the right
@@ -153,7 +159,7 @@ Counting bookmarks only holds while they are the list. The Fallout rulebook
 nests 89 of its 94 perks under the first perk, so its perks section lists one
 perk and six statistics; an entry with more entries under it than its parent
 has is where the list went, and the contents are abandoned for that section's
-pages. How many pages an entry takes is no signal: Heart gives each of its five
+pages, whether jev picked the section or the entry the list went into. How many pages an entry takes is no signal: Heart gives each of its five
 callings two pages, and five is the count.
 
 Membership is decided in code, not by the model. "Is witch a class?" names a
@@ -195,15 +201,21 @@ counted on its own and the parts are added up, reported as they land:
 
 Counting a section reads every page under it, so its subsections are skipped
 rather than re-counted, and any count already taken off one of its pages is
-dropped as a fragment of the same list rather than kept as a fallback.
+dropped as a fragment of the same list rather than kept as a fallback. The
+link goes to the first page that counted anything: Heart's nine classes sit
+on the second page of their section, and the first page lists none.
 
-The aggregate is only as trustworthy as its least certain counted part, so that
-is the confidence reported. A window listing none of the items neither adds nor
-lowers it, since a long section is expected to have some. A part below
-`--answer-floor` is left out and marked `?`: a page of prose beside the list
-came back as 37 at p=0.04, and summing it turned five callings into 102. The
-confidence is then scaled by the share of the section that was counted, so
-three sure pages of a 36-page section do not pass as a count of it.
+A window's count is as sure as the share of its scraps that were decided
+clearly (at or above 0.7, against those between 0.3 and 0.7), and the
+aggregate as sure as its least certain counted part, so that is the confidence
+reported. A page of 91 theme kits with 6 in doubt is a count; a page of 3
+tropes with 16 in doubt is not; and the least sure of 91 scraps says little
+about either.
+A window listing none of the items neither adds nor lowers it, since a long
+section is expected to have some. A part below `--answer-floor` is left out
+and marked `?`. The confidence is then scaled by the share of the section that
+was counted, so three sure pages of a 36-page section do not pass as a count
+of it.
 
 A count also changes what a window has to satisfy to be worth reading. No page
 says "there are 94 perks", so asking whether a window "contains the answer"
@@ -312,11 +324,20 @@ the same calls and is less sharp, so it is only there for comparison.
   its four classes yields three, with no page read to check. Membership has a
   safeguard for this, a negative being confirmed against the pages; a count has
   none.
-- **Counting dense pages is unreliable.** Summing windows is exact on a clean
-  list (30 gadgets over three windows, p=0.94) and poor on a two-column
-  rulebook: the Fallout perks come back as 64 of 94, at p=0.07. The floor
-  refuses that rather than reporting it, so the usual outcome there is no
-  answer rather than a wrong one.
+- **Counting is only as good as the scraps.** A name over four words or 60
+  characters, one not starting with a capital, or one split across a line
+  break is never offered, so it is never counted. Measured against the
+  choice-over-numbers method it replaced, on two-column rulebooks. Fallout:
+  the 94 perks over 16 pages came back as 95 at p=0.80 ("Dogmeat" counted;
+  the old method said 80 at p=0.36); the 17 skills as 17 at p=1.00 (old 16);
+  the 6 origins over 7 pages as 6 at p=0.32 (old 12). Legend in the Mist:
+  the 20 theme types on one page as 19 at p=0.89 (old refused); the 153 theme
+  kits over two pages as 94, the first page right (94 counted, 91 there,
+  three of them headers) and the second refused at p=0.28 (old 17 at
+  p=0.05); the 30 tropes over ten pages, three a page, refused at p=0.22
+  with pages counted between 3 and 9, the kits listed under each trope being
+  mistaken for tropes (old 23 at p=0.20). Refusing is the usual outcome on a
+  page it cannot read, not a wrong number.
 - **The category matcher is loose.** It takes any section whose name appears in
   the question, so "Is Brotherhood Initiate an origin?" can match a section
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong
@@ -329,8 +350,6 @@ the same calls and is less sharp, so it is only there for comparison.
   collected; below it one is enough. It just costs the reads above it
   first.
 - **Scanned PDFs are invisible.** Extraction is text-only; no OCR.
-- **`--count-max` above 252 is clamped**, because a `choice` takes at most 255
-  options and two are spent on `over N` and `not stated`.
 - **Probabilities move between runs.** jev is not deterministic at the margins,
   so a borderline window can flip either side of a threshold.
 
@@ -361,8 +380,8 @@ At parity on small decisions, and free and offline. Not a match on pages:
 prefill runs at about 1,500 tokens a second, a 12k-token batch runs the card
 out of memory (hence `--chars 12000`), and the pages of a section are less
 sharply told apart (a wrong page at 0.75 beside the right one at 0.95, where
-jev held it under 0.05). Counts are slow: SemIf answers with one letter, so a
-choice has sixteen options and the 0–252 count runs as heats of fifteen.
+jev held it under 0.05). A count asks a `noul` per scrap of the page, a
+hundred or more per page, each a pass over the same text.
 
 ## Tests
 

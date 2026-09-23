@@ -38,7 +38,7 @@ describe.if(live)("readQuestion", () => {
 });
 
 describe.if(live)("truth", () => {
-  const ask = (q: string) => answerFrom(client, "truth", q, "Classes", heartText, 50);
+  const ask = (q: string) => answerFrom(client, "truth", q, "Classes", heartText);
 
   test("a class the text names is true", async () => {
     expect((await ask("Is vermissian knight a class in heart?"))!.text).toBe("true");
@@ -59,26 +59,19 @@ describe.if(live)("truth", () => {
 });
 
 describe.if(live)("count", () => {
-  test("counts a list the text spells out", async () => {
-    const a = await answerFrom(client, "count", "How many skills does a vault dweller have?", "Skills", manualText, 50);
-    expect(a!.text).toBe("7");
+  test("counts a list the text spells out inline", async () => {
+    const a = await answerFrom(client, "count", "How many skills does a vault dweller have?", "Skills", manualText);
+    expect(a.text).toBe("7");
   });
 
-  test("reports numbers stated in prose", async () => {
-    const a = await answerFrom(client, "count", "How many rads are lethal without treatment?", "Radiation", manualText, 250);
-    expect(a!.text).toBe("200");
+  test("counts a list the text gives one per line", async () => {
+    const a = await answerFrom(client, "count", "How many classes are there in heart?", "Classes", heartText);
+    expect(a.text).toBe("9");
   });
 
-  // A Choice takes at most 255 options, so a larger ceiling is clamped rather
-  // than sent and rejected with "Too many choices".
-  test("a ceiling above the option limit still answers", async () => {
-    const a = await answerFrom(client, "count", "How many skills does a vault dweller have?", "Skills", manualText, 9999);
-    expect(a!.text).toBe("7");
-  });
-
-  test("a count above the ceiling is asked again with the full range", async () => {
-    const a = await answerFrom(client, "count", "How many rads are lethal without treatment?", "Radiation", manualText, 5);
-    expect(a.text).toBe("200");
+  test("a page listing none of them is not stated", async () => {
+    const a = await answerFrom(client, "count", "How many perks are there?", "Radiation", manualText);
+    expect(a.text).toBe("not stated");
   });
 });
 
@@ -102,7 +95,7 @@ describe.if(live)("counting across windows", () => {
     // 30 gadgets, ten per page, forced into one window per page.
     const windows = await pageScan(fixture("gadgets.pdf"), 900);
     expect(windows.length).toBeGreaterThan(1);
-    const a = await countAcross(client, "How many gadgets are there?", "Gadgets", windows, 60);
+    const a = await countAcross(client, "How many gadgets are there?", "Gadgets", windows);
     expect(a.text).toBe("30");
   });
 });
@@ -110,12 +103,12 @@ describe.if(live)("counting across windows", () => {
 describe.if(live)("number", () => {
   test("reads a cost off the page that states it", async () => {
     const page = (await pageScan(fixture("gadgets.pdf"), 0))[2]!.text;
-    const a = await answerFrom(client, "number", "How much does the Umber cost?", "Gadgets", page, 50);
+    const a = await answerFrom(client, "number", "How much does the Umber cost?", "Gadgets", page);
     expect(a.text).toBe("80");
   });
 
   test("reads a figure written in words", async () => {
-    const a = await answerFrom(client, "number", "How many rads are lethal without treatment?", "Radiation", manualText, 50);
+    const a = await answerFrom(client, "number", "How many rads are lethal without treatment?", "Radiation", manualText);
     expect(a.text).toBe("200");
   });
 
@@ -125,14 +118,21 @@ describe.if(live)("number", () => {
     expect(await quantities("How much does the Umber cost?")).toEqual(["cost"]);
   });
 
+  test("names the kind of thing a count counts", async () => {
+    const counted = async (q: string) => (await readQuestion(client, q)).counted;
+    expect(await counted("How many theme kits are there?")).toBe("theme kits");
+    expect(await counted("How many skills does a vault dweller have?")).toBe("skills");
+    expect(await counted("How many perks can a character take?")).toBe("perks");
+  });
+
   test("reads several figures off one page", async () => {
     const page = (await pageScan(fixture("gadgets.pdf"), 0))[1]!.text;
-    const a = await answerFrom(client, "number", "What is the cost and weight of the Lantern?", "Gadgets", page, 50, ["cost", "weight"]);
+    const a = await answerFrom(client, "number", "What is the cost and weight of the Lantern?", "Gadgets", page, { quantities: ["cost", "weight"] });
     expect(a.text).toBe("cost 53, weight 4");
   });
 
   test("declines when the page has the subject but not the figure", async () => {
-    const a = await answerFrom(client, "number", "How much does a dosimeter weigh?", "Radiation", manualText, 50);
+    const a = await answerFrom(client, "number", "How much does a dosimeter weigh?", "Radiation", manualText);
     expect(a.text).toBe("not stated");
   });
 });
