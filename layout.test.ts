@@ -143,6 +143,11 @@ describe("paragraphs", () => {
     ]);
   });
 
+  test("a numbered item starts a paragraph", () => {
+    const lines = [body(50, 100, "The sequence is followed:"), body(50, 114, "1. TURN TO FACE"), body(50, 128, "2. PICK WEAPONS"), body(50, 142, "3. DETERMINE ATTACK DICE")];
+    expect(paragraphs(parseStext(page(lines))).map((p) => p.text)).toEqual(["The sequence is followed:", "1. TURN TO FACE", "2. PICK WEAPONS", "3. DETERMINE ATTACK DICE"]);
+  });
+
   // Necromunda's game structure: a list set in two columns under a
   // full-width intro, and the phase heading across the page below it.
   test("a line set across the columns bands the page: both columns above it come first", () => {

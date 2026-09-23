@@ -225,20 +225,27 @@ answer: the window is dropped and the walk goes on.
 
 A passage question reads the answering stretch off the page. The page's text
 is cut into sentences, each sentence is asked in its own `noul` whether it is
-part of the answer, and the run of sentences whose probabilities sum highest
-above 0.65 is the passage, printed under the link a sentence a line, as sure
-as its sentences are on average. The bar sits above even odds because a
+part of the answer, and the runs of sentences whose probabilities sum highest
+above 0.65 are the passage, printed under the link a sentence a line, as sure
+as their sentences are on average. The best run comes first, then the best of
+what is left while a run still clears a minimum (one sentence near certain,
+or two fairly sure), and what was left out between two runs prints as `…`:
+Necromunda's eight phases of close combat are a heading and a paragraph
+each, with an aside on unarmed attacks between the second and third that
+one run would have stopped at. The bar sits above even odds because a
 column's spillover on the Legend in the Mist creation page hung at 0.6 and
 would have trailed the passage at 0.5, while a heading's 0.43 dip inside the
 Fallout RadAway entry is outweighed by the sentences around it and kept. A
 page with no sentence of the answer is dropped and the walk goes on.
 
-A passage that reaches the edge of its page goes on past it: the next page
-(or the one before) is laid out and its sentences asked, up to two pages
-each way, and the run is taken over the whole. Necromunda's phases of a
-round begin at the foot of one page and end at the head of the next. The
-link lands on the page the passage starts on, and `--highlight` marks every
-page it covers.
+A passage goes on past its page when the next page holds more of the
+answer: it is laid out and its sentences asked, and kept if a run of its
+own clears the minimum, up to two pages on. Necromunda's phases of close
+combat are listed on one page and the last three explained on the next. The
+page before is never read: tried, it got in twice on its own account, the
+weapons table before the exotic one and a page before hero creation, and
+never held anything. The link lands on the page the passage starts on, and
+`--highlight` marks every page it covers.
 
 ```console
 $ bun jevsec.ts manual.pdf "How is radiation treated?"

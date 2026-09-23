@@ -82,7 +82,8 @@ const text = (l: Line) => l.spans.map((s) => s.text).join("");
  * change of size, or a bullet; a line in type well above the body's is a
  * heading of its own.
  */
-const BULLET = /^[•·▪‣□●○■◆◇▫⁃◦-]/;
+// A bullet, or the "1." of a numbered list, starts a paragraph.
+const BULLET = /^(?:[•·▪‣□●○■◆◇▫⁃◦-]|\d{1,2}[.)]\s)/;
 const BULLET_ONLY = /^[•·▪‣□●○■◆◇▫⁃◦-]$/;
 
 export function paragraphs(page: { width: number; height: number; lines: Line[] }, pageNumber = 0): Para[] {
