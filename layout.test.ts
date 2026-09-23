@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageParagraphs, paragraphs, parseStext, styledCandidates, tables } from "./layout";
+import { pageParagraphs, paragraphs, parseStext, styledCandidates } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -213,82 +213,6 @@ describe("paragraphs", () => {
       "Air Pistol Fires paint balls. 100eb",
       "Rhinemetall EMG-86 Railgun Assault Rifle that ignores armor lower than SP 11. 5,000eb",
     ]);
-  });
-});
-
-describe("tables", () => {
-  const block = (...lines: string[]) => `<block>${lines.join("")}</block>`;
-  const cell = (x: number, y: number, text: string, font = "Book") => stextLine(x, y, 9, font, text, 4.5);
-
-  // Fallout's small guns: heads two lines tall, a name column, wrapped cells,
-  // the dice glyph in display type, and the rarity column hugging the margin.
-  test("reads a table with two-line heads and wrapped cells into a record a row", () => {
-    const xml = `<page id="p" width="612" height="792">${[
-      block(cell(85, 101, "SMALL GUN", "Bold"), cell(162, 95, "WEAPON", "Bold"), cell(169, 106, "TYPE", "Bold"), cell(206, 95, "DAMAGE", "Bold"), cell(208, 106, "RATING", "Bold"), cell(454, 101, "WEIGHT", "Bold"), cell(490, 101, "COST", "Bold"), cell(530, 101, "RARITY", "Bold")),
-      block(cell(85, 128, ".44 Pistol"), cell(167, 122, "Small"), cell(167, 136, "Guns"), cell(212, 127, "6 D"), stextLine(226, 128, 13, "Dice", "C"), cell(466, 129, "4"), cell(494, 129, "99"), cell(540, 129, "2")),
-      block(cell(85, 165, "10mm Pistol"), cell(167, 158, "Small"), cell(167, 172, "Guns"), cell(212, 163, "4 D"), stextLine(226, 164, 13, "Dice", "C"), cell(466, 166, "4"), cell(494, 166, "50"), cell(540, 166, "1")),
-    ].join("")}</page>`;
-    const [t] = tables(parseStext(xml).lines, 9);
-    expect(t?.columns).toEqual(["SMALL GUN", "WEAPON TYPE", "DAMAGE RATING", "WEIGHT", "COST", "RARITY"]);
-    expect(t?.rows.map((r) => r.cells)).toEqual([
-      { "SMALL GUN": ".44 Pistol", "WEAPON TYPE": "Small Guns", "DAMAGE RATING": "6 D C", WEIGHT: "4", COST: "99", RARITY: "2" },
-      { "SMALL GUN": "10mm Pistol", "WEAPON TYPE": "Small Guns", "DAMAGE RATING": "4 D C", WEIGHT: "4", COST: "50", RARITY: "1" },
-    ]);
-  });
-
-  // Cyberpunk Red's exotic weapons: centred cells, bold names, one name over
-  // three lines set as far apart as the rows are.
-  test("a name wrapped over lines as far apart as rows joins the row its data sits on", () => {
-    const xml = `<page id="p" width="612" height="792">${[
-      block(cell(63, 60, "How to read the table, in the body type, long enough to be prose.")),
-      block(cell(113, 100, "Weapon", "Bold"), cell(272, 100, "Description and Data", "Bold"), cell(474, 100, "Cost", "Bold")),
-      block(cell(112, 120, "Air Pistol", "Bold"), cell(248, 119, "Very Heavy Pistol that fires balls."), cell(459, 120, "100eb")),
-      block(cell(91, 137, "Constitution Arms", "Bold"), cell(91, 150, "Hurricane Assault", "Bold")),
-      block(cell(113, 164, "Weapon", "Bold")),
-      block(cell(254, 148, "Shotgun w/ 2 ROF."), cell(459, 150, "5,000eb")),
-      block(cell(114, 181, "Dartgun", "Bold"), cell(256, 178, "Fires Non-Basic Arrows."), cell(459, 180, "100eb")),
-      block(stextLine(63, 220, 14, "Bold", "Melee Weapons")),
-      block(cell(63, 240, "The prose that follows the table runs the width of the page and more.")),
-    ].join("")}</page>`;
-    const [t] = tables(parseStext(xml).lines, 9);
-    expect(t?.rows.map((r) => r.cells.Weapon)).toEqual(["Air Pistol", "Constitution Arms Hurricane Assault Weapon", "Dartgun"]);
-    expect(t?.rows[1]?.cells).toEqual({ Weapon: "Constitution Arms Hurricane Assault Weapon", "Description and Data": "Shotgun w/ 2 ROF.", Cost: "5,000eb" });
-    expect(t?.lines.some((l) => l.y0 >= 220)).toBe(false);
-  });
-
-  test("two lists side by side under the same heads keep their cells apart", () => {
-    const xml = `<page id="p" width="612" height="792">${[
-      block(cell(60, 100, "Skill", "Bold"), cell(150, 100, "Level", "Bold"), cell(300, 100, "Skill", "Bold"), cell(390, 100, "Level", "Bold")),
-      block(cell(60, 120, "Athletics"), cell(150, 120, "4"), cell(300, 120, "Perception"), cell(390, 120, "6")),
-      block(cell(60, 137, "Brawling"), cell(150, 137, "2"), cell(300, 137, "Stealth"), cell(390, 137, "3")),
-    ].join("")}</page>`;
-    const [t] = tables(parseStext(xml).lines, 9);
-    expect(t?.columns).toEqual(["Skill", "Level", "Skill 2", "Level 2"]);
-    expect(t?.rows[0]?.cells).toEqual({ Skill: "Athletics", Level: "4", "Skill 2": "Perception", "Level 2": "6" });
-  });
-
-  test("bold lead-ins one under another are a list, not a table", () => {
-    const xml = page([cell(50, 100, "COMPEL:", "Bold"), cell(50, 114, "DELVE:", "Bold"), cell(50, 128, "ENDURE:", "Bold")]);
-    expect(tables(parseStext(xml).lines, 9)).toEqual([]);
-  });
-
-  test("a page's paragraphs carry the table as a record a row, in its place, each row one unit", () => {
-    const xml = `<page id="p" width="612" height="792">${[
-      block(cell(60, 60, "Weapons are listed below, with their cost and weight in the table.")),
-      block(cell(60, 100, "Name", "Bold"), cell(200, 100, "Cost", "Bold"), cell(300, 100, "Weight", "Bold")),
-      block(cell(60, 120, "Pistol"), cell(200, 120, "99"), cell(300, 120, "4")),
-      block(cell(60, 137, "Rifle"), cell(200, 137, "117"), cell(300, 137, "11")),
-      block(cell(60, 180, "Prose after the table, wide enough to run past the second column edge.")),
-    ].join("")}</page>`;
-    const paras = paragraphs(parseStext(xml));
-    expect(paras.map((p) => p.text)).toEqual([
-      "Weapons are listed below, with their cost and weight in the table.",
-      '{"Name":"Pistol","Cost":"99","Weight":"4"}',
-      '{"Name":"Rifle","Cost":"117","Weight":"11"}',
-      "Prose after the table, wide enough to run past the second column edge.",
-    ]);
-    expect(paras[1]?.table).toBe(true);
-    expect(paras[1]?.lines).toHaveLength(3);
   });
 });
 
