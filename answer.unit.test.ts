@@ -198,13 +198,13 @@ describe("cellsIn", () => {
 });
 
 describe("unitsOf", () => {
-  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length) });
+  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
 
-  test("splits a paragraph at sentence ends and keeps each sentence's weights", () => {
-    const para = { heading: false, text: "RadAway heals. RadX prevents.", style: "bbbbbbb" + " ".repeat(22) };
+  test("splits a paragraph at sentence ends and keeps each sentence's weights and place", () => {
+    const para = { heading: false, text: "RadAway heals. RadX prevents.", style: "bbbbbbb" + " ".repeat(22), lines: [] };
     expect(unitsOf([para])).toEqual([
-      { para: 0, text: "RadAway heals.", style: "bbbbbbb       " },
-      { para: 0, text: "RadX prevents.", style: " ".repeat(14) },
+      { para: 0, text: "RadAway heals.", style: "bbbbbbb       ", start: 0, end: 14 },
+      { para: 0, text: "RadX prevents.", style: " ".repeat(14), start: 15, end: 29 },
     ]);
   });
 
@@ -234,11 +234,17 @@ describe("bestRun", () => {
 });
 
 describe("a passage", () => {
-  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length) });
+  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
+  const box = (y: number, start: number, end: number) => ({ x0: 72, y0: y, x1: 300, y1: y + 12, start, end });
   const page = [
     plain("Chapter III: Radiation", true),
     plain("Radiation damage is permanent until treated with RadAway. A dweller carries a dosimeter."),
-    { heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54) },
+    {
+      heading: false,
+      text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.",
+      style: "bbbbbbb" + " ".repeat(54),
+      lines: [box(130, 0, 33), box(142, 34, 61)],
+    },
   ];
   /** Answers each sentence question by the noul listed for the sentence's text. */
   const stub = (nouls: Record<string, number>) =>
@@ -251,8 +257,15 @@ describe("a passage", () => {
   test("is the sentences that answer, their paragraph put back together with its weights, as sure as they are on average", async () => {
     const a = await readPassage(stub({ "RadAway is stocked in the clinic.": 0.9, "RadX reduces rads absorbed.": 0.8 }), "q", "s", page);
     expect(a.text).toBe("RadAway is stocked in the clinic. RadX reduces rads absorbed.");
-    expect(a.passage).toEqual([{ heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54) }]);
+    expect(a.passage).toEqual([
+      { heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54), lines: [box(130, 0, 33), box(142, 34, 61)] },
+    ]);
     expect(a.p).toBeCloseTo(0.85);
+  });
+
+  test("carries only the lines the chosen sentences sit on", async () => {
+    const a = await readPassage(stub({ "RadX reduces rads absorbed.": 0.9 }), "q", "s", page);
+    expect(a.passage?.[0]?.lines).toEqual([box(142, 34, 61)]);
   });
 
   test("a heading is a unit of its own and keeps its line", async () => {

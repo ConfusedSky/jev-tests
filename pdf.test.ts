@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
+import { batches, confine, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -328,6 +328,18 @@ describe("confine", () => {
 
   test("a top-level section has no chapter above it", () => {
     expect(confine(sections, "Rules")).toEqual([{ path: "Rules", start: 76, end: 90 }]);
+  });
+});
+
+describe("highlighted", () => {
+  test("copies the PDF into the cache with the lines marked on the page", async () => {
+    process.env.XDG_CACHE_HOME = Bun.fileURLToPath(new URL("fixture", import.meta.url));
+    const copy = await highlighted(manual, 3, [{ x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
+    expect(copy.endsWith("/fixture/jev/manual.pdf")).toBe(true);
+    const count = `${copy}.js`;
+    await Bun.write(count, "var d = Document.openDocument(scriptArgs[0]); print(d.loadPage(2).getAnnotations().length);");
+    expect((await run(["mutool", "run", count, copy])).trim()).toBe("1");
+    await Bun.$`rm -r ${Bun.fileURLToPath(new URL("fixture/jev", import.meta.url))}`;
   });
 });
 

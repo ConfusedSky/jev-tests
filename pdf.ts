@@ -1,6 +1,7 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rankTitles, secs, snapshot, split, timed } from "./shared";
 import type { Answer, Judged, OutlineAnswer } from "./answer";
+import type { Box } from "./layout";
 
 export type Section = { path: string; start: number; end: number };
 export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
@@ -99,6 +100,22 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
   const pages = await pageCount(pdf);
   if (pages === 0) return [];
   return windows(pdf, { path: "", start: 1, end: pages }, chars);
+}
+
+/**
+ * A copy of the PDF with the passage's lines highlighted on its page, in the
+ * cache, for a link to land on the answer rather than the page. Every run
+ * copies afresh, since a highlight saved into the copy stays there; several
+ * hits in one file each add theirs to the same copy.
+ */
+export async function highlighted(pdf: string, page: number, lines: Box[], fresh = true): Promise<string> {
+  const dir = `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
+  const copy = `${dir}/${pdf.split("/").pop()}`;
+  if (fresh) await Bun.write(copy, Bun.file(pdf));
+  const quads = lines.map((l) => [l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]);
+  const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
+  await run(["mutool", "run", script, copy, String(page), JSON.stringify(quads)]);
+  return copy;
 }
 
 export function pageUrl(pdf: string, page: number): string {

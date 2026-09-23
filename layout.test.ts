@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageParagraphs, paragraphs, parseStext, type Line } from "./layout";
+import { pageParagraphs, paragraphs, parseStext } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -78,6 +78,14 @@ describe("paragraphs", () => {
     const [compel] = paragraphs(parseStext(page(skills)));
     expect(compel!.style.slice(0, 33)).toBe("b".repeat(31) + "  ");
     expect(compel!.style.length).toBe(compel!.text.length);
+  });
+
+  test("keeps each line's box and which characters it holds", () => {
+    const [compel] = paragraphs(parseStext(page(skills)));
+    expect(compel!.lines.map((l) => [l.y0, compel!.text.slice(l.start, l.end)])).toEqual([
+      [103, "COMPEL: Make people do what you"],
+      [117, "want via threats or lies."],
+    ]);
   });
 
   test("a line in display type is a heading; the running header and page number in the margins are dropped", () => {

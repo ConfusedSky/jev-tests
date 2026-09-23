@@ -487,23 +487,24 @@ export function bestRun(ps: number[], bar = PASSAGE_BAR): { start: number; end: 
   return best && { start: best.start, end: best.end };
 }
 
-/** A sentence of a paragraph, with its weights, as one unit a passage can start or end on. */
-type Unit = { para: number; text: string; style: string };
+/** A sentence of a paragraph, with its weights and its place in the paragraph, as one unit a passage can start or end on. */
+type Unit = { para: number; text: string; style: string; start: number; end: number };
 
 /** The sentences of each paragraph; a heading is one sentence. */
 export function unitsOf(paras: Para[]): Unit[] {
   const out: Unit[] = [];
   paras.forEach((p, i) => {
     if (p.heading) {
-      out.push({ para: i, text: p.text, style: p.style });
+      out.push({ para: i, text: p.text, style: p.style, start: 0, end: p.text.length });
       return;
     }
     let at = 0;
+    const cut = (end: number) => out.push({ para: i, text: p.text.slice(at, end), style: p.style.slice(at, end), start: at, end });
     for (const m of p.text.matchAll(/(?<=[.!?])\s+(?=[^a-z])/g)) {
-      out.push({ para: i, text: p.text.slice(at, m.index), style: p.style.slice(at, m.index) });
+      cut(m.index!);
       at = m.index! + m[0].length;
     }
-    out.push({ para: i, text: p.text.slice(at), style: p.style.slice(at) });
+    cut(p.text.length);
   });
   return out.filter((u) => u.text.length > 1);
 }
@@ -538,19 +539,22 @@ async function passageFrom(client: TypeSafeClient, question: string, section: st
   const run = bestRun(ps);
   if (!run) return { text: "not stated", p: 1 };
   const chosen = ps.slice(run.start, run.end);
-  // Sentences of one paragraph go back together; a heading keeps its own line.
+  // Sentences of one paragraph go back together, with the lines they sit
+  // on for highlighting; a heading keeps its own line.
   const passage: (Para & { para: number })[] = [];
   for (const u of units.slice(run.start, run.end)) {
     const last = passage.at(-1);
+    const lines = paras[u.para]!.lines.filter((l) => l.end > u.start && l.start < u.end);
     if (last && last.para === u.para) {
       last.text += ` ${u.text}`;
       last.style += ` ${u.style}`;
-    } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style });
+      for (const l of lines) if (!last.lines.includes(l)) last.lines.push(l);
+    } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines });
   }
   return {
     text: passage.map((p) => p.text).join("\n"),
     p: chosen.reduce((a, b) => a + b, 0) / chosen.length,
-    passage: passage.map(({ heading, text, style }) => ({ heading, text, style })),
+    passage: passage.map(({ heading, text, style, lines }) => ({ heading, text, style, lines })),
   };
 }
 

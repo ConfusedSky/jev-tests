@@ -1,7 +1,7 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
 import { pageParagraphs, type Para } from "./layout";
-import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -47,6 +47,7 @@ export type ReadOpts = SearchOpts & {
   model: string;
   quiet: boolean;
   open: boolean;
+  highlight: boolean;
   answerFloor: number;
   noToc: boolean;
   maxAnswers: number;
@@ -65,6 +66,7 @@ export const readDefaults = (): ReadOpts => ({
   model: DEFAULT_MODEL,
   quiet: false,
   open: false,
+  highlight: false,
   answerFloor: 0.7,
   noToc: false,
   maxAnswers: 5,
@@ -84,6 +86,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
+  "--highlight": (o) => (o.highlight = true),
   "--whole-windows": (o) => (o.perPage = false),
   "--no-toc": (o) => (o.noToc = true),
   "--kind": (o, next, fail) => {
@@ -104,6 +107,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
+      --highlight      link to a copy of the PDF with the passage highlighted
       --answer-floor P confidence an answer read off a page must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
@@ -242,8 +246,19 @@ export async function report(
 
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
-    for (const hit of r.hits) printHit(o.kind, hit, hit.answer);
-    if (o.open) await openAt(pageUrl(r.hit.pdf, r.hit.page));
+    // A highlighted copy per file, every hit's passage marked on it.
+    const copies = new Set<string>();
+    const at = async (hit: Hit): Promise<Hit> => {
+      const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? [];
+      if (!o.highlight || lines.length === 0) return hit;
+      const copy = await highlighted(hit.pdf, hit.page, lines, !copies.has(hit.pdf));
+      copies.add(hit.pdf);
+      return { ...hit, pdf: copy };
+    };
+    const hits: Hit[] = [];
+    for (const hit of r.hits) hits.push(await at(hit));
+    for (const hit of hits) printHit(o.kind, hit, hit.answer);
+    if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
   }
 

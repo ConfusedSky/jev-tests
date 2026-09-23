@@ -457,6 +457,20 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `format.ts` | column alignment and path elision |
 | `outline.js` | mutool script printing `path<TAB>start<TAB>end` |
 
+## Highlighting the answer
+
+`--highlight` links to a copy of the PDF, in `~/.cache/jev/`, with the
+passage's lines marked by a highlight annotation on its page, so the link
+lands on the answer rather than the page. Any viewer that draws annotations
+shows it. The copy is made afresh each run, since a highlight saved into it
+stays there, and every hit in the same file adds its own; the Fallout
+rulebook's 248 MB take about a second to copy. `--open` opens the copy. A
+count, number or statement links to the page as before.
+
+```sh
+bun jevsec.ts --highlight --open book.pdf "What skills are there?"
+```
+
 ## Clicking the link at the page
 
 The printed link is an OSC 8 hyperlink carrying `#page=N`. `xdg-open` truncates

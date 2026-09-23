@@ -7,8 +7,13 @@
 
 export type Span = { text: string; bold: boolean; italic: boolean };
 export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[] };
-/** A paragraph's text with, per character, "b" for bold, "i" for italic, "B" for both and " " for neither. */
-export type Para = { heading: boolean; text: string; style: string };
+/** A line's box on the page, and which characters of its paragraph's text it holds. */
+export type Box = { x0: number; y0: number; x1: number; y1: number; start: number; end: number };
+/**
+ * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
+ * for both and " " for neither, and the boxes of its lines for highlighting.
+ */
+export type Para = { heading: boolean; text: string; style: string; lines: Box[] };
 
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -102,25 +107,39 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     const heading = cur.every((l) => l.size >= body * 1.25);
     let t = "";
     let st = "";
+    const boxes: Box[] = [];
     for (const [i, l] of cur.entries()) {
+      // Each line's text is tidied on its own, so a line's characters stay a
+      // known range of the paragraph's.
+      let lt = "";
+      let ls = "";
       for (const s of l.spans) {
-        t += s.text;
-        st += (s.bold && s.italic ? "B" : s.bold ? "b" : s.italic ? "i" : " ").repeat(s.text.length);
+        lt += s.text;
+        ls += (s.bold && s.italic ? "B" : s.bold ? "b" : s.italic ? "i" : " ").repeat(s.text.length);
       }
+      [lt, ls] = tidy(lt, ls);
+      if (!lt) continue;
+      const start = t.length;
+      t += lt;
+      st += ls;
+      boxes.push({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, start, end: t.length });
       if (i < cur.length - 1) {
         // A word broken at the margin is mended; otherwise the break is a space.
-        if (/[\p{L}][‐­-]$/u.test(t)) {
+        if (/[\p{L}][‐\u00ad-]$/u.test(t)) {
           t = t.slice(0, -1);
           st = st.slice(0, -1);
-        } else if (!t.endsWith(" ")) {
+          boxes.at(-1)!.end--;
+        } else {
           t += " ";
           st += " ";
         }
       }
     }
-    const lead = t.length - t.trimStart().length;
-    const trail = t.length - t.trimEnd().length;
-    out.push({ heading, text: t.trim().replace(/\s+/g, " "), style: squash(t, st).slice(lead, st.length - trail) });
+    if (t.endsWith(" ")) {
+      t = t.slice(0, -1);
+      st = st.slice(0, -1);
+    }
+    out.push({ heading, text: t, style: st, lines: boxes });
     cur = [];
   };
   for (const l of ordered) {
@@ -139,17 +158,19 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   return out.filter((p) => p.text.length > 0);
 }
 
-/** Collapses runs of whitespace in `style` in step with `text.replace(/\s+/g, " ")`; a space keeps its span's weight. */
-function squash(text: string, style: string): string {
-  let out = "";
-  let inSpace = false;
+/** Trims and single-spaces `text`, keeping `style` in step; a space keeps its span's weight. */
+function tidy(text: string, style: string): [string, string] {
+  let t = "";
+  let s = "";
+  let inSpace = true;
   for (let i = 0; i < text.length; i++) {
     const ws = /\s/.test(text[i]!);
     if (ws && inSpace) continue;
-    out += style[i];
+    t += ws ? " " : text[i];
+    s += style[i];
     inSpace = ws;
   }
-  return out;
+  return t.endsWith(" ") ? [t.slice(0, -1), s.slice(0, -1)] : [t, s];
 }
 
 function mode(xs: number[]): number {
