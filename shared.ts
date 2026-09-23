@@ -30,6 +30,9 @@ export async function makeClient(model: string): Promise<TypeSafeClient> {
     apiKey,
     baseURL: "https://openrouter.ai/api",
     defaultModel: model,
+    // A page's worth of sentence nouls with the page in the state outran the
+    // SDK's ten seconds on a slow day, and a timed-out passage is a blank.
+    timeout: 60_000,
   });
 }
 
