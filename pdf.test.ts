@@ -311,13 +311,13 @@ describe("the text search", () => {
     expect(seen).toEqual([2]);
   });
 
-  test("a count reads the whole section the page is in, since a list outruns a page", async () => {
-    const counted: [string, number][] = [];
-    const countAcross = async (section: string, ws: unknown[]) => (counted.push([section, ws.length]), { text: "9", p: 1, verdict: "take" as const });
-    const subject = { ...base, chars: 0, terms: terms("How many tethers?", ["Yor Tether"]), countAcross };
-    const { hit } = await searchPdf(stubClient((t) => (t.startsWith("p.2 ") ? 3 : 0)), fixture("catalogue.pdf"), subject, ui);
-    expect(counted).toEqual([["Catalogue", 24]]);
-    expect(hit?.section).toBe("Catalogue");
+  test("a count ranks the titles alone, since a page dense with the subject may hold only part of the list", async () => {
+    const seen: string[] = [];
+    const client = stubClient(byExcerpt);
+    const spy = { systemOne: (...a: Parameters<typeof client.systemOne>) => (seen.push(...Object.keys(a[0].questions)), client.systemOne(...a)) } as unknown as typeof client;
+    const countAcross = async () => ({ text: "9", p: 1, verdict: "take" as const });
+    await searchPdf(spy, manual, { ...base, countAcross }, ui);
+    expect(seen.some((k) => k.startsWith("excerpts"))).toBe(false);
   });
 
   test("a book without an outline ranks its excerpts before the page-order scan", async () => {

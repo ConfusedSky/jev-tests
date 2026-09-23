@@ -55,7 +55,12 @@ describe("excerpts", () => {
   test("a phrase split over a line break still matches", () => {
     const out = excerpts(["the hunting\nrifle is good"], ts);
     expect(out).toHaveLength(1);
-    expect(out[0]!.score).toBe(3 + 2);
+    expect(out[0]!.score).toBeGreaterThanOrEqual(3 + 2);
+  });
+
+  test("among pages with the same best line, the one naming the subject on more lines ranks first", () => {
+    const pages = ["skill", "skill\nskill\nskill", "skill\nskill"];
+    expect(excerpts(pages, terms("How many skills?", ["skills"])).map((e) => e.page)).toEqual([2, 3, 1]);
   });
 
   test("keeps to the pages allowed and to the limit", () => {

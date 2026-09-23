@@ -441,12 +441,15 @@ export async function searchPdf(
   // own candidates: a table the contents file under "Small Arms" answers
   // "hunting rifle" and no title says so. When the contents already named
   // the section, only its pages count, or the walk would read the page the
-  // confinement was there to keep it off.
+  // confinement was there to keep it off. A count ranks the titles alone:
+  // a page dense with the subject is as likely a fragment of the list as
+  // the list, and ten theme kits on one page counted as ten at p=0.82.
   const pages = await text;
   const confined = pool !== sections;
-  const ex = o.terms
-    ? excerpts(pages, weighted(o.terms, pages), { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })
-    : [];
+  const ex =
+    o.terms && !o.countAcross
+      ? excerpts(pages, weighted(o.terms, pages), { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })
+      : [];
   const rankSnap = snapshot();
   const all = pool.length + ex.length === 0 ? [] : await rank(
     client,
@@ -479,7 +482,7 @@ export async function searchPdf(
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
 
-  /** Reads a section's windows best-first; a count reads all of them, anything else skips pages already read. */
+  /** Reads a section's windows best-first, skipping pages already read. */
   async function readSection(name: string, s: Section): Promise<"spent" | "stop" | undefined> {
     const under = counted.find((c) => name.startsWith(`${c} > `));
     if (under) {
@@ -490,7 +493,7 @@ export async function searchPdf(
     read.add(`${s.start}-${s.end}`);
     const sectionSnap = snapshot();
     const all = await windows(pdf, s, chars);
-    const ws = o.countAcross ? all : all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
+    const ws = all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
     if (ws.length === 0) {
       ui.clear();
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${name}  p.${s.start}-${s.end}  ${all.length ? "already read" : "no extractable text"}`);
@@ -529,15 +532,9 @@ export async function searchPdf(
     if (r.list === "candidates") out = await readSection(r.name, byPath.get(r.name)!);
     else {
       const page = ex[r.index]!.page;
-      const s = around(page);
       if (readPages.has(page)) continue;
-      // A list outruns a page, so a count reads the section the page is in.
-      if (o.countAcross && s) out = await readSection(s.path, s);
-      else {
-        const name = s?.path ?? `p.${page}`;
-        const w = { page, end: page, text: pages[page - 1]! };
-        out = await scan([w], name, () => `${name} p.${page} (excerpt)`);
-      }
+      const name = around(page)?.path ?? `p.${page}`;
+      out = await scan([{ page, end: page, text: pages[page - 1]! }], name, () => `${name} p.${page} (excerpt)`);
     }
     if (out === "spent" || out === "stop") return done();
   }
