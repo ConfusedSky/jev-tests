@@ -163,8 +163,14 @@ are searched: the walk was confined for a reason, a page outside it having
 answered a membership question wrongly before.
 
 `--no-search` ranks the titles alone. In jevfind every readable PDF on stdin
-is searched, three pages each, and a file opens on the better of its name
-and its best page; the log says which (`2.60  starter.pdf  (by p.12)`). The
+is searched, three pages each, but a name that clears the file floor is
+trusted over any page: a supplement's page on perks outranked the core
+rulebook's name for "what are the available perks in fallout" and answered
+from armor mods. Below the floor, where the names say nothing, a file's
+best page orders it instead, still under the floor; the log says so
+(`1.49  starter.pdf  (by p.12)`). The game's name in the question is never
+a search term: "fallout" is on every page of the Fallout book and on a few
+of every other. The
 first run over a shelf extracts every book, four at a time (a few seconds
 each for a 400-page rulebook); after that the search costs nothing you can
 see, and one pdftotext cannot read is logged and skipped.

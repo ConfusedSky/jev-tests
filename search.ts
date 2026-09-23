@@ -14,8 +14,9 @@ export const stems = (text: string): string[] => normalize(text).split(" ").filt
 
 const holds = (line: string[], t: Term) => ` ${line.join(" ")} `.includes(` ${t.words.join(" ")} `);
 
-/** What to look for: the subject as a phrase and as words, then every other content word of the question. */
-export function terms(question: string, subject: string[]): Term[] {
+/** What to look for: the subject as a phrase and as words, then every other content word of the question; never the game's name. */
+export function terms(question: string, subject: string[], game: string[] = []): Term[] {
+  const named = new Set(game.flatMap(stems));
   const out: Term[] = [];
   const seen = new Set<string>();
   const add = (words: string[], weight: number, isSubject: boolean) => {
@@ -25,11 +26,11 @@ export function terms(question: string, subject: string[]): Term[] {
     out.push({ words, weight, subject: isSubject });
   };
   for (const name of subject) {
-    const words = stems(name);
+    const words = stems(name).filter((w) => !named.has(w));
     if (words.length > 1) add(words, 3, true);
     for (const w of words) add([w], 2, true);
   }
-  for (const w of stems(question)) if (!STOPWORDS.has(w) && w.length > 1) add([w], 1, false);
+  for (const w of stems(question)) if (!STOPWORDS.has(w) && !named.has(w) && w.length > 1) add([w], 1, false);
   return out;
 }
 

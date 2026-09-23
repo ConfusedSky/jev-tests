@@ -87,12 +87,16 @@ const scored = await rank(
   ],
   opts.batch,
 );
+// A name that clears the floor is trusted over any page: a supplement's
+// page on perks outranked the core rulebook's name and answered from armor
+// mods. Below the floor the names say nothing, and a file's best page
+// orders it instead, still under the floor.
 const all = paths
   .map((name) => {
     const own = scored.find((r) => r.list === "candidates" && r.name === name)!;
-    const pages = scored.filter((r) => r.list === "excerpts" && found[r.index]!.file === name);
-    const best = pages.find((r) => r.score > own.score);
-    return { name, score: best?.score ?? own.score, by: best ? `p.${found[best.index]!.excerpt.page}` : "name" };
+    const best = scored.find((r) => r.list === "excerpts" && found[r.index]!.file === name);
+    if (own.score >= opts.fileFloor || !best || best.score <= own.score) return { name, score: own.score, by: "name" };
+    return { name, score: Math.min(best.score, opts.fileFloor - 0.01), by: `p.${found[best.index]!.excerpt.page}` };
   })
   .sort((a, b) => b.score - a.score);
 const ranked = all.slice(0, opts.maxFiles);

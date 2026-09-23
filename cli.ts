@@ -139,8 +139,8 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
   if (kind === "count" && read.counted) ui.log(`counts ${read.counted}`);
-  const found = o.search ? terms(o.question, read.subject) : undefined;
-  if (found && read.subject.length) ui.log(`searches for ${read.subject.join(", ")}`);
+  const found = o.search ? terms(o.question, read.subject, read.game) : undefined;
+  if (found && read.subject.length) ui.log(`searches for ${read.subject.join(", ")}${read.game.length ? ` (not ${read.game.join(", ")})` : ""}`);
   const fromOutline = o.noToc
     ? undefined
     : (sections: Section[]) =>
