@@ -1,7 +1,7 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
 import { pageParagraphs, type Para } from "./layout";
-import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
+import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 import { terms } from "./search";
 
@@ -160,7 +160,14 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
       ? async (section, page, _text, pdf, end) => {
           const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
           const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
-          return judge(await readPassage(client, o.question, section, paras));
+          // The passage may run on past the window, a page at a time each way.
+          let [before, after] = [page - 1, end + 1];
+          const pages = await pageCount(pdf);
+          const more = (dir: "before" | "after") => {
+            const p = dir === "before" ? before-- : after++;
+            return p < 1 || p > pages ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, p));
+          };
+          return judge(await readPassage(client, o.question, section, paras, more));
         }
       : kind === "truth"
         ? // The gate asked the statement's three nouls of the page; no second call.

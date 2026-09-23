@@ -384,7 +384,8 @@ export async function searchPdf(
     const { verdict, pages, ...answer } = await check;
     if (pages?.length) {
       const gated = new Set(tried.filter((t) => t.name === name && t.p >= 0.5).map((t) => t.page));
-      hit = { ...hit, page: pages.find((p) => gated.has(p)) ?? pages[0]! };
+      // A passage links to the page it starts on, gated or grown onto.
+      hit = { ...hit, page: answer.passage ? pages[0]! : (pages.find((p) => gated.has(p)) ?? pages[0]!) };
     }
     // A passage is lines of text; the log gets its first line, cut short.
     const shown = answer.text.includes("\n") || answer.text.length > 60 ? `${answer.text.split("\n")[0]!.slice(0, 57)}…` : answer.text;
@@ -482,7 +483,7 @@ export async function searchPdf(
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
 
-  /** Reads a section's windows best-first, skipping pages already read. */
+  /** Reads a section's windows best-first; a count reads all of them, anything else skips pages already read. */
   async function readSection(name: string, s: Section): Promise<"spent" | "stop" | undefined> {
     const under = counted.find((c) => name.startsWith(`${c} > `));
     if (under) {
@@ -493,7 +494,8 @@ export async function searchPdf(
     read.add(`${s.start}-${s.end}`);
     const sectionSnap = snapshot();
     const all = await windows(pdf, s, chars);
-    const ws = all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
+    // A count needs every window of the section, fragments read before included.
+    const ws = o.countAcross ? all : all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
     if (ws.length === 0) {
       ui.clear();
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${name}  p.${s.start}-${s.end}  ${all.length ? "already read" : "no extractable text"}`);
