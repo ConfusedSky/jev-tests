@@ -127,17 +127,25 @@ prepared, and the arithmetic stays in code. jev does not tally: it recognises
 the shape of a count rather than counting, and the error grows with the list.
 
 A count and a number are different questions. A count is a tally the page does
-not state ("how many classes"). The page is cut into every scrap that could be
-a name, a line, a cell of a table row, a phrase between commas, starting with
-a capital and at most four words, and one `noul` per scrap asks whether it is
-exactly the name of one entry of the kind asked about; the yeses are counted,
-and a long list is summed across its pages. Each scrap rides in its own
-question: shown the whole list of scraps at once, jev put "Survival" at 0.4
-beside "Survival covers foraging in" at 0.5; shown one at a time, 0.9 and 0.1.
-The kind is read off the question in the same call that classifies it, so the
-scraps are asked whether each is "one trope" rather than "one of the things
-the question asks about"; asked the second way, the theme kits listed under
-each trope counted as tropes.
+not state ("how many classes"). The candidates are the names the page sets
+apart by type, read from `mutool`'s layout (`layout.ts`): a whole line in
+one font, or the bold lead-in of a body line ("BLOCK: +1 Blood protection"),
+outside the prose styles, with dot leaders and notes ("Martial Arts (x2)")
+stripped. One `noul` per candidate asks whether it is exactly the name of one
+entry of the kind asked about, with the page's `-layout` text in the state;
+the yeses are counted, and since a book sets every entry of a list in one
+style, only the yeses in the style most of them share count, which drops the
+type headers over Legend in the Mist's theme kits and a "GUNS" off an
+illustration beside the Fallout perks. A long list is summed across its
+pages, each name once. A page that sets nothing apart, the manual fixture's
+inline "Athletics, Barter, …", is cut into scraps instead: every line, table
+cell or phrase between commas starting with a capital, at most four words.
+Each candidate rides in its own question: shown the whole list at once, jev
+put "Survival" at 0.4 beside "Survival covers foraging in" at 0.5; shown one
+at a time, 0.9 and 0.1. The kind is read off the question in the same call
+that classifies it, so the candidates are asked whether each is "one trope"
+rather than "one of the things the question asks about"; asked the second
+way, the theme kits listed under each trope counted as tropes.
 
 A number is a figure the page does state ("how much does it cost", "how many
 rads are lethal"), so the choices are the figures on that page, digits or
@@ -423,25 +431,20 @@ p.99, where page by page it reads the tags on p.102.
   safeguard for this, a negative being confirmed against the pages; a count has
   only the checks for a list that went into one entry and for entries that are
   groups of the things.
-- **Counting is only as good as the scraps.** A name over four words or 60
-  characters, one not starting with a capital, or one split across a line
-  break is never offered, so it is never counted, and a name with "and" in
-  it, "Sword and Board", is cut in two, since the inline list "Science and
-  Survival" has to be. Measured against the
-  choice-over-numbers method it replaced, on two-column rulebooks. Fallout:
-  the 94 perks over 16 pages came back as 95 at p=0.80 (a stray "GUNS" off
-  an illustration counted; Dogmeat's perk and his stat block are one name,
-  so he counts once; the old method said 80 at p=0.36); the 17 skills as 17 at p=1.00 (old 16);
-  the 6 origins over 7 pages as 6 at p=0.32 (old 12). Legend in the Mist:
-  the 20 theme types on one page as 19 at p=0.89 (old refused); the 153 theme
-  kits over two pages as 150 at p=0.74, 88 at p=0.47 and 152 at p=0.81 on
-  three runs an hour apart, the second page sitting at the answer floor
-  (old 17 at p=0.05); the 30 tropes over ten pages, three a page, refused at
-  p=0.22 with pages counted between 3 and 9, the kits listed under each
-  trope being mistaken for tropes (old 23 at p=0.20). Cyberpunk Red: the 66
-  skills over twelve pages as 64 to 65 at p=0.75 to 0.83. Refusing is the
-  usual outcome on a page it cannot read, not a wrong number. `bun run bench`
-  reruns all of these.
+- **Counting is only as good as the candidates.** A name set in the prose
+  style, one over 60 characters, or one split across a line break is never
+  offered, so it is never counted; a list set in two styles keeps only the
+  larger. On a page with nothing set apart, the scraps miss a name not
+  starting with a capital or over four words, and cut "Sword and Board" in
+  two, since the inline list "Science and Survival" has to be. Measured, on
+  the shelf's two-column rulebooks: Fallout's 94 perks over 16 pages as 94
+  at p=0.80 (scraps said 95; the choice over numbers before them, 80 at
+  p=0.36), its 17 skills as 17. Legend in the Mist's 20 theme types as 20
+  (scraps 19), its 153 theme kits as 152 at p=0.72 (scraps flipped between
+  150, 88 and 152, the second page sitting at the floor); its 30 tropes are
+  answered from the contents as ten groups, and read from the pages come to
+  29 (scraps refused). Cyberpunk Red's 66 skills as 61 at p=0.75 (scraps
+  64). `bun run bench` reruns all of these.
 - **The category matcher is loose.** It takes any section whose name appears in
   the question, so "Is Brotherhood Initiate an origin?" can match a section
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong

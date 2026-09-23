@@ -231,7 +231,7 @@ export type SearchOpts = {
   /** What a window must satisfy to be worth reading out; see GATE. */
   gate?: Gate;
   /** Counts a whole section at once, for a list too long to fit one window. */
-  countAcross?: (section: string, windows: Window[]) => Promise<Judged>;
+  countAcross?: (section: string, windows: Window[], pdf: string) => Promise<Judged>;
 };
 
 /**
@@ -342,7 +342,7 @@ export async function searchPdf(
         dropped.push(f);
         ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
       }
-      check = o.countAcross(name, all);
+      check = o.countAcross(name, all, pdf);
     } else check = o.verify?.(name, w.page, w.text, pdf, w.end, nouls);
     if (!check) return hit;
     const { verdict, pages, ...answer } = await check;

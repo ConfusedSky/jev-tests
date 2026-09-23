@@ -157,17 +157,17 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
       : kind === "truth"
         ? // The gate asked the statement's three nouls of the page; no second call.
           async (_section, _page, text, _pdf, _end, nouls) => judge(claimVerdict(o.question, text, nouls))
-        : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
+        : async (section, page, text, pdf, end) => judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined
-      : async (section, windows) =>
+      : async (section, windows, pdf) =>
           judge(
             await countAcross(
               client,
               o.question,
               section,
-              windows,
+              windows.map((w) => ({ ...w, pdf })),
               read.counted,
               o.answerFloor,
               (page, part, counted, running) =>

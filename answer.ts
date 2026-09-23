@@ -1,5 +1,5 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import type { Para } from "./layout";
+import { pageLines, paragraphs, styledCandidates, type Para } from "./layout";
 import { timed } from "./shared";
 
 export const KINDS = ["count", "number", "truth", "passage"] as const;
@@ -142,7 +142,7 @@ const CELLS_PER_CALL = 150;
  */
 export function nameKey(name: string, counted: string): string {
   const last = counted.split(/\s+/).at(-1)?.toLowerCase() ?? "";
-  const bare = name.toLowerCase().replace(/^(?:the|a|an)\s+/, "");
+  const bare = name.toLowerCase().replace(/^(?:the|a|an)\s+/, "").replace(/[\s.:,;]+$/, "");
   return last ? bare.replace(new RegExp(`\\s+(?:${singular(last)}|${last})$`), "") : bare;
 }
 
@@ -169,20 +169,69 @@ const DOUBT = 0.3;
  * a page of 91 kits with 6 in doubt is a count, a page of 3 tropes with 16 in
  * doubt is not, and the least certain of 91 cells says little about either.
  */
-async function rawCount(client: TypeSafeClient, question: string, section: string, text: string, counted: string): Promise<Counted> {
-  const cells = cellsIn(text);
-  if (cells.length === 0) return { text: "not stated", p: 1, names: [] };
+/** Candidate names, each with the type style it is set in (none for a scrap), and the text they sit in. */
+export type CountPart = { cells: { text: string; style: string }[]; text: string };
+
+/**
+ * Where a window's text is on a PDF, so a count can take its candidates from
+ * the page's type: a book that styles its entries puts every name in a font
+ * of its own and none of its prose, so the names come from the styled runs
+ * and the prose never goes to jev. A page with no styled runs, the manual
+ * fixture's inline "Athletics, Barter, …", falls back to the text's scraps.
+ */
+export type CountSource = { text: string; pdf?: string; page?: number; end?: number };
+
+export async function countParts(src: CountSource): Promise<{ parts: CountPart[]; fallback?: CountPart[] }> {
+  const scraps = [{ cells: cellsIn(src.text).map((text) => ({ text, style: "" })), text: src.text }];
+  if (!src.pdf || src.page === undefined) return { parts: scraps };
+  const pages = Array.from({ length: (src.end ?? src.page) - src.page + 1 }, (_, i) => src.page! + i);
+  // The candidates come from the page's type; the text they are judged in
+  // is the -layout text the walk read, a page per form feed, which keeps a
+  // list's rows and columns where mutool's reading order put Legend in the
+  // Mist's theme kits at 0.5 apiece.
+  const layout = src.text.split("\f");
+  const styled = await timed("extract", () =>
+    Promise.all(
+      pages.map(async (p, i) => {
+        const page = await pageLines(src.pdf!, p);
+        const text = layout[i]?.trim() ? layout[i]! : paragraphs(page, p).map((q) => q.text).join("\n\n");
+        return { cells: styledCandidates(page, p), text };
+      }),
+    ),
+  );
+  // A title and a chapter heading are styled runs too; a page whose only
+  // styled runs are those, and whose list is inline, is counted from scraps
+  // when the runs count nothing.
+  if (styled.reduce((n, p) => n + p.cells.length, 0) < 3) return { parts: scraps };
+  return { parts: styled.filter((p) => p.cells.length > 0), fallback: scraps };
+}
+
+/** Counts from the source's candidates, and from its scraps when the styled runs count nothing. */
+async function countSource(client: TypeSafeClient, question: string, section: string, src: CountSource, counted: string): Promise<Counted> {
+  const { parts, fallback } = await countParts(src);
+  const a = await rawCount(client, question, section, parts, counted);
+  return a.names.length === 0 && fallback ? rawCount(client, question, section, fallback, counted) : a;
+}
+
+async function rawCount(client: TypeSafeClient, question: string, section: string, parts: CountPart[], counted: string): Promise<Counted> {
   const one = counted ? `one ${counted}` : "one of the things `question` asks how many there are";
-  const chunks: number[][] = [];
-  for (let i = 0; i < cells.length; i += CELLS_PER_CALL) chunks.push(cells.slice(i, i + CELLS_PER_CALL).map((_, j) => i + j));
-  const nouls = await Promise.all(
-    chunks.map(async (idx) => {
+  const asks = parts.flatMap((part) => part.cells.map((cell) => ({ cell: cell.text, style: cell.style, text: part.text })));
+  if (asks.length === 0) return { text: "not stated", p: 1, names: [] };
+  // One call per part, chunked; each cell rides in its own question with
+  // its page's text in the state.
+  const chunks: { text: string; idx: number[] }[] = [];
+  for (const [t, group] of Map.groupBy(asks.map((_, i) => i), (i) => asks[i]!.text)) {
+    for (let i = 0; i < group.length; i += CELLS_PER_CALL) chunks.push({ text: t, idx: group.slice(i, i + CELLS_PER_CALL) });
+  }
+  const ps = new Array<number>(asks.length);
+  await Promise.all(
+    chunks.map(async ({ text, idx }) => {
       const questions = Object.fromEntries(
         idx.map((i) => [
           `c${i}`,
           noul(
             {
-              entry: cells[i]!,
+              entry: asks[i]!.cell,
               ask: `\`entry\` is the name of ${one}: a single entry of the list \`question\` asks to count, as \`text\` lists or headlines it.`,
             },
             {
@@ -195,11 +244,18 @@ async function rawCount(client: TypeSafeClient, question: string, section: strin
         ]),
       );
       const res = await client.systemOne({ state: { question, section, text }, questions });
-      return idx.map((i) => (res.answers[`c${i}`] as { noul: number }).noul);
+      for (const i of idx) ps[i] = (res.answers[`c${i}`] as { noul: number }).noul;
     }),
   );
-  const ps = nouls.flat();
-  const names = [...new Set(cells.filter((_, i) => ps[i]! >= YES).map((c) => nameKey(c, counted)))];
+  // A book sets every entry of a list in one style, so the yeses in the
+  // style most of them share are the list, and a yes in another style is a
+  // header over it or a stray: the theme kits' type headers, a "GUNS" off
+  // an illustration beside the perks.
+  const yes = asks.filter((_, i) => ps[i]! >= YES);
+  const styles = new Map<string, number>();
+  for (const a of yes) styles.set(a.style, (styles.get(a.style) ?? 0) + 1);
+  const list = [...styles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const names = [...new Set(yes.filter((a) => a.style === list).map((a) => nameKey(a.cell, counted)))];
   if (names.length === 0) return { text: "not stated", p: 1, names };
   const sure = ps.filter((p) => p >= SURE).length;
   const doubt = ps.filter((p) => p >= DOUBT && p < SURE).length;
@@ -365,15 +421,13 @@ export async function countAcross(
   client: TypeSafeClient,
   question: string,
   section: string,
-  windows: { page: number; text: string }[],
+  windows: (CountSource & { page: number })[],
   kind = "",
   floor = 0,
   onPart?: (page: number, part: Answer, counted: boolean, running: number) => void,
 ): Promise<Answer> {
   // One span for the parallel calls, so the timing split stays under wall time.
-  const parts = await timed("api", () =>
-    Promise.all(windows.map((w) => rawCount(client, question, section, w.text, kind))),
-  );
+  const parts = await timed("api", () => Promise.all(windows.map((w) => countSource(client, question, section, w, kind))));
   const seen = new Set<string>();
   let worst = 1;
   let covered = 0;
@@ -466,15 +520,19 @@ async function truthFrom(client: TypeSafeClient, question: string, section: stri
 }
 
 /** `read` supplies what the question named: the quantities a number wants, the kind a count counts. */
-export function answerFrom(
+export async function answerFrom(
   client: TypeSafeClient,
   kind: Valued,
   question: string,
   section: string,
   text: string,
   read: Partial<Pick<Reading, "quantities" | "counted">> = {},
+  at: Omit<CountSource, "text"> = {},
 ): Promise<Answer> {
-  if (kind === "count") return timed("api", () => rawCount(client, question, section, text, read.counted ?? "")).then(({ names: _, ...a }) => a);
+  if (kind === "count") {
+    const { names: _, ...a } = await timed("api", () => countSource(client, question, section, { text, ...at }, read.counted ?? ""));
+    return a;
+  }
   if (kind === "number") return numberFrom(client, question, section, text, read.quantities ?? []);
   return truthFrom(client, question, section, text);
 }

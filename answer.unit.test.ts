@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, claimVerdict, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+
+const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -290,11 +292,28 @@ describe("nameKey", () => {
     expect(nameKey("Repair skill", "skills")).toBe("repair");
     expect(nameKey("Theme Kit", "theme kits")).toBe("theme");
     expect(nameKey("Cleaver Class", "classes")).toBe("cleaver");
+    expect(nameKey("Repair skill.", "skills")).toBe("repair");
     expect(nameKey("Wild Ability", "abilities")).toBe("wild");
   });
 
   test("leaves a name alone when no kind is known", () => {
     expect(nameKey("The Witch", "")).toBe("witch");
+  });
+});
+
+describe("countParts", () => {
+  test("takes the text's scraps when the page sets only a title apart", async () => {
+    const { parts, fallback } = await countParts({ text: "Skills: Athletics, Barter and Survival.", pdf: fixture("manual.pdf"), page: 1 });
+    expect(fallback).toBeUndefined();
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.cells.map((c) => c.text)).toEqual(expect.arrayContaining(["Athletics", "Barter", "Survival"]));
+  });
+
+  test("takes the page's styled runs when it has them, with the scraps to fall back on", async () => {
+    const { parts, fallback } = await countParts({ text: "Gadgets: Aegis.", pdf: fixture("gadgets.pdf"), page: 1 });
+    expect(parts[0]!.cells.map((c) => c.text)).toEqual(expect.arrayContaining(["Aegis", "Bulwark", "Cinder"]));
+    expect(parts[0]!.text).toContain("Aegis");
+    expect(fallback?.[0]?.cells.map((c) => c.text)).toEqual(["Gadgets", "Aegis"]);
   });
 });
 

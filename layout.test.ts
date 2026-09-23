@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageParagraphs, paragraphs, parseStext } from "./layout";
+import { pageParagraphs, paragraphs, parseStext, styledCandidates } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -24,7 +24,7 @@ const page = (lines: string[], width = 612, height = 792) => `<page id="p" width
 describe("parseStext", () => {
   test("reads a line's box, size, text and weight", () => {
     const { lines } = parseStext(page([stextLine(50, 100, 12, "Alegreya-Bold", "COMPEL:")]));
-    expect(lines).toEqual([{ x0: 50, y0: 100, x1: 92, y1: 112, size: 12, spans: [{ text: "COMPEL:", bold: true, italic: false }] }]);
+    expect(lines).toEqual([{ x0: 50, y0: 100, x1: 92, y1: 112, size: 12, spans: [{ text: "COMPEL:", bold: true, italic: false, font: "Alegreya-Bold" }] }]);
   });
 
   // The bug this guards: mutool glued half of every line on Heart's pages,
@@ -141,6 +141,36 @@ describe("paragraphs", () => {
       "• Add two more power tags to each theme.",
       "• Write a Quest for each attention.",
     ]);
+  });
+});
+
+describe("styledCandidates", () => {
+  const body = (x: number, y: number, text: string, font = "Alegreya-Regular") => stextLine(x, y, 12, font, text);
+
+  // A book that styles its entries puts every name in a font of its own.
+  test("takes the runs set apart from the prose, lead-ins included, leaders stripped", () => {
+    const lines = [
+      body(50, 60, "You are trained in several skills, which encompass the various activities you have picked up."),
+      body(50, 74, "Each skill is ranked from zero to six, with each rank a differing degree of training you have."),
+      stextLine(50, 103, 12, "Alegreya-Bold", "COMPEL:") .replace("</line>", "") + `<font name="Alegreya-Regular" size="12"><char c=" " quad="92 103 96 103 92 115 96 115"/><char c="M" quad="96 103 102 103 96 115 102 115"/></font></line>`,
+      stextLine(50, 145, 14, "FuturaPT-Bold", "Athletics........DEX"),
+      stextLine(50, 187, 14, "FuturaPT-Bold", "Brawling (x2)........BODY"),
+      stextLine(50, 210, 14, "FuturaPT-Bold", "Wilderness Survival (x2)........................................INT"),
+      body(50, 230, "42"),
+    ];
+    expect(styledCandidates(parseStext(page(lines)), 1)).toEqual([
+      { text: "COMPEL", style: "Alegreya-Bold 12 lead-in" },
+      { text: "Athletics", style: "FuturaPT-Bold 14" },
+      { text: "Brawling", style: "FuturaPT-Bold 14" },
+      { text: "Wilderness Survival", style: "FuturaPT-Bold 14" },
+    ]);
+  });
+
+  // The bug this guards: the prose style was the page's commonest, and on a
+  // page that is all list, the kits themselves were dropped as prose.
+  test("finds the prose style among the long lines only", () => {
+    const lines = ["Alderperson", "Fugitive", "Hardworking Drudge", "Landed Noble"].map((t, i) => stextLine(50, 100 + i * 14, 11, "Labrada-Italic", t));
+    expect(styledCandidates(parseStext(page(lines)), 1).map((c) => c.text)).toEqual(["Alderperson", "Fugitive", "Hardworking Drudge", "Landed Noble"]);
   });
 });
 

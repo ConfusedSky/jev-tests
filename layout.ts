@@ -5,7 +5,7 @@
  * gates on keeps a table's row on one line but knows nothing of weight.
  */
 
-export type Span = { text: string; bold: boolean; italic: boolean };
+export type Span = { text: string; bold: boolean; italic: boolean; font: string };
 export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[] };
 /** A line's box, the page it is on, and which characters of its paragraph's text it holds. */
 export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number };
@@ -58,8 +58,8 @@ export function parseStext(xml: string): { width: number; height: number; lines:
       }
       if (!text) continue;
       const last = spans.at(-1);
-      if (last && last.bold === bold && last.italic === italic) last.text += text;
-      else spans.push({ text, bold, italic });
+      if (last && last.font === name) last.text += text;
+      else spans.push({ text, bold, italic, font: name });
     }
     const size = [...sizes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
     if (spans.some((s) => s.text.trim())) lines.push({ x0, y0, x1, y1, size, spans });
@@ -188,10 +188,79 @@ function mode(xs: number[]): number {
   return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]![0];
 }
 
-/** The paragraphs of one page of a PDF, via mutool. */
-export async function pageParagraphs(pdf: string, page: number): Promise<Para[]> {
+/** A run of text set in one style, the whole of a line or its lead-in, as a candidate entry name. */
+export type Styled = { style: string; text: string; page: number };
+
+/**
+ * The runs a page sets apart by type: a whole line in one font, or the bold
+ * lead-in of a body line ("BLOCK: +1 Blood protection"). A book that
+ * styles its entries puts every entry name in one such style, and none of
+ * its prose, so the entries can be counted by style once jev names which.
+ */
+// Dot leaders and what follows them ("Athletics........DEX") and a note
+// ("Martial Arts (x2)") are not the name; off before any length is measured,
+// since the leaders make a name's line as long as a line of prose.
+const bare = (t: string) => t.replace(/\s*\.{3,}.*$/, "").replace(/\s*\([^)]*\)\s*$/, "").replace(/[:.]$/, "").trim();
+
+export function styledRuns(lines: Line[], pageNumber: number): Styled[] {
+  const out: Styled[] = [];
+  for (const l of lines) {
+    const spans = l.spans.filter((s) => s.text.trim());
+    if (spans.length === 0) continue;
+    const key = (s: Span) => `${s.font} ${Math.round(l.size)}`;
+    if (spans.every((s) => s.font === spans[0]!.font)) {
+      const text = bare(spans.map((s) => s.text).join(""));
+      if (text && text.length <= 60) out.push({ style: key(spans[0]!), text, page: pageNumber });
+      continue;
+    }
+    const lead = spans[0]!;
+    if (lead.bold && !spans[1]!.bold) {
+      const text = bare(lead.text);
+      if (text) out.push({ style: `${key(lead)} lead-in`, text, page: pageNumber });
+    }
+  }
+  return out;
+}
+
+/**
+ * The names a page sets apart by type, as a count's candidates: its styled
+ * runs outside the prose styles, where a prose style is one a fifth or more
+ * of the page's long lines are set in (Cyberpunk Red describes its skills in
+ * a book face and an oblique one), so a page that is all list keeps its
+ * list. A page with no such runs lists its entries inline, and the count
+ * falls back to the text's scraps.
+ */
+export function styledCandidates(page: { lines: Line[] }, pageNumber: number): { text: string; style: string }[] {
+  const prose = new Map<string, number>();
+  let long = 0;
+  for (const l of page.lines) {
+    if (bare(text(l)).length <= 60) continue;
+    for (const s of l.spans) {
+      const k = `${s.font} ${Math.round(l.size)}`;
+      prose.set(k, (prose.get(k) ?? 0) + s.text.length);
+      long += s.text.length;
+    }
+  }
+  const body = new Set([...prose.entries()].filter(([, n]) => n >= long * 0.2).map(([k]) => k));
+  const seen = new Set<string>();
+  const out: { text: string; style: string }[] = [];
+  for (const r of styledRuns(page.lines, pageNumber)) {
+    if (body.has(r.style) || r.text.length < 2 || /^\d+$/.test(r.text) || seen.has(r.text.toLowerCase())) continue;
+    seen.add(r.text.toLowerCase());
+    out.push({ text: r.text, style: r.style });
+  }
+  return out;
+}
+
+/** The lines of one page of a PDF, via mutool, with the page's size. */
+export async function pageLines(pdf: string, page: number): Promise<{ width: number; height: number; lines: Line[] }> {
   const p = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", "-", pdf, String(page)], { stdout: "pipe", stderr: "pipe" });
   const [xml, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   if ((await p.exited) !== 0) throw new Error(`mutool failed: ${err.trim()}`);
-  return paragraphs(parseStext(xml), page);
+  return parseStext(xml);
+}
+
+/** The paragraphs of one page of a PDF, via mutool. */
+export async function pageParagraphs(pdf: string, page: number): Promise<Para[]> {
+  return paragraphs(await pageLines(pdf, page), page);
 }
