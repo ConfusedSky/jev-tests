@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, bestRuns, cellsIn, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -215,6 +215,28 @@ describe("unitsOf", () => {
   });
 });
 
+describe("unitsOf", () => {
+  test("a list marker is not a sentence of its own", () => {
+    const plain = (text: string) => ({ heading: false, text, style: " ".repeat(text.length), lines: [] });
+    expect(unitsOf([plain("2. PICK WEAPONS. The player declares.")]).map((u) => u.text)).toEqual(["2. PICK WEAPONS.", "The player declares."]);
+  });
+});
+
+describe("bestRuns", () => {
+  test("every run clearing the minimum, in order, the aside between them left out", () => {
+    const ps = [0.9, 0.8, 0.3, 0.4, 0.9, 0.95, 0.2, 0.7, 0.1];
+    expect(bestRuns(ps, 0.65, 0.25)).toEqual([{ start: 0, end: 2 }, { start: 4, end: 6 }]);
+  });
+
+  test("a lone sentence just over the bar is not a run of its own", () => {
+    expect(bestRuns([0.9, 0.9, 0.1, 0.7], 0.65, 0.25)).toEqual([{ start: 0, end: 2 }]);
+  });
+
+  test("nothing over the bar is no run", () => {
+    expect(bestRuns([0.5, 0.6], 0.65, 0.25)).toEqual([]);
+  });
+});
+
 describe("bestRun", () => {
   test("is the run with the largest total above the bar", () => {
     expect(bestRun([0.1, 0.9, 0.9, 0.2, 0.9], 0.65)).toEqual({ start: 1, end: 3 });
@@ -292,18 +314,11 @@ describe("a passage", () => {
     } as unknown as typeof client;
     const next = [plain("Take one dose per day. Unrelated.")];
     const seen: string[] = [];
-    const more = async (dir: "before" | "after") => (seen.push(dir), dir === "after" && seen.filter((d) => d === "after").length === 1 ? next : []);
+    const more = async () => (seen.push("after"), seen.length === 1 ? next : []);
     const a = await readPassage(spy, "q", "s", page, more);
     expect(a.text).toBe("RadX reduces rads absorbed.\nTake one dose per day.");
     expect(asked.filter((s) => s === "Take one dose per day.")).toHaveLength(1);
     expect(asked.filter((s) => s === "RadX reduces rads absorbed.")).toHaveLength(1);
-  });
-
-  test("a passage that starts at the page's top grows onto the page before", async () => {
-    const before = [plain("Ignore this. Radiation is treated with chems.")];
-    const more = async (dir: "before" | "after") => (dir === "before" ? before : []);
-    const a = await readPassage(stub({ "Chapter III: Radiation": 0.9, "Radiation is treated with chems.": 0.9 }), "q", "s", page, more);
-    expect(a.text).toBe("Radiation is treated with chems.\nChapter III: Radiation");
   });
 
   test("a page with no sentence of the answer is not stated", async () => {

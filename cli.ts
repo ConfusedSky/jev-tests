@@ -160,13 +160,10 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
       ? async (section, page, _text, pdf, end) => {
           const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
           const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
-          // The passage may run on past the window, a page at a time each way.
-          let [before, after] = [page - 1, end + 1];
+          // The passage may run on past the window, a page at a time.
+          let after = end + 1;
           const pages = await pageCount(pdf);
-          const more = (dir: "before" | "after") => {
-            const p = dir === "before" ? before-- : after++;
-            return p < 1 || p > pages ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, p));
-          };
+          const more = () => (after > pages ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, after++)));
           return judge(await readPassage(client, o.question, section, paras, more));
         }
       : kind === "truth"

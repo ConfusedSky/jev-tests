@@ -569,10 +569,33 @@ export function bestRun(ps: number[], bar = PASSAGE_BAR): { start: number; end: 
   return best && { start: best.start, end: best.end };
 }
 
-/** A sentence of a paragraph, with its weights and its place in the paragraph, as one unit a passage can start or end on. */
+/** The least a run must sum above the bar to be shown beside the best one: a sentence near certain, or two fairly sure. */
+const RUN_MIN = 0.25;
+
+/**
+ * Every run worth showing, in page order: the best, then the best of what
+ * is left, while a run clears RUN_MIN. The phases of combat are eight
+ * headings with a paragraph each, and an aside on unarmed attacks between
+ * two of them is not part of the answer; one run would stop there.
+ */
+export function bestRuns(ps: number[], bar = PASSAGE_BAR, min = RUN_MIN): { start: number; end: number }[] {
+  const left = [...ps];
+  const runs: { start: number; end: number }[] = [];
+  for (;;) {
+    const r = bestRun(left, bar);
+    if (!r) break;
+    if (left.slice(r.start, r.end).reduce((a, p) => a + p - bar, 0) < min) break;
+    runs.push(r);
+    left.fill(-1, r.start, r.end);
+  }
+  return runs.sort((a, b) => a.start - b.start);
+}
+
+/** Between two runs of a passage, what was left out. */
+export const ELLIPSIS: Para = { heading: false, text: "…", style: " ", lines: [] };
+
 type Unit = { para: number; text: string; style: string; start: number; end: number };
 
-/** The sentences of each paragraph; a heading is one sentence. */
 export function unitsOf(paras: Para[]): Unit[] {
   const out: Unit[] = [];
   paras.forEach((p, i) => {
@@ -581,7 +604,13 @@ export function unitsOf(paras: Para[]): Unit[] {
       return;
     }
     let at = 0;
-    const cut = (end: number) => out.push({ para: i, text: p.text.slice(at, end), style: p.style.slice(at, end), start: at, end });
+    const cut = (end: number) => {
+      // "2." cut from "PICK WEAPONS" is a list marker, not a sentence.
+      const prev = out.at(-1);
+      if (prev && prev.para === i && /^\d{1,3}[.)]$/.test(prev.text)) {
+        Object.assign(prev, { text: p.text.slice(prev.start, end), style: p.style.slice(prev.start, end), end });
+      } else out.push({ para: i, text: p.text.slice(at, end), style: p.style.slice(at, end), start: at, end });
+    };
     for (const m of p.text.matchAll(/(?<=[.!?])\s+(?=[^a-z])/g)) {
       cut(m.index!);
       at = m.index! + m[0].length;
@@ -600,7 +629,7 @@ export function unitsOf(paras: Para[]): Unit[] {
  * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
  * and a whole Fallout chems page between 0.4 and 0.7.
  */
-/** Pages a passage may grow onto past the window it was found in, each way. */
+/** Pages a passage may grow onto past the window it was found in. */
 const PASSAGE_REACH = 2;
 
 export async function readPassage(
@@ -608,7 +637,7 @@ export async function readPassage(
   question: string,
   section: string,
   paras: Para[],
-  more?: (dir: "before" | "after") => Promise<Para[]>,
+  more?: () => Promise<Para[]>,
 ): Promise<Answer> {
   let units = unitsOf(paras);
   if (units.length === 0) return { text: "not stated", p: 1 };
@@ -640,40 +669,42 @@ export async function readPassage(
   };
   const whole = () => paras.map((p) => p.text).join("\n\n");
   let ps = await judge(units, whole());
-  let run = bestRun(ps);
-  // A passage that reaches the window's edge goes on past it: the phases of
-  // a round start at the foot of one page and end on the next. Only the new
-  // page's sentences are asked; a page's units do not change by its neighbours.
-  for (const [dir, edge] of [["after", () => run!.end === units.length], ["before", () => run!.start === 0]] as const) {
-    for (let reach = 0; run && edge() && more && reach < PASSAGE_REACH; reach++) {
-      const next = await more(dir);
-      if (next.length === 0) break;
-      const fresh = unitsOf(next);
-      if (dir === "after") {
-        paras = [...paras, ...next];
-        units = [...units, ...fresh.map((u) => ({ ...u, para: u.para + paras.length - next.length }))];
-        ps = [...ps, ...(await judge(fresh, whole()))];
-      } else {
-        paras = [...next, ...paras];
-        units = [...fresh, ...units.map((u) => ({ ...u, para: u.para + next.length }))];
-        ps = [...(await judge(fresh, whole())), ...ps];
-      }
-      run = bestRun(ps);
-    }
+  let runs = bestRuns(ps);
+  // A passage goes on past its window when the next page holds more of the
+  // answer: the phases of combat are listed and explained over two pages.
+  // Only the new page's sentences are asked, and it is kept only if it
+  // holds a run of its own. The page before is never read: on its own
+  // account, the weapons table before the exotic one and a page before hero
+  // creation both got in, and nothing was ever found there.
+  for (let reach = 0; runs.length > 0 && more && reach < PASSAGE_REACH; reach++) {
+    const next = await more();
+    if (next.length === 0) break;
+    const fresh = unitsOf(next);
+    const grown = [...paras, ...next];
+    const fps = await judge(fresh, grown.map((p) => p.text).join("\n\n"));
+    if (bestRuns(fps).length === 0) break;
+    paras = grown;
+    units = [...units, ...fresh.map((u) => ({ ...u, para: u.para + paras.length - next.length }))];
+    ps = [...ps, ...fps];
+    runs = bestRuns(ps);
   }
-  if (!run) return { text: "not stated", p: 1 };
-  const chosen = ps.slice(run.start, run.end);
+  if (runs.length === 0) return { text: "not stated", p: 1 };
+  const chosen = runs.flatMap((r) => ps.slice(r.start, r.end));
   // Sentences of one paragraph go back together, with the lines they sit
-  // on for highlighting; a heading keeps its own line.
+  // on for highlighting; a heading keeps its own line; what was left out
+  // between two runs is an ellipsis.
   const passage: (Para & { para: number })[] = [];
-  for (const u of units.slice(run.start, run.end)) {
-    const last = passage.at(-1);
-    const lines = paras[u.para]!.lines.filter((l) => l.end > u.start && l.start < u.end);
-    if (last && last.para === u.para) {
-      last.text += ` ${u.text}`;
-      last.style += ` ${u.style}`;
-      for (const l of lines) if (!last.lines.includes(l)) last.lines.push(l);
-    } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines });
+  for (const [i, r] of runs.entries()) {
+    if (i > 0) passage.push({ ...ELLIPSIS, para: -1 });
+    for (const u of units.slice(r.start, r.end)) {
+      const last = passage.at(-1);
+      const lines = paras[u.para]!.lines.filter((l) => l.end > u.start && l.start < u.end);
+      if (last && last.para === u.para) {
+        last.text += ` ${u.text}`;
+        last.style += ` ${u.style}`;
+        for (const l of lines) if (!last.lines.includes(l)) last.lines.push(l);
+      } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines });
+    }
   }
   return {
     text: passage.map((p) => p.text).join("\n"),
