@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, confine, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, confine, GATE, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -288,7 +288,7 @@ describe("a section-wide count", () => {
     const across = async () => ({ text: "8", p: 1, verdict: "take" as const, pages: [2, 3] });
     // Per page, so each page's gate has its own key for the stub to answer.
     const link = async (p2: number) =>
-      (await searchPdf(stubClient(only, (key) => (key === "p2" ? p2 : 1)), toc, { ...base, perPage: true, countAcross: across }, ui)).hit?.page;
+      (await searchPdf(stubClient(only, (key) => (key.startsWith("p2:") ? p2 : 1)), toc, { ...base, perPage: true, countAcross: across }, ui)).hit?.page;
     expect(await link(0.1)).toBe(3);
     // Under the stop threshold yet above even odds is not a no.
     expect(await link(0.6)).toBe(2);
@@ -347,6 +347,19 @@ describe("a whole window's pages", () => {
     const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 1, chars: 48000, batch: 40, perPage: false, verify };
     await searchPdf(stubClient(only), toc, opts, { log: () => {}, trying: () => {}, clear: () => {} });
     expect(seen).toEqual([[2, 3]]);
+  });
+});
+
+describe("a gate of several nouls", () => {
+  // A statement's gate asks stated, contradicted and lists-the-kind; a page
+  // passes on the highest of them.
+  test("takes the highest noul as the window's value", async () => {
+    const gate = (key: string) => (key === "p3:2" ? 0.9 : 0.1);
+    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, perPage: true, gate: GATE.claim };
+    const { hit, tried } = await searchPdf(stubClient((t) => (t === "Characters" ? 3 : 0), gate), toc, opts, { log: () => {}, trying: () => {}, clear: () => {} });
+    expect(tried.find((t) => t.page === 3)?.p).toBe(0.9);
+    expect(tried.find((t) => t.page === 2)?.p).toBe(0.1);
+    expect(hit?.page).toBe(3);
   });
 });
 

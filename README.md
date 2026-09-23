@@ -300,9 +300,12 @@ was counted, so three sure pages of a 36-page section do not pass as a count
 of it.
 
 A statement changes the gate as well: a negative has no answer for a page to
-contain, so Heart's class list gated at 0.32 for "Is knight a class?" and at
-0.76 once asked whether it settles the claim, by stating it, contradicting it,
-or naming the things of its kind.
+contain, so Heart's class list gated at 0.32 for "Is knight a class?". A
+statement's gate is three `noul`s per page in the same call, the same three
+the answer is read with, does the page state the claim, contradict it, or
+list things of its kind, and the page passes on the highest; the class list
+then gates at 0.94 and answers knight false from there rather than from the
+Vermissian Knight's own page.
 
 A count also changes what a window has to satisfy to be worth reading. No page
 says "there are 94 perks", so asking whether a window "contains the answer"

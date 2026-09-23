@@ -152,21 +152,29 @@ export async function openAt(url: string): Promise<void> {
  * are 94 perks, so asking whether a window "contains the answer" rejects the
  * very pages the perks are listed on. A count asks for the list instead.
  */
-export type Gate = (of: string) => string;
+/** The nouls a window must satisfy one of; its gate value is the highest. */
+export type Gate = (of: string) => ReturnType<typeof noul>[];
 export const GATE = {
-  answer: (of) => `${of} contains the answer to \`question\``,
-  list: (of) => `${of} lists entries of the kind \`question\` asks how many there are`,
+  answer: (of) => [noul(`${of} contains the answer to \`question\``)],
+  list: (of) => [noul(`${of} lists entries of the kind \`question\` asks how many there are`)],
   // A negative has no answer on the page to contain: Heart's class list
-  // gated at 0.32 for "Is knight a class?" asked the first way, 0.76 this way.
-  claim: (of) =>
-    `${of} settles the claim in \`question\`: states it, contradicts it, or names the things of its kind so that the one named can be checked against them`,
+  // gated at 0.32 for "Is knight a class?" asked that way. Three nouls, one
+  // judgment each, the same three the answer is read with.
+  claim: (of) => [
+    noul(`${of} states the claim made in \`question\`, naming the exact, whole name the claim gives as one of the kind-word the claim uses`),
+    noul(`${of} contradicts the claim made in \`question\``),
+    noul(`${of} lists or headlines things called by the same kind-word \`question\` uses (a class, a perk, a calling)`),
+  ],
 } satisfies Record<string, Gate>;
 
+const keyed = (key: string, gate: Gate, of: string) => gate(of).map((q, j) => [`${key}:${j}`, q] as const);
+const highest = (answers: Record<string, { noul: number }>, key: string, n: number) =>
+  Math.max(...Array.from({ length: n }, (_, j) => answers[`${key}:${j}`]!.noul));
+
 async function askWindow(client: TypeSafeClient, question: string, section: string, text: string, gate: Gate) {
-  const res = await timed("api", () =>
-    client.systemOne({ state: { question, section, text }, questions: { answers: noul(gate("`text`")) } }),
-  );
-  return res.answers.answers.noul;
+  const questions = Object.fromEntries(keyed("w", gate, "`text`"));
+  const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
+  return highest(res.answers as Record<string, { noul: number }>, "w", gate("").length);
 }
 
 /**
@@ -178,9 +186,9 @@ async function askPages(client: TypeSafeClient, question: string, section: strin
   const key = (w: Window) => `p${w.page}`;
   const res = await client.systemOne({
     state: { question, section, pages: Object.fromEntries(pages.map((w) => [key(w), w.text])) },
-    questions: Object.fromEntries(pages.map((w) => [key(w), noul(gate(`\`pages.${key(w)}\``))])),
+    questions: Object.fromEntries(pages.flatMap((w) => keyed(key(w), gate, `\`pages.${key(w)}\``))),
   });
-  return pages.map((w) => res.answers[key(w)]!.noul);
+  return pages.map((w) => highest(res.answers as Record<string, { noul: number }>, key(w), gate("").length));
 }
 
 /** Pages packed into batches of at most `chars`; a page over the limit travels alone. */
