@@ -8,18 +8,31 @@ writes prose, so nothing here summarizes or paraphrases: every answer is a
 number, a true/false, or a page to go read.
 
 ```console
-$ ls *.pdf | bun jevfind.ts "How does hero creation work in Legend in the Mist?"
-ranked 52 paths in 0.4s (jev 0.4s, read 0.0s, other 0.0s), 1 above file floor 1.5 (51 below)
-2.91  Legend-in-the-Mist-Core-Book.pdf
-  ranked 169 sections in 0.5s (jev 0.5s, read 0.0s, other 0.0s), 12 above title floor 1 (157 below)
-    yes  0.96   0.3s jev  Core Book Vol. I > Hero & Fellowship Creation > Hero Creation p.73
-  file 0.8s (jev 0.7s, read 0.1s, other 0.0s)  1 windows read
-total 1.2s (jev 1.1s, read 0.1s, other 0.0s), 1 files opened, 1 windows read
-Legend-in-the-Mist-Core-Book.pdf p.73  … > Hero Creation  (p=0.96)
+$ find /shelf -name '*.pdf' | bun jevfind.ts "How does hero creation work in Legend in the Mist?"
+question looks like a passage question
+ranked 353 paths in 0.4s (jev 0.4s, read 0.0s, other 0.0s), 1 above file floor 1.5 (352 below)
+2.96  Legend in the Mist/Legend-in-the-Mist-Core-Book.pdf
+  ranked 169 sections in 0.4s (jev 0.4s, read 0.0s, other 0.0s), 67 above title floor 1 (102 below)
+    gated 2 pages (batch 1/1), 0.2s jev, 1 yes  … > Hero Creation
+    take  HERO CREATION… (p=0.91)  … > Hero Creation p.73 (window 1/2)
+  file 1.1s (jev 0.9s, read 0.2s, other 0.0s)  2 windows read
+total 52.1s (jev 1.8s, read 0.2s, stdin 50.1s, other 0.0s), 1 files opened, 2 windows read
+(p=0.91)  Legend-in-the-Mist-Core-Book.pdf p.73  … > Hero Creation  (found p=0.96)
+
+  HERO CREATION
+
+  You can create any hero you can dream of, by describing them with tags.
+
+  The Simplest Way: Just Write It Down
+
+  • Think of their four themes and write them as power tags.
+  …
 ```
 
-52 PDFs, one file opened, one page read, 1.2 seconds. The last line is a
-clickable link straight to page 73.
+353 PDFs, one file opened, two pages read, 1.8 seconds of jev; the other
+fifty were `find` walking a spinning disk, see [Where the time
+goes](#where-the-time-goes). The link is clickable and lands on page 73; the
+passage under it is the page's own text, headings in bold.
 
 ## Setup
 
@@ -41,8 +54,10 @@ list and works on names alone.
 
 ```console
 $ ls fixture | bun jevgrep.ts "What are the skills in the fallout rpg?"
-2.98  fallout-skills-and-perks.md  Directly names the subject of the question (p=1.00 conf=0.98)
-2.18  fallout-character-sheet.md   Plausibly holds part of the answer (p=0.66 conf=0.64)
+2.99  fallout-skills-and-perks.md  Directly names the subject of the question (p=1.00 conf=0.99)
+2.06  fallout-character-sheet.md   Plausibly holds part of the answer (p=0.66 conf=0.65)
+1.77  manual.pdf                   Plausibly holds part of the answer (p=0.61 conf=0.55)
+1.71  manual.ms                    Plausibly holds part of the answer (p=0.59 conf=0.51)
 ```
 
 Scores run 0–3. Output is aligned for a terminal and tab-separated when piped,
@@ -63,9 +78,19 @@ stops at the first whose text actually answers.
 ```console
 $ bun jevsec.ts book.pdf "How do I create a hero?"
 question looks like a passage question
-ranked 169 sections in 0.5s, 12 above title floor 1 (157 below)
-  yes  0.97   0.3s jev  … > Hero Creation p.73
-book.pdf p.73  … > Hero Creation  (found p=0.97)
+ranked 169 sections in 0.5s, 79 above title floor 1 (90 below)
+  gated 2 pages (batch 1/1), 0.3s jev, 1 yes  … > Hero Creation
+  take  HERO CREATION… (p=0.92)  … > Hero Creation p.73 (window 1/2)
+(p=0.92)  book.pdf p.73  … > Hero Creation  (found p=0.96)
+
+  HERO CREATION
+
+  You can create any hero you can dream of, by describing them with tags.
+
+  The Simplest Way: Just Write It Down
+
+  • Think of their four themes and write them as power tags.
+  …
 ```
 
 `-n, --hits N` keeps walking until N passages have passed the threshold and
@@ -92,9 +117,9 @@ follows.
 
 | question | kind | output |
 | --- | --- | --- |
-| "How many themes does a hero have?" | count | `4  (p=0.97)` + link |
-| "How much does the Umber cost?" | number | `80  (p=0.99)` + link |
-| "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.99)` + link |
+| "How many classes are there in heart?" | count | `9  (p=1.00)` + link |
+| "How much does the Umber cost?" | number | `80  (p=1.00)` + link |
+| "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.98)` + link |
 | "How do I create a hero?" | passage | link + the sentences that answer |
 
 Because jev emits no text, every answer is a decision over options code
@@ -131,8 +156,8 @@ rating of a combat rifle?" is split into words and each word is asked, in the
 same call that classifies the question, whether it names a quantity the
 question wants; adjacent words that do form one name, so `damage rating` stays
 one. Then one choice per name goes out in one call over the page, and the
-answer reads `cost 410, weight 34, damage rating not stated`, with the
-confidence of its least certain stated part. `not stated` is a refusal, not an
+answer reads `cost 117, weight 11, damage rating 5`, with the confidence of
+its least certain stated part. `not stated` is a refusal, not an
 answer: the window is dropped and the walk goes on.
 
 A passage question reads the answering stretch off the page. The page's text
@@ -179,8 +204,8 @@ contents:
 
 ```console
 $ bun jevsec.ts heart.pdf "How many classes are there in heart?"
-  toc   9 (p=0.89)  Characters > Classes  in 0.2s (jev 0.2s, read 0.0s, other 0.0s)
-9  (p=0.89)  heart.pdf p.31  Characters > Classes  (found p=0.89)
+  toc   9 (p=1.00)  Characters > Classes  in 0.2s (jev 0.2s, read 0.0s, other 0.0s)
+9  (p=1.00)  heart.pdf p.31  Characters > Classes  (found p=1.00)
 ```
 
 A count asks jev which section's entries the question is about, then counts
@@ -238,11 +263,11 @@ A list of 94 perks over 16 pages does not fit one call, so each window is
 counted on its own and the parts are added up, reported as they land:
 
 ```console
-  yes  0.96   1.1s jev  Gadgets p.1 (window 1/3)
+  yes  0.91   0.3s jev  Gadgets p.1 (window 1/3)
     + 10 (p=1.00)  p.1  running 10
-    + 10 (p=0.95)  p.2  running 20
-    + 10 (p=0.94)  p.3  running 30
-  take  30 (p=0.94)  Gadgets p.1
+    + 10 (p=1.00)  p.2  running 20
+    + 10 (p=1.00)  p.3  running 30
+  take  30 (p=1.00)  Gadgets p.1 (window 1/3)
 ```
 
 Counting a section reads every page under it, so its subsections are skipped
@@ -277,16 +302,18 @@ lists entries of the kind in question instead.
 
 ### Counts and statements keep looking
 
-A section can plainly be about skills while the count inside it comes back at
-`p=0.32`. So for count and truth questions the extracted answer must clear
-`--answer-floor` (default 0.7) too; below it, the walk continues:
+A section can plainly be about theme kits while the count inside it comes
+back unsure. So for count, number and truth questions the extracted answer
+must clear `--answer-floor` (default 0.7) too; below it, the walk continues,
+and the second page of Legend in the Mist's kit list, which sits at the
+floor, is counted one run and left out the next:
 
 ```console
-  yes  0.93   0.6s jev  Chapter II: Perks p.2
-  keep  3 (p=0.98)  Chapter II: Perks p.2      ← answer below floor, keep walking
-  no   0.49   0.2s jev  Chapter I: Skills p.1
-jevsec: no answer reached p=0.99 in 1 windows; best follows
-3  (p=0.98, below 0.99)  manual.pdf p.2  Chapter II: Perks  (found p=0.93)
+    + 88 (p=0.88)  p.76  running 88
+    ? 62 (p=0.28)  p.77  unsure, left out
+  keep  88 (p=0.47)  … > List of All Theme Kits p.76 (window 1/2)   ← below floor, keep walking
+jevsec: no answer reached p=0.7 in 1 windows; best follows
+88  (p=0.47, below 0.7)  Legend-in-the-Mist-Core-Book.pdf p.76  … > List of All Theme Kits  (found p=0.77)
 ```
 
 Nothing is hidden: if no answer clears the floor, the best one still prints,
@@ -331,9 +358,10 @@ stops at the first yes, order only costs latency.
 Text is extracted with `pdftotext -layout`, which keeps a table row on one line
 and two prose columns side by side. In reading order the columns came out
 interleaved line by line and each table cell on a line of its own, three lines
-from its label. A figure's choice now carries its row: "5, as in: Combat Rifle
-5C …", and on the Fallout weapons table the cost and weight of a combat rifle
-went from p=0.59 to p=1.00, the damage rating from unanswered to 5 at p=0.95.
+from its label. A figure's choice carries its row: "5, as in: Combat Rifle
+5C …", and on the Fallout small guns table a combat rifle's cost, weight and
+damage rating come off together as `117, 11, 5` at p=0.90; read in reading
+order, the cost and weight sat at p=0.59 and the damage rating went unanswered.
 A figure may carry a unit on its tail (`5CD`, `10mm`) but never a letter on its
 head (`v2.5`, `p12`). A figure on several rows is offered once per row, up to
 three, since the `5` in the header and the `5` in the Combat Rifle row are told
@@ -387,12 +415,14 @@ the same calls and is less sharp, so it is only there for comparison.
   so he counts once; the old method said 80 at p=0.36); the 17 skills as 17 at p=1.00 (old 16);
   the 6 origins over 7 pages as 6 at p=0.32 (old 12). Legend in the Mist:
   the 20 theme types on one page as 19 at p=0.89 (old refused); the 153 theme
-  kits over two pages as 94, the first page right (94 counted, 91 there,
-  three of them headers) and the second refused at p=0.28 (old 17 at
-  p=0.05); the 30 tropes over ten pages, three a page, refused at p=0.22
-  with pages counted between 3 and 9, the kits listed under each trope being
-  mistaken for tropes (old 23 at p=0.20). Refusing is the usual outcome on a
-  page it cannot read, not a wrong number.
+  kits over two pages as 150 at p=0.74, 88 at p=0.47 and 152 at p=0.81 on
+  three runs an hour apart, the second page sitting at the answer floor
+  (old 17 at p=0.05); the 30 tropes over ten pages, three a page, refused at
+  p=0.22 with pages counted between 3 and 9, the kits listed under each
+  trope being mistaken for tropes (old 23 at p=0.20). Cyberpunk Red: the 66
+  skills over twelve pages as 64 to 65 at p=0.75 to 0.83. Refusing is the
+  usual outcome on a page it cannot read, not a wrong number. `bun run bench`
+  reruns all of these.
 - **The category matcher is loose.** It takes any section whose name appears in
   the question, so "Is Brotherhood Initiate an origin?" can match a section
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong
@@ -429,7 +459,7 @@ Measured on an RTX 4060 laptop (8 GB) against jev on the same questions:
 | one gate or truth question | 0.15–0.3s | 0.2–0.3s |
 | rank 40 titles | 1.9s | 0.3s |
 | gate 24 pages in one call | 8.2s | 0.3s |
-| live test suite | 34s, 121/126 | 12s, 126/126 |
+| live test suite, as it then stood (126 tests) | 34s, 121 pass | 12s, all pass |
 
 At parity on small decisions, and free and offline. Not a match on pages:
 prefill runs at about 1,500 tokens a second, a 12k-token batch runs the card
