@@ -72,8 +72,9 @@ so `jevgrep -l` feeds `xargs` cleanly.
 
 ### jevsec — which page of this PDF answers it?
 
-Ranks the PDF's outline by section title, then reads sections best-first and
-stops at the first whose text actually answers.
+Ranks the PDF's outline by section title, and beside the titles the pages
+whose text mentions what the question is about, then reads best-first and
+stops at the first page whose text actually answers.
 
 ```console
 $ bun jevsec.ts book.pdf "How do I create a hero?"
@@ -99,8 +100,9 @@ count, number or statement has one answer.
 
 ### jevfind — which page of which PDF answers it?
 
-The whole cascade: rank the paths by name, then rank each file's sections, then
-read. Stops at the first confident answer anywhere.
+The whole cascade: rank the paths by name and by the pages in them that
+mention the subject, then rank each file's sections the same way, then read.
+Stops at the first confident answer anywhere.
 
 ```sh
 ls *.pdf | bun jevfind.ts "How is radiation treated?"
@@ -109,6 +111,54 @@ plocate '*.pdf' | bun jevfind.ts "How many perks can a character take?"
 
 Prefer `plocate` to `find` on a spinning disk — see [Where the time
 goes](#where-the-time-goes).
+
+### Searching the text
+
+A title or a filename says nothing about much of what a book holds. Fallout's
+small guns table sits under `Equipment > Small Guns`, fourteenth by title for
+"what is the cost, weight and damage rating of a hunting rifle?", and the
+`Hunting Rifle` bookmark two pages later is the weapon's description, not its
+row. So before the titles are ranked, the book's text is searched for the
+question's subject, and the pages found are ranked in the same call as the
+titles, as candidates of their own:
+
+```console
+$ bun jevsec.ts fallout.pdf "What is the cost, weight and damage rating of a hunting rifle?"
+question looks like a number question
+asks for cost, weight, damage rating
+searches for hunting rifle
+ranked 1058 sections and 20 excerpts in 2.4s, 60 above title floor 1 (1018 below)
+  no   0.04  Equipment > Small Guns > .44 Pistol > Hunting Rifle p.99
+  no   0.05  Survival > Scavenging > Loot Tables > Weapons (Ranged) p.206
+  yes  0.98  Equipment > Small Guns p.97 (excerpt)
+  take  cost 55, weight 10, damage rating 6 (p=0.99)  Equipment > Small Guns p.97 (excerpt)
+cost 55, weight 10, damage rating 6  (p=0.99)  fallout.pdf p.97  Equipment > Small Guns  (found p=0.98)
+```
+
+The subject comes off the question in the same call that reads its kind: a
+noul per word, "is part of the name of the thing the question is about", so
+"hunting rifle" is looked for and "cost", "weight" and "damage rating" only
+count for a little. Each of the book's pages is scored by its best line: the
+subject as a phrase, then its words, then any other content word, each
+weighted by how rare it is across the book, so a line holding "hunting"
+(nine pages) beats one holding "cost" (a few hundred); among pages with the
+same best line, the one naming the subject on more lines ranks first, which
+is what tells a list of skills from a page that mentions one. The twenty best pages
+go into the ranking call as `excerpts`, each as its page number and that line,
+and the model scores them on the rubric the titles get. A page that wins is
+read on its own, named for the section it lies in. A page read once is never
+read again under its section, and the other way round. A count ranks the
+titles alone: a page dense with the subject is as likely a fragment of the
+list as the list itself, and Legend in the Mist's ten theme kits on one page
+counted as ten at p=0.82.
+
+When the contents already named a section to read, only that section's pages
+are searched: the walk was confined for a reason, a page outside it having
+answered a membership question wrongly before.
+
+`--no-search` ranks the titles alone. In jevfind every readable PDF on stdin
+is searched, three pages each, and a file opens on the better of its name
+and its best page; the log says which (`2.60  starter.pdf  (by p.12)`).
 
 ## Three kinds of question
 
@@ -367,12 +417,20 @@ total 105.4s (jev 3.3s, read 15.9s, stdin 86.2s, other 0.0s)
 86 seconds of that was `find` walking a spinning disk before the first call went
 out. `plocate` reads an index instead and makes it disappear.
 
+A book's text is extracted once, whole, and kept under `~/.cache/jev` (or
+`$XDG_CACHE_HOME/jev`) keyed by the file's path, size and mtime: the text
+search needs all of it before a section is picked, and a second question to
+the same book should not pay for `pdftotext` again. The first run on a
+400-page rulebook spends two to eight seconds there; after that `read` is
+the cache file.
+
 ## PDFs without an outline
 
-There is nothing to rank, so the document is cut into page windows and read in
-page order. Ranking those windows by their opening text was tried and removed:
-a 300-character snippet put a credits page above the body, and since the walk
-stops at the first yes, order only costs latency.
+There are no titles to rank, so the pages the text search found are ranked
+and read first, and the rest of the document is cut into page windows and
+read in page order. Ranking those windows by their opening text was tried and
+removed: a 300-character snippet put a credits page above the body, and since
+the walk stops at the first yes, order only costs latency.
 
 ## Tables
 
@@ -449,13 +507,13 @@ p.99, where page by page it reads the tags on p.102.
   the question, so "Is Brotherhood Initiate an origin?" can match a section
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong
   answer, but it still costs one.
-- **Filenames carry no signal sometimes.** `RTG-CPRed-SingleShotPackv1.1.pdf` is
-  the Cyberpunk Red starter set; no question about netrunning will rank it
-  above the file floor. The floors are soft: files and sections under them are
-  read, in rank order, only while nothing has answered, so such a book is still
-  reached within `--max-files` and `--max`. Above the floor `-n` windows are
-  collected; below it one is enough. It just costs the reads above it
-  first.
+- **The text search finds words, not meanings.** A question whose subject the
+  book names another way ("healing" for "first aid") finds nothing, and the
+  walk is back to titles. The floors are soft: files and sections under them
+  are read, in rank order, only while nothing has answered, so such a book is
+  still reached within `--max-files` and `--max`. Above the floor `-n`
+  windows are collected; below it one is enough. It just costs the reads
+  above it first.
 - **Scanned PDFs are invisible.** Extraction is text-only; no OCR.
 - **Probabilities move between runs.** jev is not deterministic at the margins,
   so a borderline window can flip either side of a threshold.
@@ -531,10 +589,11 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `jevgrep.ts` | rank names from stdin |
 | `jevsec.ts` | search one PDF |
 | `jevfind.ts` | rank paths, then search them |
-| `pdf.ts` | outline, page windows, the walk, links |
+| `pdf.ts` | outline, the text cache, page windows, the walk, links |
+| `search.ts` | search terms and the pages that mention them |
 | `layout.ts` | a page's lines, columns, paragraphs and weights, for passages |
 | `answer.ts` | classify the question, read counts and true/false |
-| `shared.ts` | client, key, scoring rubric, timing |
+| `shared.ts` | client, key, the ranking call, scoring rubric, timing |
 | `format.ts` | column alignment and path elision |
 | `bench.ts` | the shelf benchmark over real rulebooks |
 | `outline.js` | mutool script printing `path<TAB>start<TAB>end` |
