@@ -1,4 +1,5 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+import { rename } from "node:fs/promises";
 import { rankTitles, secs, snapshot, split, timed } from "./shared";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
@@ -56,23 +57,57 @@ export async function outline(pdf: string): Promise<Section[]> {
 /** A stretch of pages, `page` through `end`, small enough for one call. */
 export type Window = { page: number; end: number; text: string };
 
+export const cacheDir = () => `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
+
+const texts = new Map<string, Promise<string[]>>();
+
+/**
+ * Every page's text, `pages[p - 1]` for page p, extracted once per book and
+ * kept on disk: the text search reads the whole book before any section is
+ * picked, and a shelf of books searched again should not pay for extraction
+ * twice. The key carries size and mtime so a replaced file is read afresh.
+ */
+export function bookText(pdf: string): Promise<string[]> {
+  let pages = texts.get(pdf);
+  if (!pages) {
+    pages = extract(pdf);
+    texts.set(pdf, pages);
+  }
+  return pages;
+}
+
+async function extract(pdf: string): Promise<string[]> {
+  const file = Bun.file(pdf);
+  // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
+  const cached = Bun.file(`${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${file.size}-${Math.round(file.lastModified)}.txt`);
+  let text: string;
+  if (await cached.exists()) text = await timed("extract", () => cached.text());
+  else {
+    // -layout keeps a table's row on one line and two prose columns side by
+    // side; reading order interleaved the columns line by line and put each
+    // table cell on a line of its own, three lines from its label.
+    text = (await run(["pdftotext", "-layout", pdf, "-"])).replace(/[ \t]+$/gm, "");
+    // A second run extracting the same book must never read half a file.
+    const tmp = `${cached.name}.${process.pid}`;
+    await Bun.write(tmp, text);
+    await rename(tmp, cached.name!);
+  }
+  const pages = text.split("\f");
+  if (pages.at(-1) === "") pages.pop();
+  return pages;
+}
+
 /**
  * Section text split into windows small enough for one call, each tagged with
  * its first page. A `chars` of 0 puts every page in a window of its own, so a
  * hit names the exact page rather than the first of a span.
  */
 export async function windows(pdf: string, s: Section, chars: number): Promise<Window[]> {
-  // -layout keeps a table's row on one line and two prose columns side by
-  // side; reading order interleaved the columns line by line and put each
-  // table cell on a line of its own, three lines from its label.
-  const text = (await run(["pdftotext", "-layout", "-f", String(s.start), "-l", String(s.end), pdf, "-"])).replace(
-    /[ \t]+$/gm,
-    "",
-  );
+  const pages = (await bookText(pdf)).slice(s.start - 1, s.end);
   const out: Window[] = [];
   let buf = "";
   let first = s.start;
-  text.split("\f").forEach((page, i) => {
+  pages.forEach((page, i) => {
     if (buf && buf.length + page.length > chars) {
       out.push({ page: first, end: s.start + i - 1, text: buf });
       buf = "";
@@ -86,8 +121,7 @@ export async function windows(pdf: string, s: Section, chars: number): Promise<W
 
 /** Page count, for turning an outline-less PDF into one synthetic section. */
 export async function pageCount(pdf: string): Promise<number> {
-  const out = await run(["pdfinfo", pdf]);
-  return Number(/^Pages:\s+(\d+)$/m.exec(out)?.[1] ?? 0);
+  return (await bookText(pdf)).length;
 }
 
 /**
@@ -109,9 +143,8 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
  * hits in one file each add theirs to the same copy.
  */
 export async function highlighted(pdf: string, lines: Box[], fresh = true): Promise<string> {
-  const dir = `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
   // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
-  const copy = `${dir}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
+  const copy = `${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
   if (fresh) await Bun.write(copy, Bun.file(pdf));
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
   // A passage read across a window's pages is marked on each of them.

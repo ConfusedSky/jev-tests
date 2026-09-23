@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, confine, GATE, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, bookText, cacheDir, confine, GATE, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -40,6 +40,25 @@ describe("outline", () => {
 
   test("a PDF without bookmarks reports no sections", async () => {
     expect(await outline(heart)).toEqual([]);
+  });
+});
+
+describe("bookText", () => {
+  test("one page per entry, cached on disk under the path's hash, size and mtime", async () => {
+    const pages = await bookText(manual);
+    expect(pages).toHaveLength(3);
+    expect(pages[2]).toContain("RadAway");
+    const f = Bun.file(manual);
+    const key = `${Bun.hash(manual).toString(36).slice(0, 6)}-${f.size}-${Math.round(f.lastModified)}`;
+    expect(await Bun.file(`${cacheDir()}/${key}.txt`).exists()).toBe(true);
+  });
+
+  test("reads the cached text instead of the PDF", async () => {
+    const copy = `${cacheDir()}/copy.pdf`;
+    await Bun.write(copy, Bun.file(manual));
+    const f = Bun.file(copy);
+    await Bun.write(`${cacheDir()}/${Bun.hash(copy).toString(36).slice(0, 6)}-${f.size}-${Math.round(f.lastModified)}.txt`, "one\ftwo\f");
+    expect(await bookText(copy)).toEqual(["one", "two"]);
   });
 });
 
@@ -377,13 +396,11 @@ describe("a gate of several nouls", () => {
 
 describe("highlighted", () => {
   test("copies the PDF into the cache with the lines marked on the page", async () => {
-    process.env.XDG_CACHE_HOME = Bun.fileURLToPath(new URL("fixture", import.meta.url));
     const copy = await highlighted(manual, [{ page: 3, x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
-    expect(copy).toMatch(/\/fixture\/jev\/[0-9a-z]+-manual\.pdf$/);
+    expect(copy).toMatch(/\/jev\/[0-9a-z]+-manual\.pdf$/);
     const count = `${copy}.js`;
     await Bun.write(count, "var d = Document.openDocument(scriptArgs[0]); print(d.loadPage(2).getAnnotations().length);");
     expect((await run(["mutool", "run", count, copy])).trim()).toBe("1");
-    await Bun.$`rm -r ${Bun.fileURLToPath(new URL("fixture/jev", import.meta.url))}`;
   });
 });
 
