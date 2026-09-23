@@ -7,7 +7,7 @@ export type Kind = (typeof KINDS)[number];
 /** The kinds that yield a value to be confident about; a passage is satisfied by the page itself. */
 export type Valued = Exclude<Kind, "passage">;
 
-const STOPWORDS = new Set(
+export const STOPWORDS = new Set(
   (
     "a an the and or of for to in on at by with from as is are was were be been does do did has have had " +
     "what which who whom whose how much many when where why it its this that these those there their his her " +
@@ -17,10 +17,11 @@ const STOPWORDS = new Set(
 
 /**
  * What jev reads off the question's wording alone, in one call: the shape of
- * answer wanted, the quantities a number question names, and the kind of
- * thing a count question counts ("theme kits" in "how many theme kits").
+ * answer wanted, the quantities a number question names, the kind of thing a
+ * count question counts ("theme kits" in "how many theme kits") and the
+ * subject whose entry is wanted ("combat rifle"), which the text search looks for.
  */
-export type Reading = { kind: Kind; quantities: string[]; counted: string };
+export type Reading = { kind: Kind; quantities: string[]; counted: string; subject: string[] };
 
 type Word = { word: string; ends: boolean };
 
@@ -42,9 +43,9 @@ function namesFrom(words: Word[], passed: (i: number) => boolean): string[] {
 
 /**
  * What shape of answer the question wants, which quantities it names ("the
- * cost, weight and damage rating of a combat rifle" names three) and what
- * kind of thing it counts. All come from the wording alone, so they go out
- * together, and the parts the kind does not need are ignored.
+ * cost, weight and damage rating of a combat rifle" names three), what kind
+ * of thing it counts and what it is about. All come from the wording alone,
+ * so they go out together, and the parts the kind does not need are ignored.
  *
  * A noul per word for each. Asked word by word the model lets "what" and
  * "of" through at p=0.5 or so; grammar words can never name a quantity or a
@@ -77,6 +78,13 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
             "such as perks, classes or theme kits. Not the owner of them, not a verb, not a joining word.",
         ),
       ],
+      [
+        `s${i}`,
+        noul(
+          `\`words[${i}]\` ("${w.word}") is part of the name of the thing \`question\` is about, whose entry, rule or ` +
+            "values are wanted, such as combat rifle, equipment tags or perks. Not the quantity asked for, not a verb, not a joining word.",
+        ),
+      ],
     ]),
   );
   const res = await timed("api", () =>
@@ -90,6 +98,7 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
     quantities: namesFrom(words, passed("w")),
     // A count counts one kind of thing; the first name is it.
     counted: namesFrom(words, passed("k"))[0] ?? "",
+    subject: namesFrom(words, passed("s")),
   };
 }
 
@@ -643,7 +652,7 @@ export async function readPassage(client: TypeSafeClient, question: string, sect
   };
 }
 
-const normalize = (s: string) =>
+export const normalize = (s: string) =>
   s
     .toLowerCase()
     .replace(/^the\s+/, "")
@@ -655,7 +664,7 @@ const normalize = (s: string) =>
  * "Classes". Only the first rule that applies fires: chaining them turns
  * "Classes" into "Class" and then into "Clas".
  */
-function singular(word: string): string {
+export function singular(word: string): string {
   for (const [re, to] of [[/ies$/, "y"], [/(ch|sh|ss|x)es$/, "$1"], [/s$/, ""]] as const) {
     if (re.test(word)) return word.replace(re, to);
   }

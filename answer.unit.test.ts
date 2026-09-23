@@ -479,15 +479,16 @@ describe("a stated figure", () => {
 });
 
 describe("readQuestion", () => {
-  /** Says yes to the listed quantity words and kind words, and calls every question the given kind. */
-  const stub = (kind: string, quantities: string[], kinds: string[] = []) =>
+  /** Says yes to the listed quantity, kind and subject words, and calls every question the given kind. */
+  const stub = (kind: string, quantities: string[], kinds: string[] = [], subject: string[] = []) =>
     ({
       systemOne: async ({ questions }: { questions: Record<string, { type: string; instructions: string }> }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([k, q]) => {
             if (q.type === "choice") return [k, { type: "choice", choice: kind, confidence: 1, probabilities: { [kind]: 1 } }];
             const word = /^`words\[\d+\]` \("(.*?)"\)/.exec(q.instructions)![1]!;
-            const yes = (q.instructions.includes("kind of thing") ? kinds : quantities).includes(word);
+            const list = q.instructions.includes("kind of thing") ? kinds : q.instructions.includes("is about") ? subject : quantities;
+            const yes = list.includes(word);
             return [k, { type: "noul", noul: yes ? 0.9 : 0.1 }];
           }),
         ),
@@ -496,7 +497,12 @@ describe("readQuestion", () => {
   const quantities = async (yes: string[], q: string) => (await readQuestion(stub("number", yes), q)).quantities;
 
   test("reads the kind and the quantities in one call", async () => {
-    expect(await readQuestion(stub("number", ["cost"]), "How much does the Umber cost?")).toEqual({ kind: "number", quantities: ["cost"], counted: "" });
+    expect(await readQuestion(stub("number", ["cost"]), "How much does the Umber cost?")).toEqual({
+      kind: "number",
+      quantities: ["cost"],
+      counted: "",
+      subject: [],
+    });
   });
 
   test("reads what a count counts, joined into one name", async () => {
@@ -504,7 +510,14 @@ describe("readQuestion", () => {
       kind: "count",
       quantities: [],
       counted: "theme kits",
+      subject: [],
     });
+  });
+
+  test("reads the subject the question is about, split from its quantities", async () => {
+    const q = "What is the cost and weight of a combat rifle?";
+    const read = await readQuestion(stub("number", ["cost", "weight"], [], ["combat", "rifle"]), q);
+    expect(read.subject).toEqual(["combat rifle"]);
   });
 
   test("joins adjacent words into one name and splits names at commas", async () => {
