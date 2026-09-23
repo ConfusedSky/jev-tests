@@ -6,7 +6,8 @@
  */
 
 export type Span = { text: string; bold: boolean; italic: boolean; font: string };
-export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[] };
+/** `block` is the mutool block the line came from. */
+export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[]; block: number };
 /** A line's box, the page it is on, and which characters of its paragraph's text it holds. */
 export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number };
 /**
@@ -32,37 +33,41 @@ export function parseStext(xml: string): { width: number; height: number; lines:
   const width = Number(attr(page, "width") ?? 0);
   const height = Number(attr(page, "height") ?? 0);
   const lines: Line[] = [];
-  for (const [, head, body] of xml.matchAll(/<line ([^>]*)>(.*?)<\/line>/gs)) {
-    const [x0, y0, x1, y1] = (attr(head!, "bbox") ?? "0 0 0 0").split(" ").map(Number) as [number, number, number, number];
-    const spans: Span[] = [];
-    // The line's size is that of most of its characters, so a superscript
-    // or a dingbat bullet in a larger font does not make it a heading.
-    const sizes = new Map<number, number>();
-    let prevRight: number | undefined;
-    for (const [, fontTag, chars] of body!.matchAll(/<font ([^>]*)>(.*?)<\/font>/gs)) {
-      const name = attr(fontTag!, "name") ?? "";
-      const bold = /bold|heavy|black|semibold|demi|extrab/i.test(name);
-      const italic = /italic|oblique/i.test(name);
-      const size = Number(attr(fontTag!, "size") ?? 0);
-      let text = "";
-      for (const [, tag] of chars!.matchAll(/<char ([^>]*)\/>/g)) {
-        // A private-use glyph is a dingbat, a bullet as often as not.
-        const c = unescape(attr(tag!, "c") ?? "").replace(/[\uE000-\uF8FF\uFFFD]/g, "•");
-        sizes.set(size, (sizes.get(size) ?? 0) + 1);
-        const quad = (attr(tag!, "quad") ?? "").split(" ").map(Number);
-        const left = quad[0] ?? 0;
-        const right = quad[2] ?? left;
-        if (prevRight !== undefined && c !== " " && !text.endsWith(" ") && left - prevRight > WORD_GAP * size) text += " ";
-        text += c;
-        prevRight = right;
+  let block = 0;
+  for (const [, blockXml] of xml.matchAll(/<block\b[^>]*>(.*?)<\/block>/gs)) {
+    block++;
+    for (const [, head, body] of blockXml!.matchAll(/<line ([^>]*)>(.*?)<\/line>/gs)) {
+      const [x0, y0, x1, y1] = (attr(head!, "bbox") ?? "0 0 0 0").split(" ").map(Number) as [number, number, number, number];
+      const spans: Span[] = [];
+      // The line's size is that of most of its characters, so a superscript
+      // or a dingbat bullet in a larger font does not make it a heading.
+      const sizes = new Map<number, number>();
+      let prevRight: number | undefined;
+      for (const [, fontTag, chars] of body!.matchAll(/<font ([^>]*)>(.*?)<\/font>/gs)) {
+        const name = attr(fontTag!, "name") ?? "";
+        const bold = /bold|heavy|black|semibold|demi|extrab/i.test(name);
+        const italic = /italic|oblique/i.test(name);
+        const size = Number(attr(fontTag!, "size") ?? 0);
+        let text = "";
+        for (const [, tag] of chars!.matchAll(/<char ([^>]*)\/>/g)) {
+          // A private-use glyph is a dingbat, a bullet as often as not.
+          const c = unescape(attr(tag!, "c") ?? "").replace(/[\uE000-\uF8FF\uFFFD]/g, "•");
+          sizes.set(size, (sizes.get(size) ?? 0) + 1);
+          const quad = (attr(tag!, "quad") ?? "").split(" ").map(Number);
+          const left = quad[0] ?? 0;
+          const right = quad[2] ?? left;
+          if (prevRight !== undefined && c !== " " && !text.endsWith(" ") && left - prevRight > WORD_GAP * size) text += " ";
+          text += c;
+          prevRight = right;
+        }
+        if (!text) continue;
+        const last = spans.at(-1);
+        if (last && last.font === name) last.text += text;
+        else spans.push({ text, bold, italic, font: name });
       }
-      if (!text) continue;
-      const last = spans.at(-1);
-      if (last && last.font === name) last.text += text;
-      else spans.push({ text, bold, italic, font: name });
+      const size = [...sizes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+      if (spans.some((s) => s.text.trim())) lines.push({ x0, y0, x1, y1, size, spans, block });
     }
-    const size = [...sizes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
-    if (spans.some((s) => s.text.trim())) lines.push({ x0, y0, x1, y1, size, spans });
   }
   return { width, height, lines };
 }
@@ -107,7 +112,43 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     for (const [i, a] of anchors.entries()) if (a <= l.x0 + body * 0.5) best = i;
     return best;
   };
-  const ordered = [...lines].sort((a, b) => column(a) - column(b) || a.y0 - b.y0 || a.x0 - b.x0);
+  // A centred table cell's top says nothing of its row, but mutool keeps a
+  // cell's lines in one block. Blocks of one column whose spans overlap are
+  // one row; a row with two lines side by side, overlapping by more than
+  // tight leading does, is a table row, read block by block left to right,
+  // each block's lines in mutool's order.
+  type Block = { col: number; x0: number; y0: number; y1: number; lines: Line[]; row: number; table: boolean };
+  const blockOf = new Map<Line, Block>();
+  const byKey = new Map<string, Block>();
+  for (const l of lines) {
+    const key = `${l.block} ${column(l)}`;
+    let b = byKey.get(key);
+    if (!b) byKey.set(key, (b = { col: column(l), x0: l.x0, y0: l.y0, y1: l.y1, lines: [], row: 0, table: false }));
+    b.x0 = Math.min(b.x0, l.x0);
+    b.y0 = Math.min(b.y0, l.y0);
+    b.y1 = Math.max(b.y1, l.y1);
+    b.lines.push(l);
+    blockOf.set(l, b);
+  }
+  const rows: Block[][] = [];
+  for (const b of [...byKey.values()].sort((a, b) => a.col - b.col || a.y0 - b.y0)) {
+    const r = rows.at(-1);
+    if (r && r[0]!.col === b.col && b.y0 < Math.max(...r.map((x) => x.y1))) r.push(b);
+    else rows.push([b]);
+  }
+  for (const [i, r] of rows.entries()) {
+    const ls = r.flatMap((b) => b.lines);
+    const beside = (a: Line, b: Line) => Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > Math.min(a.y1 - a.y0, b.y1 - b.y0) / 2;
+    const table = ls.some((a, i) => ls.some((b, j) => j > i && beside(a, b)));
+    for (const b of r) Object.assign(b, { row: i, table });
+  }
+  const index = new Map(lines.map((l, i) => [l, i]));
+  const ordered = [...lines].sort((a, b) => {
+    const [ba, bb] = [blockOf.get(a)!, blockOf.get(b)!];
+    if (ba.row !== bb.row) return ba.row - bb.row;
+    if (!ba.table) return a.y0 - b.y0 || a.x0 - b.x0;
+    return ba === bb ? index.get(a)! - index.get(b)! : ba.x0 - bb.x0;
+  });
 
   const out: Para[] = [];
   let cur: Line[] = [];
@@ -159,7 +200,9 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       const gap = l.y0 - prev.y1 > pitch * 0.6;
       const resize = Math.abs(l.size - prev.size) > 0.5;
       const bullet = /^[•·▪‣□-]/.test(text(l).trim());
-      if (newColumn || gap || resize || bullet) flush();
+      // A table row is one paragraph, whatever its cells' gaps and sizes.
+      const [bp, bl] = [blockOf.get(prev)!, blockOf.get(l)!];
+      if (bp.row !== bl.row ? bp.table || bl.table || newColumn || gap || resize || bullet : !bl.table && (gap || resize || bullet)) flush();
     }
     cur.push(l);
   }

@@ -24,7 +24,7 @@ const page = (lines: string[], width = 612, height = 792) => `<page id="p" width
 describe("parseStext", () => {
   test("reads a line's box, size, text and weight", () => {
     const { lines } = parseStext(page([stextLine(50, 100, 12, "Alegreya-Bold", "COMPEL:")]));
-    expect(lines).toEqual([{ x0: 50, y0: 100, x1: 92, y1: 112, size: 12, spans: [{ text: "COMPEL:", bold: true, italic: false, font: "Alegreya-Bold" }] }]);
+    expect(lines).toEqual([{ x0: 50, y0: 100, x1: 92, y1: 112, size: 12, spans: [{ text: "COMPEL:", bold: true, italic: false, font: "Alegreya-Bold" }], block: 1 }]);
   });
 
   // The bug this guards: mutool glued half of every line on Heart's pages,
@@ -140,6 +140,25 @@ describe("paragraphs", () => {
       "• Think of their four themes.",
       "• Add two more power tags to each theme.",
       "• Write a Quest for each attention.",
+    ]);
+  });
+
+  // Cyberpunk Red's exotic weapons: centred cells whose description sits
+  // higher than its name, and a name wrapped across two blocks of its own.
+  test("a table row is read left to right as one paragraph, whatever its cells' tops", () => {
+    const block = (...lines: string[]) => `<block>${lines.join("")}</block>`;
+    const xml = `<page id="p" width="612" height="792">${[
+      block(body(50, 100, "Prose above the table, long enough to set the column edge.")),
+      block(body(50, 114, "More prose above the table, running the full width.")),
+      block(body(50, 128, "A third prose line so the column has its anchor.")),
+      block(stextLine(112, 160, 10, "Bold", "Air Pistol"), stextLine(248, 158, 9, "Condensed", "Fires paint balls."), stextLine(460, 160, 9, "Condensed", "100eb")),
+      block(stextLine(84, 180, 10, "Bold", "Rhinemetall EMG-86")),
+      block(stextLine(115, 194, 10, "Bold", "Railgun")),
+      block(stextLine(220, 179, 9, "Condensed", "Assault Rifle that ignores"), stextLine(260, 191, 9, "Condensed", "armor lower than SP 11."), stextLine(460, 186, 9, "Condensed", "5,000eb")),
+    ].join("")}</page>`;
+    expect(paragraphs(parseStext(xml)).map((p) => p.text).slice(1)).toEqual([
+      "Air Pistol Fires paint balls. 100eb",
+      "Rhinemetall EMG-86 Railgun Assault Rifle that ignores armor lower than SP 11. 5,000eb",
     ]);
   });
 });
