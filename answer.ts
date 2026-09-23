@@ -82,7 +82,7 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
         `s${i}`,
         noul(
           `\`words[${i}]\` ("${w.word}") is part of the name of the thing \`question\` is about, whose entry, rule or ` +
-            "values are wanted, such as combat rifle, equipment tags or perks. Not the quantity asked for, not a verb, not a joining word.",
+            "values are wanted, such as plasma pistol, armour qualities or feats. Not the quantity asked for, not a verb, not a joining word.",
         ),
       ],
     ]),
@@ -592,10 +592,12 @@ export function bestRuns(ps: number[], bar = PASSAGE_BAR, min = RUN_MIN): { star
 }
 
 /** Between two runs of a passage, what was left out. */
-export const ELLIPSIS: Para = { heading: false, text: "…", style: " ", lines: [] };
+const ELLIPSIS: Para = { heading: false, text: "…", style: " ", lines: [] };
 
+/** A sentence, or a heading whole, with its place in its paragraph's text. */
 type Unit = { para: number; text: string; style: string; start: number; end: number };
 
+/** The page's sentences in order, a heading a unit of its own. */
 export function unitsOf(paras: Para[]): Unit[] {
   const out: Unit[] = [];
   paras.forEach((p, i) => {
@@ -607,7 +609,7 @@ export function unitsOf(paras: Para[]): Unit[] {
     const cut = (end: number) => {
       // "2." cut from "PICK WEAPONS" is a list marker, not a sentence.
       const prev = out.at(-1);
-      if (prev && prev.para === i && /^\d{1,3}[.)]$/.test(prev.text)) {
+      if (prev && prev.para === i && /^\d{1,3}\.$/.test(prev.text)) {
         Object.assign(prev, { text: p.text.slice(prev.start, end), style: p.style.slice(prev.start, end), end });
       } else out.push({ para: i, text: p.text.slice(at, end), style: p.style.slice(at, end), start: at, end });
     };
@@ -620,18 +622,18 @@ export function unitsOf(paras: Para[]): Unit[] {
   return out.filter((u) => u.text.length > 1);
 }
 
+/** Pages a passage may grow onto past the window it was found in. */
+const PASSAGE_REACH = 2;
+
 /**
- * The stretch of a page that answers a passage question: one noul per
- * sentence asks whether it is part of the answer, and the run summing
- * highest above the bar is the passage, as sure as its sentences are on
+ * The stretches of a page that answer a passage question: one noul per
+ * sentence asks whether it is part of the answer, and the runs summing
+ * highest above the bar are the passage, as sure as their sentences are on
  * average. Each sentence rides in its own question with the page in the
  * state: as a numbered list in the state instead, the sentence "RadAway is
  * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
  * and a whole Fallout chems page between 0.4 and 0.7.
  */
-/** Pages a passage may grow onto past the window it was found in. */
-const PASSAGE_REACH = 2;
-
 export async function readPassage(
   client: TypeSafeClient,
   question: string,

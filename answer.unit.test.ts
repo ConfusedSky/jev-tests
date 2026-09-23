@@ -202,6 +202,10 @@ describe("cellsIn", () => {
 describe("unitsOf", () => {
   const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
 
+  test("a list marker is not a sentence of its own", () => {
+    expect(unitsOf([plain("2. PICK WEAPONS. The player declares.")]).map((u) => u.text)).toEqual(["2. PICK WEAPONS.", "The player declares."]);
+  });
+
   test("splits a paragraph at sentence ends and keeps each sentence's weights and place", () => {
     const para = { heading: false, text: "RadAway heals. RadX prevents.", style: "bbbbbbb" + " ".repeat(22), lines: [] };
     expect(unitsOf([para])).toEqual([
@@ -212,13 +216,6 @@ describe("unitsOf", () => {
 
   test("a heading is one unit, and a lowercase continuation after a stop is not a new sentence", () => {
     expect(unitsOf([plain("TAGS", true), plain("Costs D6. e.g. more.")]).map((u) => u.text)).toEqual(["TAGS", "Costs D6. e.g. more."]);
-  });
-});
-
-describe("unitsOf", () => {
-  test("a list marker is not a sentence of its own", () => {
-    const plain = (text: string) => ({ heading: false, text, style: " ".repeat(text.length), lines: [] });
-    expect(unitsOf([plain("2. PICK WEAPONS. The player declares.")]).map((u) => u.text)).toEqual(["2. PICK WEAPONS.", "The player declares."]);
   });
 });
 
@@ -302,7 +299,7 @@ describe("a passage", () => {
 
   // The bug this guards: Necromunda's phases of a round start at the foot of
   // one page and go on at the top of the next, and the passage stopped short.
-  test("a passage reaching the page's end grows onto the next page, and only that page's sentences are asked", async () => {
+  test("a passage grows onto the next page when that page holds a run of its own, and only its sentences are asked", async () => {
     const asked: string[] = [];
     const nouls = { "RadX reduces rads absorbed.": 0.9, "Take one dose per day.": 0.9, "Unrelated.": 0.1 };
     const client = stub(nouls);
