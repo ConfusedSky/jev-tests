@@ -1,6 +1,6 @@
 {
-  "at": "2026-09-23T21:49:50.019Z",
-  "commit": "b3f45c8",
+  "at": "2026-09-23T22:22:08.532Z",
+  "commit": "59be4a3",
   "model": "~typesafe/jev-latest",
   "results": [
     {
@@ -8,10 +8,10 @@
       "question": "How many classes are there in heart?",
       "truth": 9,
       "got": "9",
-      "p": 1,
+      "p": 0.99,
       "page": 31,
       "score": 1,
-      "ms": 539
+      "ms": 636
     },
     {
       "book": "heart",
@@ -21,7 +21,7 @@
       "p": 1,
       "page": 21,
       "score": 1,
-      "ms": 454
+      "ms": 443
     },
     {
       "book": "heart",
@@ -31,7 +31,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 1496
+      "ms": 1753
     },
     {
       "book": "heart",
@@ -41,7 +41,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 1460
+      "ms": 1259
     },
     {
       "book": "heart",
@@ -51,27 +51,27 @@
       "p": 1,
       "page": 31,
       "score": 1,
-      "ms": 246
+      "ms": 265
     },
     {
       "book": "heart",
       "question": "Is knight a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.7,
-      "page": 14,
+      "p": 0.96,
+      "page": 16,
       "score": 1,
-      "ms": 2478
+      "ms": 2699
     },
     {
       "book": "heart",
       "question": "Is witch hunter a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.91,
+      "p": 0.92,
       "page": 16,
       "score": 1,
-      "ms": 2088
+      "ms": 2233
     },
     {
       "book": "heart",
@@ -81,27 +81,27 @@
       "p": 0.82,
       "page": 25,
       "score": 1,
-      "ms": 1264
+      "ms": 1105
     },
     {
       "book": "heart",
       "question": "What are the skills available to a character?",
       "truth": "passage",
       "got": "SKILLS\nCOMPEL: Make people do what you want via threats, lies, flattery or reasoned argument.\nDELVE: Progress into dangerous or unknown territory.\nDISCERN: Understand the world by drawing on accessible information.\nENDURE: Resist the effects of the Heart on your body and mind.\nEVADE: Get away from someone or something that’s trying to track you down.\nHUNT: Track down someone or something that’s trying to get away from you.\nKILL: End the lives of people and things with weapons or your bare hands.\nMEND: Repair something or someone that is broken; build something new.\nSNEAK: Hide yourself or things from the attention of others.",
-      "p": 0.9570000000000001,
+      "p": 0.9569999999999999,
       "page": 12,
       "score": 1,
-      "ms": 1782
+      "ms": 1422
     },
     {
       "book": "heart",
       "question": "what are the equipment tags",
       "truth": "passage",
       "got": "TAGS\nItems may have tags attached to them that mechanically affect how they’re used. Most tags only take effect when a player uses the item, though tags like Piercing can be used by both player- and non-player characters.\nBLOCK: +1 Blood protection.\nBLOODBOUND: Mark D4 stress to Blood to roll with mastery when using this equipment for the rest of the situation.\nBRUTAL: When you roll for stress against an adversary when using this item, roll two dice and pick the highest. Multiple instances of this tag stack: if you managed to get it three times, you’d roll four dice and pick the highest when calculating stress.\nCONDUIT: Mark D4 stress to Mind to roll with mastery when using this equipment for the rest of the situation.\nDANGEROUS: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Blood.\nDEBILITATING: Once per situation, when you inflict stress with this item to one or more targets, the next attack made against them is rolled with mastery.\nDEGENERATING: If you take damage from a weapon with this tag, roll Endure+[Domain] at the end of the situation. On a failure, mark D6 stress; on a partial success, mark D4 stress; on a success, mark none.\nDISTRESSING: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Mind.\nDOUBLE-BARRELED: As Reload, but you can use the\nEXPENSIVE: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Supplies.\nEXTREME RANGE: This item can be used at extreme range.\nLIMITED X: You can use this X times before it gives out.\nLOUD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Fortune.\nOBSCURING: The bearer and any nearby allies reduce the damage of incoming and outgoing ranged weapons by 1 step.\nONE-SHOT: This equipment takes a very long time to prepare, so you can only use it once per situation.\nPIERCING: You cannot reduce stress inflicted by this equipment by using Blood Protection, and adversaries do not benefit from their protection value.\nPOINT-BLANK: As Ranged, but\nat very close range it increases its stress dice by one step. If the shot travels far enough to spread out and dissipate, it lowers its stress dice by one step.\nPOTENT: When you roll for stress removed from yourself or an ally with this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nRANGED: This equipment can be used at range.\nRELOAD: This equipment must\nbe reloaded between giving enemies a chance to close in or flee.\nSMOKE: As Obscuring, but only when the item is used, and only around the area it was used.\nSPREAD: Anyone standing near the target on a successful use must roll Evade+Domain (or another applicable skill) to avoid marking stress as well. On a partial success, downgrade the stress dice by one size. NPCs caught in a blast simply take the stress.\nTIRING: When you fail an\naction using this equipment, the size of its stress dice decreases by 1 for remainder of the situation.\nTRUSTY: When you roll for stress marked against a delve while using this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nUNRELIABLE: When you fail an\naction using this equipment, it cannot be used for remainder of the situation if in a landmark or for the remainder of the journey if on a delve.\nWYRD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Echo.",
-      "p": 0.9025000000000001,
+      "p": 0.9062499999999998,
       "page": 102,
       "score": 1,
-      "ms": 1622
+      "ms": 1620
     },
     {
       "book": "fallout",
@@ -111,7 +111,7 @@
       "p": 0.8,
       "page": 61,
       "score": 1,
-      "ms": 3159
+      "ms": 4149
     },
     {
       "book": "fallout",
@@ -121,7 +121,7 @@
       "p": 1,
       "page": 46,
       "score": 1,
-      "ms": 2842
+      "ms": 2597
     },
     {
       "book": "fallout",
@@ -131,7 +131,7 @@
       "p": 0.97,
       "page": 53,
       "score": 0.8333333333333334,
-      "ms": 879,
+      "ms": 736,
       "known": "the contents list five; Brotherhood Initiate has no bookmark"
     },
     {
@@ -139,50 +139,50 @@
       "question": "Is Gunslinger a perk?",
       "truth": "true",
       "got": "true",
-      "p": 0.88,
-      "page": 426,
+      "p": 0.92,
+      "page": 67,
       "score": 1,
-      "ms": 1793
+      "ms": 1318
     },
     {
       "book": "fallout",
       "question": "Is Lockpick a perk?",
       "truth": "false",
       "got": "false",
-      "p": 0.83,
-      "page": 47,
+      "p": 0.91,
+      "page": 426,
       "score": 1,
-      "ms": 1653
+      "ms": 2761
     },
     {
       "book": "fallout",
       "question": "How is radiation treated?",
       "truth": "passage",
       "got": "RADAWAY\nAn intravenous drug which purges radiation from the user’s body, absorbing radiation as it circulates through the user’s bloodstream. It’s also a potent diuretic, expelling the radiation with the user’s urine, so it’s advisable to drink a lot of (clean) water shortly after taking a dose.\nSometimes encountered in a diluted form, reducing its effectiveness as the user is only taking a partial dose. Diluted RadAway is only about half as effective, but it’s easier to find.\n• Use: RadAway can be used in one of two ways: it can be applied using the Take Chem minor action, healing 4 Radiation damage immediately, or it can be applied as part of a First Aid action, healing 4 Radiation damage in addition to any other healing done (remove Radiation damage before applying other healing effects). Diluted RadAway works in the same way, but only heals 2 Radiation damage.\nFirst Aid\nHealing salves, RadAway, and Stimpaks can all be applied during a First Aid action, boosting the effect of that action in a specific way.",
-      "p": 0.8,
+      "p": 0.8133333333333332,
       "page": 171,
       "score": 1,
-      "ms": 42935
+      "ms": 2332
     },
     {
       "book": "fallout",
       "question": "What is the cost, weight and damage rating of a combat rifle?",
       "truth": "cost 117, weight 11, damage rating 5",
       "got": "cost 117, weight 11, damage rating 5",
-      "p": 1,
+      "p": 0.97,
       "page": 97,
       "score": 1,
-      "ms": 2594
+      "ms": 2368
     },
     {
       "book": "fallout",
       "question": "What is the cost, weight and damage rating of a hunting rifle?",
       "truth": "cost 55, weight 10, damage rating 6",
       "got": "cost 55, weight 10, damage rating 6",
-      "p": 0.99,
+      "p": 0.9500000000000001,
       "page": 97,
       "score": 1,
-      "ms": 2099
+      "ms": 3019
     },
     {
       "book": "litm",
@@ -192,17 +192,17 @@
       "p": 0.85,
       "page": 75,
       "score": 1,
-      "ms": 1707
+      "ms": 1380
     },
     {
       "book": "litm",
       "question": "How many theme kits are there?",
       "truth": 153,
-      "got": "152",
-      "p": 0.726027397260274,
+      "got": "151",
+      "p": 0.7222222222222222,
       "page": 76,
-      "score": 0.9934640522875817,
-      "ms": 1736,
+      "score": 0.9869281045751634,
+      "ms": 1519,
       "known": "the second page sits at the answer floor and is counted one run, refused the next"
     },
     {
@@ -213,7 +213,7 @@
       "p": 1,
       "page": 78,
       "score": 0.33333333333333337,
-      "ms": 468,
+      "ms": 645,
       "known": "the contents list the ten trope groups"
     },
     {
@@ -221,10 +221,10 @@
       "question": "How does hero creation work in Legend in the Mist?",
       "truth": "passage",
       "got": "HERO CREATION\nYou can create any hero you can dream of, by describing them with tags.\nThe Simplest Way: Just Write It Down\n• Think of their four themes and write them as power tags.\n• Add two more power tags and one weakness tag to each theme.\n• Write a Quest for each theme, and choose a theme type.\n• Create one backpack tag.\nThe Quickest Way: Pick A Trope\nA trope is like a recipe for a Hero. The tropes begin on page 78.\n• Pick a trope, and write down its three listed themes.\n• Choose a fourth theme from the list.\n• Each theme points you at a theme kit, a premade list of tags, from which you choose the theme’s additional tags (two power tags and one weakness) and record your Quest.\n• Choose one backpack tag.\nThe Detailed Way: Answer Themebook Questions\nA themebook is a questionnaire that walks you through the creation of a theme, and helps you think of the concept behind each choice. The themebooks begin on page 88.\n• Choose four theme types (you can repeat a type).\n• Answer the questions in each theme’s themebook, to create tags. You must answer the first question (in bold) in each themebook, and then two more of your choice (you can repeat a question), to create power tags. Also answer one weakness tag question of your choice.\n• Use the suggestions in the themebook and on the next page to come up with a Quest.\n• Peruse the General Store (page 128) to pick out one backpack tag.\nYou can also mix and match these methods, such as by choosing a trope but answer themebook questions instead of using theme kits, or creating some themes from themebooks and some from theme kits.\nHow To Choose Themes\nEvery Hero has a past, some have a trade or skill, and most have unique traits and possessions, but not every one of these details should become a theme. Choosing themes is choosing what to highlight about your Hero, what is most important in the beginning of their story. Remember that, later, these themes might change, shifting the story’s focus to new aspects of your Hero.\nHero Creation Checklist\nWhile you’re creating your Hero, remember the following:\n• Your power tags should be useful.\nAsk yourself: “What kind of actions would this tag support?”\n• Your weakness tags should be limiting.\nAsk yourself: “What kind of actions would this tag hinder?” or “How or when would it cause problems for my Hero?”\n• Your tags, especially the title of each theme, should match the Might of their theme.\nGreatness theme tags should be grandiose like queen of the realm or spell of annihilation; Adventure theme tags should describe something above the ordinary, such as remarkable swordfighter or blessing of the gods; while Origin theme tags should be ordinary like humble gravedigger or local gossip.\n• Your Quests should be clear.\nMost Quests fall into one or more of these categories:\n• Your Wish: Something you long for or aspire to\n• Your Truth: A statement you believe in and want to uphold\n• Your Home: Something you endeavor regularly to preserve\n• Your Question: Something you yearn to know above all\nAsk yourself: “What could be a Milestone for this Quest?” and “What kind of actions would be considered Abandoning this Quest?” Further advice appears under Types of Quests (page 184).\n• You and the Narrator must have an understanding about your tags and Quests.\nWhat they represent and when and how they can be used. Agree in advance on what each means. Talk about which tags are directly helpful to an action and which are only relevant in an indirect or roundabout way. This will be important during play.\n• Note which tags are broad and which are specific.\nTags like clever or wizard or rich are broad, meaning they can be used in a wide variety of situations and actions. Because of this, they usually require an extra action to use (see Indirect Tags and Prep Actions, page 149). Specific tags like whirlwind slash or sleeping spell can be used directly, but only in appropriate situations, so they are more focused and reliable. Try to have a balance of broad, specific, and somewhere-in-between tags. The Narrator may limit the number of broad tags you have. They may also deem some tags, such as lucky, as too broad to have in the game, or alternatively as inherently indirect, so that they always require an extra action to use.\nYour Quests Become Your Hero’s Journey During play, the Narrator will both challenge your Quests and present you with opportunities to advance them, pushing your Hero to mark Abandon or Milestone and undergo dramatic transformations.\n…\nThe Classic RPG Build If you’re coming from classic RPGs and would like to start with something familiar, use the following four themes for your character: • People for your ancestry or race (Uncanny Being if your ancestry is considered supernatural) • Trait for your primary or best attribute • Skill or Trade for your class (Prodigious Ability if creating a PC level 5 or higher) • Circumstance for your background",
-      "p": 0.8257894736842106,
+      "p": 0.8235087719298247,
       "page": 73,
       "score": 1,
-      "ms": 1804
+      "ms": 2025
     },
     {
       "book": "cpr",
@@ -234,18 +234,18 @@
       "p": 0.75,
       "page": 132,
       "score": 0.9242424242424242,
-      "ms": 2288,
+      "ms": 2490,
       "known": "counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead"
     },
     {
       "book": "cpr",
       "question": "Show me the exotic weapons table",
       "truth": "passage",
-      "got": "Exotic Weapons\nExotic Weapons are weapons that are overly specialized or too unique to be easily described. They are typically variants of existing weapon types. All Exotic Weapons are Average Weapon Quality and are incompatible with all Weapon Attachments and Non-Basic Ammunition unless otherwise stated.\n…\nWeapon Description and Data Cost\nAir Pistol Very Heavy Pistol that fires paint (and acid!) balls. 100eb (Premium)\nBattleglove Heavy gauntlet. Contains three Cyberarm/Cyberlimb option slots. 1,000eb (V. Expensive)\nConstitution Arms Hurricane Assault Shotgun w/ 2 ROF. Requires BODY 11+ to fire. 5,000eb (Luxury)\nWeapon\nDartgun Very Heavy Pistol that fires Non-Basic Arrows. 100eb (Premium)\nFlamethrower Shotgun that fires incendiary shells. Fired with the Heavy Weapons Skill. 500eb (Expensive)\nKendachi Mono-Three Two-Handed Very Heavy Melee Weapon. Ignores armor lower than SP11 5,000eb (Luxury)\nMalorian Arms 3516 Excellent Quality Very Heavy Pistol famously wielded by Johnny Silverhand. Does 5d6 damage. 10,000eb (Super Luxury)\nMicrowaver Very Heavy Pistol that can shut down cyberware and carried electronics. 500eb (Expensive)\nMilitech \"Cowboy\" U-56 Grenade Launcher Grenade Launcher w/ 2 ROF. Requires BODY 11+ to fire. 5,000eb (Luxury)\nRhinemetall EMG-86 Railgun Assault Rifle that ignore armor lower than SP 11. Fired with the Heavy Weapons Skill. Requires BODY 11+ to fire. 5,000eb (Luxury)\nShrieker Very Heavy Pistol that causes the Damaged Ear Critical Injury. 500eb (Expensive)\nStun Baton A \"less lethal\" Medium Melee Weapon. 100eb (Premium)\nStun Gun A \"less lethal\" Heavy Pistol. 100eb (Premium)\nTsunami Arms Helix Assault Rifle that only fires in Autofire mode (with a higher Autofire multiplier than a standard Assault Rifle). Requires BODY 11+ to fire. 5,000eb (Luxury)",
-      "p": 0.8686046511627907,
+      "got": "FITTED FOR THE FUTURE\nExotic Weapons\nExotic Weapons are weapons that are overly specialized or too unique to be easily described. They are typically variants of existing weapon types. All Exotic Weapons are Average Weapon Quality and are incompatible with all Weapon Attachments and Non-Basic Ammunition unless otherwise stated. The table below offers a brief glimpse of Exotic Weapons.\n…\n{\"Weapon\":\"Air Pistol\",\"Description and Data\":\"Very Heavy Pistol that fires paint (and acid!) balls.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Battleglove\",\"Description and Data\":\"Heavy gauntlet. Contains three Cyberarm/Cyberlimb option slots.\",\"Cost\":\"1,000eb (V. Expensive)\"}\n{\"Weapon\":\"Constitution Arms Hurricane Assault Weapon\",\"Description and Data\":\"Shotgun w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Dartgun\",\"Description and Data\":\"Very Heavy Pistol that fires Non-Basic Arrows.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Flamethrower\",\"Description and Data\":\"Shotgun that fires incendiary shells. Fired with the Heavy Weapons Skill.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Kendachi Mono-Three\",\"Description and Data\":\"Two-Handed Very Heavy Melee Weapon. Ignores armor lower than SP11\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Malorian Arms 3516\",\"Description and Data\":\"Excellent Quality Very Heavy Pistol famously wielded by Johnny Silverhand. Does 5d6 damage.\",\"Cost\":\"10,000eb (Super Luxury)\"}\n{\"Weapon\":\"Microwaver\",\"Description and Data\":\"Very Heavy Pistol that can shut down cyberware and carried electronics.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Militech \\\"Cowboy\\\" U-56 Grenade Launcher\",\"Description and Data\":\"Grenade Launcher w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Rhinemetall EMG-86 Railgun\",\"Description and Data\":\"Assault Rifle that ignore armor lower than SP 11. Fired with the Heavy Weapons Skill. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Shrieker\",\"Description and Data\":\"Very Heavy Pistol that causes the Damaged Ear Critical Injury.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Stun Baton\",\"Description and Data\":\"A \\\"less lethal\\\" Medium Melee Weapon.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Stun Gun\",\"Description and Data\":\"A \\\"less lethal\\\" Heavy Pistol.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Tsunami Arms Helix\",\"Description and Data\":\"Assault Rifle that only fires in Autofire mode (with a higher Autofire multiplier than a standard Assault Rifle). Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}",
+      "p": 0.8839999999999997,
       "page": 96,
       "score": 1,
-      "ms": 2893
+      "ms": 1969
     }
   ]
 }

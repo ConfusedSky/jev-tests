@@ -169,7 +169,16 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
       : kind === "truth"
         ? // The gate asked the statement's three nouls of the page; no second call.
           async (_section, _page, text, _pdf, _end, nouls) => judge(claimVerdict(o.question, text, nouls))
-        : async (section, page, text, pdf, end) => judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
+        : kind === "number"
+          ? // A figure is read off the page as laid out, its tables as records: a
+            // value beside its column head, not a number loose on a line.
+            async (section, page, _text, pdf, end) => {
+              const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
+              const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
+              const text = paras.map((p) => p.text).join("\n");
+              return judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
+            }
+          : async (section, page, text, pdf, end) => judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined

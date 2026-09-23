@@ -613,7 +613,8 @@ type Unit = { para: number; text: string; style: string; start: number; end: num
 export function unitsOf(paras: Para[]): Unit[] {
   const out: Unit[] = [];
   paras.forEach((p, i) => {
-    if (p.heading) {
+    // A heading, or a table's row, is one unit whatever its stops.
+    if (p.heading || p.table) {
       out.push({ para: i, text: p.text, style: p.style, start: 0, end: p.text.length });
       return;
     }
