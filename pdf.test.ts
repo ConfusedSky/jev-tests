@@ -191,17 +191,30 @@ describe("a soft title floor", () => {
     expect(seen).toEqual(["Chapter I: Skills", "Chapter II: Perks", "Chapter III: Radiation"]);
   });
 
-  test("stops at the floor once enough has answered", async () => {
+  // Above the floor -n windows are collected; below it one is enough. The
+  // check has to fire at the loop head, before a below-floor section is read:
+  // with -n 2 and one hit above the floor, Chapter II must not be opened.
+  test("stops at the floor once anything has answered, even short of -n", async () => {
     const seen: string[] = [];
     const verify = async (section: string) => {
       seen.push(section);
       return { text: "1", p: 0.9, verdict: "take" as const };
     };
-    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify }, ui);
+    const { hits } = await searchPdf(stubClient(onlyFirst), manual, { ...base, verify, hits: 2 }, ui);
     expect(seen).toEqual(["Chapter I: Skills"]);
-    seen.length = 0;
-    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify, hits: 2 }, ui);
+    expect(hits).toHaveLength(1);
+  });
+
+  test("collects -n above the floor", async () => {
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      return { text: "1", p: 0.9, verdict: "take" as const };
+    };
+    const firstTwo = (t: string) => (t.startsWith("Chapter III") ? 0 : 3);
+    const { hits } = await searchPdf(stubClient(firstTwo), manual, { ...base, verify, hits: 3 }, ui);
     expect(seen).toEqual(["Chapter I: Skills", "Chapter II: Perks"]);
+    expect(hits).toHaveLength(2);
   });
 
   test("--max still bounds the walk below the floor", async () => {

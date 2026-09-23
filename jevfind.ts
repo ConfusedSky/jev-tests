@@ -13,8 +13,8 @@ function usage(code: number): never {
 Ranks the paths by filename, then walks them best-first: each PDF's outline is
 ranked by section title, and sections are read until one answers the question.
 
-      --file-floor F   open files scoring below F on filename only while fewer than
-                       -n windows have answered, 0-3 (default 1.5)
+      --file-floor F   open files scoring below F on filename only while nothing has
+                       answered, 0-3 (default 1.5)
       --max-files N    open at most N files (default 5)
 ${READ_USAGE}
 
@@ -69,8 +69,9 @@ for (const r of ranked) {
   // The floor is soft: a file that scored under it is opened only while
   // nothing has answered. "Which items cost more than 900 caps" says nothing a
   // filename can match, and the rulebook holding the answer scored 1.48.
+  // Above the floor -n windows are collected; below it one is enough.
   if (r.score < opts.fileFloor) {
-    if (hits.length >= opts.hits) break;
+    if (hits.length > 0) break;
     if (!below) ui.log(`nothing above the file floor answered; opening files below it`);
     below = true;
   }

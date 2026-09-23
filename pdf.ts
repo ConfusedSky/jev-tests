@@ -356,10 +356,12 @@ export async function searchPdf(
   let below = false;
   for (const r of ranked) {
     // The floor is soft: a title that scored under it is read only while
-    // fewer windows than asked for have answered, so a book whose titles say
-    // little still gets searched, bounded by --max rather than by the floor.
+    // nothing has answered, so a book whose titles say little still gets
+    // searched, bounded by --max. Above the floor -n windows are collected;
+    // below it one is enough. With -n 1 the floor only marks the log, since
+    // the walk stops at the first hit anyway.
     if (r.score < floor) {
-      if (hits.length >= wanted) break;
+      if (hits.length > 0) break;
       if (!below) ui.log(`${indent}  nothing above the title floor answered; reading on below it`);
       below = true;
     }
