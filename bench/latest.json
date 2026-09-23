@@ -1,6 +1,6 @@
 {
-  "at": "2026-09-23T17:49:58.888Z",
-  "commit": "9112691",
+  "at": "2026-09-23T18:24:39.662Z",
+  "commit": "2e74457",
   "model": "~typesafe/jev-latest",
   "results": [
     {
@@ -11,7 +11,7 @@
       "p": 0.99,
       "page": 31,
       "score": 1,
-      "ms": 523
+      "ms": 1282
     },
     {
       "book": "heart",
@@ -21,7 +21,7 @@
       "p": 1,
       "page": 21,
       "score": 1,
-      "ms": 508
+      "ms": 2174
     },
     {
       "book": "heart",
@@ -31,7 +31,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 3260
+      "ms": 4005
     },
     {
       "book": "heart",
@@ -41,7 +41,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 2002
+      "ms": 3877
     },
     {
       "book": "heart",
@@ -51,57 +51,57 @@
       "p": 1,
       "page": 31,
       "score": 1,
-      "ms": 355
+      "ms": 1418
     },
     {
       "book": "heart",
       "question": "Is knight a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.76,
+      "p": 0.73,
       "page": 67,
       "score": 1,
-      "ms": 1917
+      "ms": 2830
     },
     {
       "book": "heart",
       "question": "Is witch hunter a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.93,
-      "page": 16,
+      "p": 0.7,
+      "page": 32,
       "score": 1,
-      "ms": 3121
+      "ms": 9976
     },
     {
       "book": "heart",
       "question": "Is heretic a calling in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.8,
+      "p": 0.79,
       "page": 21,
       "score": 1,
-      "ms": 996
+      "ms": 3088
     },
     {
       "book": "heart",
       "question": "What are the skills available to a character?",
       "truth": "passage",
       "got": "SKILLS\nCOMPEL: Make people do what you want via threats, lies, flattery or reasoned argument.\nDELVE: Progress into dangerous or unknown territory.\nDISCERN: Understand the world by drawing on accessible information.\nENDURE: Resist the effects of the Heart on your body and mind.\nEVADE: Get away from someone or something that’s trying to track you down.\nHUNT: Track down someone or something that’s trying to get away from you.\nKILL: End the lives of people and things with weapons or your bare hands.\nMEND: Repair something or someone that is broken; build something new.\nSNEAK: Hide yourself or things from the attention of others.",
-      "p": 0.96,
+      "p": 0.959,
       "page": 12,
       "score": 1,
-      "ms": 1458
+      "ms": 3650
     },
     {
       "book": "heart",
       "question": "what are the equipment tags",
       "truth": "passage",
-      "got": "TAGS\nItems may have tags attached to them that mechanically affect how they’re used. Most tags only take effect when a player uses the item, though tags like Piercing can be used by both player- and non-player characters.\nBLOCK: +1 Blood protection.\nBLOODBOUND: Mark D4 stress to Blood to roll with mastery when using this equipment for the rest of the situation.\nBRUTAL: When you roll for stress against an adversary when using this item, roll two dice and pick the highest. Multiple instances of this tag stack: if you managed to get it three times, you’d roll four dice and pick the highest when calculating stress.\nCONDUIT: Mark D4 stress to Mind to roll with mastery when using this equipment for the rest of the situation.\nDANGEROUS: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Blood.\nDEBILITATING: Once per situation, when you inflict stress with this item to one or more targets, the next attack made against them is rolled with mastery.\nDEGENERATING: If you take damage from a weapon with this tag, roll Endure+[Domain] at the end of the situation. On a failure, mark D6 stress; on a partial success, mark D4 stress; on a success, mark none.\nDISTRESSING: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Mind.\nDOUBLE-BARRELED: As Reload, but you can use the\nEXPENSIVE: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Supplies.\nEXTREME RANGE: This item can be used at extreme range.\nLIMITED X: You can use this X times before it gives out.\nLOUD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Fortune.\nOBSCURING: The bearer and any nearby allies reduce the damage of incoming and outgoing ranged weapons by 1 step.\nONE-SHOT: This equipment takes a very long time to prepare, so you can only use it once per situation.\nPIERCING: You cannot reduce stress inflicted by this equipment by using Blood Protection, and adversaries do not benefit from their protection value.\nPOINT-BLANK: As Ranged, but at very close range it increases its stress dice by one step. If the shot travels far enough to spread out and dissipate, it lowers its stress dice by one step.\nPOTENT: When you roll for stress removed from yourself or an ally with this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nRANGED: This equipment can be used at range.\nRELOAD: This equipment must be reloaded between giving enemies a chance to close in or flee.\nSMOKE: As Obscuring, but only when the item is used, and only around the area it was used.\nSPREAD: Anyone standing near the target on a successful use must roll Evade+Domain (or another applicable skill) to avoid marking stress as well. On a partial success, downgrade the stress dice by one size. NPCs caught in a blast simply take the stress.\nTIRING: When you fail an action using this equipment, the size of its stress dice decreases by for 1 remainder of the situation.\nTRUSTY: When you roll for stress marked against a delve while using this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nUNRELIABLE: When you fail an action using this equipment, it be used for cannot remainder of the situation if in a landmark or for the remainder of the journey if on a delve.\nWYRD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Echo.",
-      "p": 0.9058333333333333,
+      "got": "TAGS\nItems may have tags attached to them that mechanically affect how they’re used. Most tags only take effect when a player uses the item, though tags like Piercing can be used by both player- and non-player characters.\nBLOCK: +1 Blood protection.\nBLOODBOUND: Mark D4 stress to Blood to roll with mastery when using this equipment for the rest of the situation.\nBRUTAL: When you roll for stress against an adversary when using this item, roll two dice and pick the highest. Multiple instances of this tag stack: if you managed to get it three times, you’d roll four dice and pick the highest when calculating stress.\nCONDUIT: Mark D4 stress to Mind to roll with mastery when using this equipment for the rest of the situation.\nDANGEROUS: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Blood.\nDEBILITATING: Once per situation, when you inflict stress with this item to one or more targets, the next attack made against them is rolled with mastery.\nDEGENERATING: If you take damage from a weapon with this tag, roll Endure+[Domain] at the end of the situation. On a failure, mark D6 stress; on a partial success, mark D4 stress; on a success, mark none.\nDISTRESSING: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Mind.\nDOUBLE-BARRELED: As Reload, but you can use the\nEXPENSIVE: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Supplies.\nEXTREME RANGE: This item can be used at extreme range.\nLIMITED X: You can use this X times before it gives out.\nLOUD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Fortune.\nOBSCURING: The bearer and any nearby allies reduce the damage of incoming and outgoing ranged weapons by 1 step.\nONE-SHOT: This equipment takes a very long time to prepare, so you can only use it once per situation.\nPIERCING: You cannot reduce stress inflicted by this equipment by using Blood Protection, and adversaries do not benefit from their protection value.\nPOINT-BLANK: As Ranged, but\nat very close range it increases its stress dice by one step. If the shot travels far enough to spread out and dissipate, it lowers its stress dice by one step.\nPOTENT: When you roll for stress removed from yourself or an ally with this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nRANGED: This equipment can be used at range.\nRELOAD: This equipment must\nbe reloaded between giving enemies a chance to close in or flee.\nSMOKE: As Obscuring, but only when the item is used, and only around the area it was used.\nSPREAD: Anyone standing near the target on a successful use must roll Evade+Domain (or another applicable skill) to avoid marking stress as well. On a partial success, downgrade the stress dice by one size. NPCs caught in a blast simply take the stress.\nTIRING: When you fail an\naction using this equipment, the size of its stress dice decreases by 1 for remainder of the situation.\nTRUSTY: When you roll for stress marked against a delve while using this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nUNRELIABLE: When you fail an\naction using this equipment, it cannot be used for remainder of the situation if in a landmark or for the remainder of the journey if on a delve.\nWYRD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Echo.",
+      "p": 0.9005000000000001,
       "page": 102,
       "score": 1,
-      "ms": 1208
+      "ms": 4601
     },
     {
       "book": "fallout",
@@ -111,27 +111,27 @@
       "p": 0.8,
       "page": 61,
       "score": 1,
-      "ms": 4488
+      "ms": 7453
     },
     {
       "book": "fallout",
       "question": "How many skills are there?",
       "truth": 17,
       "got": "17",
-      "p": 1,
+      "p": 0.8888888888888888,
       "page": 46,
       "score": 1,
-      "ms": 3266
+      "ms": 5325
     },
     {
       "book": "fallout",
       "question": "How many origins are there?",
       "truth": 6,
       "got": "5",
-      "p": 0.96,
+      "p": 0.97,
       "page": 53,
       "score": 0.8333333333333334,
-      "ms": 1360,
+      "ms": 2553,
       "known": "the contents list five; Brotherhood Initiate has no bookmark"
     },
     {
@@ -139,40 +139,40 @@
       "question": "Is Gunslinger a perk?",
       "truth": "true",
       "got": "true",
-      "p": 0.93,
+      "p": 0.91,
       "page": 67,
       "score": 1,
-      "ms": 1414
+      "ms": 2150
     },
     {
       "book": "fallout",
       "question": "Is Lockpick a perk?",
       "truth": "false",
       "got": "false",
-      "p": 0.82,
+      "p": 0.84,
       "page": 47,
       "score": 1,
-      "ms": 2062
+      "ms": 2376
     },
     {
       "book": "fallout",
       "question": "How is radiation treated?",
       "truth": "passage",
       "got": "RADAWAY\nAn intravenous drug which purges radiation from the user’s body, absorbing radiation as it circulates through the user’s bloodstream. It’s also a potent diuretic, expelling the radiation with the user’s urine, so it’s advisable to drink a lot of (clean) water shortly after taking a dose.\nSometimes encountered in a diluted form, reducing its effectiveness as the user is only taking a partial dose. Diluted RadAway is only about half as effective, but it’s easier to find.\n• Use: RadAway can be used in one of two ways: it can be applied using the Take Chem minor action, healing 4 Radiation damage immediately, or it can be applied as part of a First Aid action, healing 4 Radiation damage in addition to any other healing done (remove Radiation damage before applying other healing effects). Diluted RadAway works in the same way, but only heals 2 Radiation damage.\nFirst Aid\nHealing salves, RadAway, and Stimpaks can all be applied during a First Aid action, boosting the effect of that action in a specific way.",
-      "p": 0.8155555555555556,
+      "p": 0.8022222222222222,
       "page": 171,
       "score": 1,
-      "ms": 2914
+      "ms": 3930
     },
     {
       "book": "fallout",
       "question": "What is the cost, weight and damage rating of a combat rifle?",
       "truth": "cost 117, weight 11, damage rating 5",
       "got": "cost 117, weight 11, damage rating 5",
-      "p": 0.99,
+      "p": 1,
       "page": 97,
       "score": 1,
-      "ms": 11977,
+      "ms": 8132,
       "known": "the small guns table ranks 14th by title; --max 20 reaches it"
     },
     {
@@ -180,20 +180,20 @@
       "question": "How many theme types are there?",
       "truth": 20,
       "got": "20",
-      "p": 0.9,
+      "p": 0.85,
       "page": 75,
       "score": 1,
-      "ms": 3110
+      "ms": 1515
     },
     {
       "book": "litm",
       "question": "How many theme kits are there?",
       "truth": 153,
       "got": "90",
-      "p": 0.45918367346938777,
+      "p": 0.45454545454545453,
       "page": 76,
       "score": 0.5882352941176471,
-      "ms": 6118,
+      "ms": 5839,
       "known": "the second page sits at the answer floor and is counted one run, refused the next"
     },
     {
@@ -204,7 +204,7 @@
       "p": 1,
       "page": 78,
       "score": 0.33333333333333337,
-      "ms": 532,
+      "ms": 585,
       "known": "the contents list the ten trope groups"
     },
     {
@@ -215,17 +215,27 @@
       "p": 0.9137037037037039,
       "page": 73,
       "score": 1,
-      "ms": 1120
+      "ms": 1653
     },
     {
       "book": "cpr",
       "question": "How many skills are there in the game?",
       "truth": 66,
-      "got": "57",
-      "p": 0.6875,
+      "got": "61",
+      "p": 0.8333333333333334,
       "page": 132,
-      "score": 0.8636363636363636,
-      "ms": 3276
+      "score": 0.9242424242424242,
+      "ms": 4167
+    },
+    {
+      "book": "cpr",
+      "question": "Show me the exotic weapons table",
+      "truth": "passage",
+      "got": "Weapon Description and Data Cost\nAir Pistol Very Heavy Pistol that fires paint (and acid!) balls. 100eb (Premium)\nBattleglove Heavy gauntlet. Contains three Cyberarm/Cyberlimb option slots. 1,000eb (V. Expensive)\nConstitution Arms Hurricane Assault Shotgun w/ 2 ROF. Requires BODY 11+ to fire. 5,000eb (Luxury)\nWeapon\nDartgun Very Heavy Pistol that fires Non-Basic Arrows. 100eb (Premium)\nFlamethrower Shotgun that fires incendiary shells. Fired with the Heavy Weapons Skill. 500eb (Expensive)\nKendachi Mono-Three Two-Handed Very Heavy Melee Weapon. Ignores armor lower than SP11 5,000eb (Luxury)\nMalorian Arms 3516 Excellent Quality Very Heavy Pistol famously wielded by Johnny Silverhand. Does 5d6 damage. 10,000eb (Super Luxury)\nMicrowaver Very Heavy Pistol that can shut down cyberware and carried electronics. 500eb (Expensive)\nMilitech \"Cowboy\" U-56 Grenade Launcher Grenade Launcher w/ 2 ROF. Requires BODY 11+ to fire. 5,000eb (Luxury)\nRhinemetall EMG-86 Railgun Assault Rifle that ignore armor lower than SP 11. Fired with the Heavy Weapons Skill. Requires BODY 11+ to fire. 5,000eb (Luxury)\nShrieker Very Heavy Pistol that causes the Damaged Ear Critical Injury. 500eb (Expensive)\nStun Baton A \"less lethal\" Medium Melee Weapon. 100eb (Premium)\nStun Gun A \"less lethal\" Heavy Pistol. 100eb (Premium)\nTsunami Arms Helix Assault Rifle that only fires in Autofire mode (with a higher Autofire multiplier than a standard Assault Rifle). Requires BODY 11+ to fire. 5,000eb (Luxury)",
+      "p": 0.881025641025641,
+      "page": 96,
+      "score": 1,
+      "ms": 2146
     }
   ]
 }

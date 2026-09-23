@@ -84,6 +84,15 @@ const CASES: Case[] = [
     contains: ["The Simplest Way", "The Quickest Way", "The Detailed Way"],
   },
   { book: "cpr", question: "How many skills are there in the game?", truth: 66, page: 132 },
+  {
+    book: "cpr",
+    question: "Show me the exotic weapons table",
+    truth: "passage",
+    // The walk takes the price table on p.96 or the one on p.348 run to run;
+    // either way a row reads name before cost, though its centred cells set
+    // its other cells higher than the name.
+    contains: ["Air Pistol", "100eb (Premium)", "Dartgun", "Flamethrower", "Kendachi Mono-Three"],
+  },
 ];
 
 type Result = {
