@@ -51,6 +51,7 @@ export type ReadOpts = SearchOpts & {
   noToc: boolean;
   maxAnswers: number;
   perPage: boolean;
+  hits: number;
   kind?: Kind;
 };
 
@@ -69,10 +70,12 @@ export const readDefaults = (): ReadOpts => ({
   noToc: false,
   maxAnswers: 5,
   perPage: true,
+  hits: 1,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
   "-t|--threshold": num("threshold"),
+  "-n|--hits": num("hits"),
   "--title-floor": num("titleFloor"),
   "--max": num("max"),
   "--chars": num("chars"),
@@ -93,6 +96,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
 });
 
 export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop, 0-1 (default 0.7)
+  -n, --hits N         keep walking until N passages have passed (passage questions only)
       --title-floor F  skip sections scoring below F on title, 0-3 (default 1.0)
       --max N          read at most N sections per file (default 12)
       --chars N        characters of text per call (default 48000)
@@ -114,6 +118,12 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
   const kind = o.kind ?? (await classify(client, o.question));
   ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
+  // A count, number or statement has one answer; only a passage question has
+  // several places worth reading.
+  if (o.hits > 1 && kind !== "passage") {
+    console.error(`--hits ${o.hits} only applies to a passage question; this is a ${kind} question`);
+    process.exit(2);
+  }
   // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
   const wanted = kind === "number" ? await quantitiesOf(client, o.question) : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
@@ -164,8 +174,10 @@ export async function report(
 
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
-    const prefix = r.hit.answer ? `${r.hit.answer.text}  (p=${r.hit.answer.p.toFixed(2)})  ` : "";
-    console.log(`${prefix}${hitLine(r.hit)}`);
+    for (const hit of r.hits) {
+      const prefix = hit.answer ? `${hit.answer.text}  (p=${hit.answer.p.toFixed(2)})  ` : "";
+      console.log(`${prefix}${hitLine(hit)}`);
+    }
     if (o.open) await openAt(pageUrl(r.hit.pdf, r.hit.page));
     process.exit(0);
   }

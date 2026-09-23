@@ -68,6 +68,10 @@ ranked 169 sections in 0.5s, 12 above title floor 1 (157 skipped)
 book.pdf p.73  … > Hero Creation  (found p=0.97)
 ```
 
+`-n, --hits N` keeps walking until N passages have passed the threshold and
+prints them all, best first within a section. Passage questions only: a
+count, number or statement has one answer.
+
 ### jevfind — which page of which PDF answers it?
 
 The whole cascade: rank the paths by name, then rank each file's sections, then

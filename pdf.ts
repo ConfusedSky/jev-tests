@@ -8,7 +8,8 @@ export type Hit = { pdf: string; section: string; page: number; p: number; text:
 export type Candidate = { hit: Hit; answer: Answer };
 export type Tried = { name: string; page: number; p: number };
 /** Windows that held the pages but yielded no answer to fall back on, such as a count "not stated". */
-export type Outcome = { hit?: Hit; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
+/** `hits` holds every window taken, best first; `hit` is the first of them. */
+export type Outcome = { hit?: Hit; hits: Hit[]; tried: Tried[]; rejected: Candidate[]; dropped: Candidate[] };
 
 /** Progress goes to stderr and the hit to stdout, so redirecting one never hides the other. */
 export type Ui = { log: (line: string) => void; trying: (line: string) => void; clear: () => void };
@@ -190,6 +191,8 @@ export type SearchOpts = {
   /** Every page gated on its own, in batches of `chars`, so the hit is the page itself. */
   perPage?: boolean;
   maxAnswers?: number;
+  /** Windows to collect before stopping; the default stops at the first that passes. */
+  hits?: number;
   verify?: Verify;
   /** Tries the table of contents before any page is read; may instead name the section to read. */
   fromOutline?: (sections: Section[]) => Promise<OutlineAnswer | undefined>;
@@ -215,7 +218,11 @@ export async function searchPdf(
   const dropped: Candidate[] = [];
   const maxAnswers = o.maxAnswers ?? 5;
   const chars = o.perPage ? 0 : o.chars;
-  const done = (hit?: Hit): Outcome => ({ hit, tried, rejected, dropped });
+  const hits: Hit[] = [];
+  const wanted = o.hits ?? 1;
+  const done = (): Outcome => ({ hit: hits[0], hits, tried, rejected, dropped });
+  /** Keeps a taken window; true once enough have been taken to stop. */
+  const took = (hit: Hit) => hits.push(hit) >= wanted;
   // Sections a count has read in full: their descendants can only re-count a
   // fragment of the same pages, so they are neither read nor kept as fallbacks.
   const counted: string[] = [];
@@ -306,7 +313,7 @@ export async function searchPdf(
     for await (const c of passed(ws, "", (w, i) => `${nameOf(w, i)} (window ${i + 1}/${ws.length})`)) {
       const out = await settle(c, nameOf(c.w, ws.indexOf(c.w)));
       if (out === "spent") break;
-      if (out) return done(out);
+      if (out && took(out)) return done();
     }
     return done();
   }
@@ -322,7 +329,8 @@ export async function searchPdf(
     if (toc?.answer) {
       const at = sections.find((s) => s.path === toc.parent)!;
       ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
-      return done({ pdf, section: toc.parent, page: at.start, p: toc.answer.p, text: "", answer: toc.answer });
+      took({ pdf, section: toc.parent, page: at.start, p: toc.answer.p, text: "", answer: toc.answer });
+      return done();
     }
     if (toc) {
       pool = sections.filter((s) => s.path === toc.parent || s.path.startsWith(`${toc.parent} > `));
@@ -365,9 +373,9 @@ export async function searchPdf(
     for await (const c of passed(ws, r.name, label)) {
       const out = await settle(c, r.name, ws);
       if (out === "spent") return done();
-      if (out) {
+      if (out && took(out)) {
         ui.log(`${indent}section ${split(sectionSnap)}`);
-        return done(out);
+        return done();
       }
       // A section-wide count already read every window, so the rest are spent.
       if (wholeSection) break;

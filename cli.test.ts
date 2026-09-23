@@ -51,6 +51,13 @@ describe("readFlags", () => {
     expect(o.perPage).toBe(false);
   });
 
+  test("-n and --hits set how many passages to collect", () => {
+    const o = readDefaults();
+    parseFlags(["-n", "3"], o, readFlags(), usage);
+    expect(o.hits).toBe(3);
+    expect(readDefaults().hits).toBe(1);
+  });
+
   test("--kind takes only the three kinds", () => {
     const o = readDefaults();
     parseFlags(["--kind", "count"], o, readFlags(), usage);

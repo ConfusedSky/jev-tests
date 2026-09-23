@@ -176,6 +176,28 @@ describe("searchPdf verification", () => {
   });
 });
 
+describe("several hits", () => {
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+  const base = { question: "q", threshold: 0.7, titleFloor: 0, max: 12, chars: 48000, batch: 40 };
+
+  test("keeps walking until enough windows have passed, then stops", async () => {
+    const { hit, hits, tried } = await searchPdf(stubClient(), manual, { ...base, hits: 2 }, ui);
+    expect(hits.map((h) => h.section)).toEqual(["Chapter I: Skills", "Chapter II: Perks"]);
+    expect(hit?.section).toBe("Chapter I: Skills");
+    expect(tried).toHaveLength(2);
+  });
+
+  test("returns what it found when the book runs out first", async () => {
+    const { hits } = await searchPdf(stubClient(), manual, { ...base, hits: 5 }, ui);
+    expect(hits).toHaveLength(3);
+  });
+
+  test("one hit by default", async () => {
+    const { hits } = await searchPdf(stubClient(), manual, base, ui);
+    expect(hits).toHaveLength(1);
+  });
+});
+
 describe("a section-wide count", () => {
   const base = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 400, batch: 40 };
   const ui = { log: () => {}, trying: () => {}, clear: () => {} };
