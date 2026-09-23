@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, countAcross, readPassage, readQuestion, type Kind } from "./answer";
-import { columns, pageScan, searchPdf } from "./pdf";
+import { pageParagraphs } from "./layout";
+import { pageScan, searchPdf } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
 
 // These spend money and jev is not deterministic, so they only assert the
@@ -77,8 +78,7 @@ describe.if(live)("count", () => {
 
 describe.if(live)("passage", () => {
   test("reads the sentences that answer off the page", async () => {
-    const text = columns(await Bun.$`pdftotext -layout -f 3 -l 3 ${fixture("manual.pdf")} -`.text());
-    const a = await readPassage(client, "How is radiation treated?", "Chapter III: Radiation", text);
+    const a = await readPassage(client, "How is radiation treated?", "Chapter III: Radiation", await pageParagraphs(fixture("manual.pdf"), 3));
     expect(a.text).toContain("RadAway");
     expect(a.text).not.toContain("dosimeter");
     expect(a.p).toBeGreaterThan(0.7);

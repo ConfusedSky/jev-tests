@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, columns, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
+import { batches, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -328,111 +328,6 @@ describe("confine", () => {
 
   test("a top-level section has no chapter above it", () => {
     expect(confine(sections, "Rules")).toEqual([{ path: "Rules", start: 76, end: 90 }]);
-  });
-});
-
-describe("columns", () => {
-  const two = [
-    "                    CHEMS",
-    "",
-    "Psycho Jet is a cocktail of       RadAway purges radiation",
-    "Psycho and Jet, which dulls       from the body. It is also",
-    "pain for a short while.           a potent diuretic.",
-    "                                  Use: apply it as a minor",
-    "  Addiction: a failed roll        action.",
-    "renders you addicted.",
-    "",
-    "42                FALLOUT  The Roleplaying Game",
-  ].join("\n");
-
-  // Read line by line, the two columns of a Fallout page interleave.
-  test("reads the left column down, then the right, around a line that spans both", () => {
-    expect(columns(two).split("\n").filter(Boolean)).toEqual([
-      "CHEMS",
-      "Psycho Jet is a cocktail of",
-      "Psycho and Jet, which dulls",
-      "pain for a short while.",
-      "Addiction: a failed roll",
-      "renders you addicted.",
-      "RadAway purges radiation",
-      "from the body. It is also",
-      "a potent diuretic.",
-      "Use: apply it as a minor",
-      "action.",
-      "42                FALLOUT  The Roleplaying Game",
-    ]);
-  });
-
-  test("reads three columns in turn", () => {
-    const three = [
-      "BLOCK: +1 Blood         EXPENSIVE: When you      RANGED: This item",
-      "protection.            roll the maximum,        can be used at range.",
-      "                       mark D6 stress.",
-      "BRUTAL: Roll two dice  LOUD: Mark D6 stress     RELOAD: Reload it",
-      "and pick the highest.  to Fortune.              between uses.",
-      "CONDUIT: Mark D4       OBSCURING: Reduce the    SMOKE: As Obscuring,",
-      "stress to Mind.        damage by 1 step.        but only when used.",
-    ].join("\n");
-    expect(columns(three).split("\n").filter(Boolean)).toEqual([
-      "BLOCK: +1 Blood",
-      "protection.",
-      "BRUTAL: Roll two dice",
-      "and pick the highest.",
-      "CONDUIT: Mark D4",
-      "stress to Mind.",
-      "EXPENSIVE: When you",
-      "roll the maximum,",
-      "mark D6 stress.",
-      "LOUD: Mark D6 stress",
-      "to Fortune.",
-      "OBSCURING: Reduce the",
-      "damage by 1 step.",
-      "RANGED: This item",
-      "can be used at range.",
-      "RELOAD: Reload it",
-      "between uses.",
-      "SMOKE: As Obscuring,",
-      "but only when used.",
-    ]);
-  });
-
-  // The bug this guards: Heart's skills list was cut after DISCERN, since
-  // "ENDURE: Resist the effects of the Heart on your" ran into the gutter
-  // with no domain beside it and was taken for a heading across both.
-  test("a line that runs into the gutter with nothing beyond it stays in its column", () => {
-    const page = [
-      "COMPEL: Make people do what you                   CURSED: Actively harmful",
-      "  want via threats or lies.                       locations.",
-      "DELVE: Progress into unknown                      DESOLATE: Wastelands and",
-      "  territory.                                      abandoned towns.",
-      "ENDURE: Resist the effects of the Heart on your",
-      "  body and mind.                                  HAVEN: Settlements where",
-      "EVADE: Get away from someone.                     people live.",
-    ].join("\n");
-    expect(columns(page).split("\n").filter(Boolean)).toEqual([
-      "COMPEL: Make people do what you",
-      "want via threats or lies.",
-      "DELVE: Progress into unknown",
-      "territory.",
-      "ENDURE: Resist the effects of the Heart on your",
-      "body and mind.",
-      "EVADE: Get away from someone.",
-      "CURSED: Actively harmful",
-      "locations.",
-      "DESOLATE: Wastelands and",
-      "abandoned towns.",
-      "HAVEN: Settlements where",
-      "people live.",
-    ]);
-  });
-
-  test("leaves a single column alone", () => {
-    const one = "Radiation damage is permanent until treated with RadAway. Exposure above two hundred rads is lethal without\ntreatment, and exposure above fifty rads causes lasting fatigue. A dweller carries a personal dosimeter\nRadAway is stocked in the vault clinic and is dispensed by the doctor on request. RadX taken in advance reduces\nrads absorbed during a trip to the surface, but it does nothing for rads already absorbed.\nmore lines of the same width keep the page a single column of text without any gutter running down it";
-    expect(columns(one)).toBe(one);
-  });
-
-  test("turns a private-use glyph into a bullet", () => {
-    expect(columns("\uF0A7Use: apply it")).toBe("•Use: apply it");
   });
 });
 

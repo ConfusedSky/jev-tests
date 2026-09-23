@@ -1,4 +1,5 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+import type { Para } from "./layout";
 import { timed } from "./shared";
 
 export const KINDS = ["count", "number", "truth", "passage"] as const;
@@ -92,8 +93,12 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
   };
 }
 
-/** `pages` are where the answer was read when that is not the window that passed: the pages a count counted anything on. */
-export type Answer = { text: string; p: number; pages?: number[] };
+/**
+ * `pages` are where the answer was read when that is not the window that
+ * passed: the pages a count counted anything on. `passage` is the answering
+ * stretch of a page with its weights, for printing; `text` holds it plain.
+ */
+export type Answer = { text: string; p: number; pages?: number[]; passage?: Para[] };
 /** A window's count with the names it counted, so a section counts each name once across its windows. */
 type Counted = Answer & { names: string[] };
 
@@ -459,29 +464,6 @@ export function answerFrom(
   return truthFrom(client, question, section, text);
 }
 
-/**
- * The sentences of a page in reading order, each a unit a passage can start
- * or end on. Wrapped lines are joined and a word broken at the margin is
- * mended; a bullet starts a sentence, and a heading rides with the sentence
- * that follows it, so a passage can begin with its title.
- */
-export function sentencesIn(text: string): string[] {
-  // A heading set with a drop shadow comes out of mutool twice in a row.
-  const lines = text.replace(/\f/g, "\n").split("\n").map((l) => l.trimEnd());
-  // A line ending in a colon is a heading or lead-in of its own; a colon
-  // mid-line ("Chapter III: Radiation") is not.
-  const flat = lines
-    .filter((l, i) => i === 0 || l.trim() === "" || l !== lines[i - 1])
-    .join("\n")
-    .replace(/(\w)[‐\u00ad-]\n(\w)/g, "$1$2")
-    .replace(/:\n/g, ":\n\n")
-    .replace(/\n(?=\s*[•□▪‣]\s)/g, "\n\n")
-    .split(/\n\s*\n/)
-    .map((block) => block.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  return flat.flatMap((block) => block.split(/(?<=[.!?])\s+(?=[^a-z])/)).filter((s) => s.length > 1);
-}
-
 // A sentence counts for a passage by how far it sits above this; the run
 // summing highest is the passage. The bar is above even odds because a
 // column's spillover on the Legend in the Mist creation page sat at 0.6 and
@@ -505,6 +487,27 @@ export function bestRun(ps: number[], bar = PASSAGE_BAR): { start: number; end: 
   return best && { start: best.start, end: best.end };
 }
 
+/** A sentence of a paragraph, with its weights, as one unit a passage can start or end on. */
+type Unit = { para: number; text: string; style: string };
+
+/** The sentences of each paragraph; a heading is one sentence. */
+export function unitsOf(paras: Para[]): Unit[] {
+  const out: Unit[] = [];
+  paras.forEach((p, i) => {
+    if (p.heading) {
+      out.push({ para: i, text: p.text, style: p.style });
+      return;
+    }
+    let at = 0;
+    for (const m of p.text.matchAll(/(?<=[.!?])\s+(?=[^a-z])/g)) {
+      out.push({ para: i, text: p.text.slice(at, m.index), style: p.style.slice(at, m.index) });
+      at = m.index! + m[0].length;
+    }
+    out.push({ para: i, text: p.text.slice(at), style: p.style.slice(at) });
+  });
+  return out.filter((u) => u.text.length > 1);
+}
+
 /**
  * The stretch of a page that answers a passage question: one noul per
  * sentence asks whether it is part of the answer, and the run summing
@@ -514,14 +517,15 @@ export function bestRun(ps: number[], bar = PASSAGE_BAR): { start: number; end: 
  * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
  * and a whole Fallout chems page between 0.4 and 0.7.
  */
-async function passageFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
-  const sentences = sentencesIn(text);
-  if (sentences.length === 0) return { text: "not stated", p: 1 };
+async function passageFrom(client: TypeSafeClient, question: string, section: string, paras: Para[]): Promise<Answer> {
+  const units = unitsOf(paras);
+  if (units.length === 0) return { text: "not stated", p: 1 };
+  const text = paras.map((p) => p.text).join("\n\n");
   const questions = Object.fromEntries(
-    sentences.map((s, i) => [
+    units.map((u, i) => [
       `s${i}`,
       noul(
-        { sentence: s, ask: "`sentence` is part of the answer to `question`" },
+        { sentence: u.text, ask: "`sentence` is part of the answer to `question`" },
         {
           true: "It states, explains or lists something `question` asks for, or is the heading or lead-in of the passage that does",
           false: "It is about something else, or merely sits near the answer",
@@ -530,11 +534,24 @@ async function passageFrom(client: TypeSafeClient, question: string, section: st
     ]),
   );
   const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
-  const ps = sentences.map((_, i) => (res.answers[`s${i}`] as { noul: number }).noul);
+  const ps = units.map((_, i) => (res.answers[`s${i}`] as { noul: number }).noul);
   const run = bestRun(ps);
   if (!run) return { text: "not stated", p: 1 };
   const chosen = ps.slice(run.start, run.end);
-  return { text: sentences.slice(run.start, run.end).join("\n"), p: chosen.reduce((a, b) => a + b, 0) / chosen.length };
+  // Sentences of one paragraph go back together; a heading keeps its own line.
+  const passage: (Para & { para: number })[] = [];
+  for (const u of units.slice(run.start, run.end)) {
+    const last = passage.at(-1);
+    if (last && last.para === u.para) {
+      last.text += ` ${u.text}`;
+      last.style += ` ${u.style}`;
+    } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style });
+  }
+  return {
+    text: passage.map((p) => p.text).join("\n"),
+    p: chosen.reduce((a, b) => a + b, 0) / chosen.length,
+    passage: passage.map(({ heading, text, style }) => ({ heading, text, style })),
+  };
 }
 
 /** A passage question reads the answering stretch off the page rather than a value. */

@@ -1,7 +1,8 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
-import { columns, GATE, link, openAt, pageUrl, run, type Outcome, type SearchOpts, type Ui } from "./pdf";
-import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
+import { pageParagraphs, type Para } from "./layout";
+import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
 export type Flags<O> = Record<string, (o: O, next: () => string, fail: (why: string) => never) => void>;
@@ -139,12 +140,12 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     ...a,
     verdict: a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
   });
-  // A passage is read off the page's -layout text with its columns put one
-  // after the other; see columns.
+  // A passage is read off the page as mutool lays it out, columns and
+  // weights and all, not the -layout text the walk gates on; see layout.ts.
   const verify: SearchOpts["verify"] =
     kind === "passage"
       ? async (section, page, _text, pdf) =>
-          judge(await readPassage(client, o.question, section, columns(await run(["pdftotext", "-layout", "-f", String(page), "-l", String(page), pdf, "-"]))))
+          judge(await readPassage(client, o.question, section, await timed("extract", () => pageParagraphs(pdf, page))))
       : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
@@ -172,11 +173,58 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
   `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`;
 
-/** A value goes before the link on its line; a passage goes under it, a sentence a line. */
+/**
+ * A passage for the terminal: headings and bold runs in bold, italics in
+ * italics, paragraphs wrapped to the window and set apart, all indented.
+ * Piped, it is plain text, a paragraph a line, so it stays greppable.
+ */
+export function renderPassage(paras: Para[], width: number | undefined, styled: boolean): string {
+  const indent = "  ";
+  const cols = Math.min(width && width >= 40 ? width : 80, 100) - indent.length;
+  const code = (s: string) => (s === "B" ? "\u001b[1;3m" : s === "b" ? "\u001b[1m" : s === "i" ? "\u001b[3m" : "\u001b[0m");
+  const styleLine = (text: string, style: string) => {
+    if (!styled) return text;
+    let out = "";
+    let cur = " ";
+    for (let i = 0; i < text.length; i++) {
+      const s = style[i] ?? " ";
+      if (s !== cur) {
+        out += code(s);
+        cur = s;
+      }
+      out += text[i];
+    }
+    return cur === " " ? out : `${out}\u001b[0m`;
+  };
+  const blocks = paras.map((p) => {
+    if (p.heading) return indent + (styled ? `\u001b[1m${p.text}\u001b[0m` : p.text);
+    if (!styled) return indent + p.text;
+    // Wrap at spaces, carrying each character's weight along with it.
+    const lines: string[] = [];
+    let at = 0;
+    while (at < p.text.length) {
+      let end = Math.min(p.text.length, at + cols);
+      if (end < p.text.length) {
+        const space = p.text.lastIndexOf(" ", end);
+        if (space > at) end = space;
+      }
+      lines.push(indent + styleLine(p.text.slice(at, end), p.style.slice(at, end)));
+      at = end;
+      while (p.text[at] === " ") at++;
+    }
+    return lines.join("\n");
+  });
+  return blocks.join(styled ? "\n\n" : "\n");
+}
+
+/** A value goes before the link on its line; a passage goes under it. */
 function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; section: string; p: number }, answer: Answer | undefined, note = "") {
   const conf = answer ? `(p=${answer.p.toFixed(2)}${note})` : "";
   if (!answer) console.log(hitLine(hit));
-  else if (kind === "passage") console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
+  else if (kind === "passage" && answer.passage) {
+    const tty = process.stdout.isTTY;
+    console.log(`${conf}  ${hitLine(hit)}${tty ? "\n" : ""}\n${renderPassage(answer.passage, process.stdout.columns, tty)}`);
+  } else if (kind === "passage") console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 

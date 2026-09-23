@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, sentencesIn, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -197,37 +197,19 @@ describe("cellsIn", () => {
   });
 });
 
-describe("sentencesIn", () => {
-  test("joins wrapped lines, mends a word broken at the margin, and splits at sentence ends", () => {
-    expect(sentencesIn("Radiation damage is per-\nmanent until treated. Exposure above two\nhundred rads is lethal.")).toEqual([
-      "Radiation damage is permanent until treated.",
-      "Exposure above two hundred rads is lethal.",
+describe("unitsOf", () => {
+  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length) });
+
+  test("splits a paragraph at sentence ends and keeps each sentence's weights", () => {
+    const para = { heading: false, text: "RadAway heals. RadX prevents.", style: "bbbbbbb" + " ".repeat(22) };
+    expect(unitsOf([para])).toEqual([
+      { para: 0, text: "RadAway heals.", style: "bbbbbbb       " },
+      { para: 0, text: "RadX prevents.", style: " ".repeat(14) },
     ]);
   });
 
-  test("a bullet starts a sentence and a heading rides with the one after it", () => {
-    expect(sentencesIn("HERO CREATION\nYou can create any hero.\n• Think of four themes.\n• Add two tags.")).toEqual([
-      "HERO CREATION You can create any hero.",
-      "• Think of four themes.",
-      "• Add two tags.",
-    ]);
-  });
-
-  // A heading set with a drop shadow comes out of mutool twice in a row.
-  test("drops a line repeated right after itself", () => {
-    expect(sentencesIn("HERO CREATION\nHERO CREATION\nYou can create any hero.")).toEqual(["HERO CREATION You can create any hero."]);
-  });
-
-  test("a blank line ends a sentence even without a full stop", () => {
-    expect(sentencesIn("The Simplest Way:\n\nJust Write It Down\n\nthen more")).toEqual(["The Simplest Way:", "Just Write It Down", "then more"]);
-  });
-
-  test("a colon ends a line's sentence, not a mid-line one", () => {
-    expect(sentencesIn("DELVE:\nProgress into unknown territory.\nChapter III: Radiation\nRadiation damage is permanent.")).toEqual([
-      "DELVE:",
-      "Progress into unknown territory.",
-      "Chapter III: Radiation Radiation damage is permanent.",
-    ]);
+  test("a heading is one unit, and a lowercase continuation after a stop is not a new sentence", () => {
+    expect(unitsOf([plain("TAGS", true), plain("Costs D6. e.g. more.")]).map((u) => u.text)).toEqual(["TAGS", "Costs D6. e.g. more."]);
   });
 });
 
@@ -252,7 +234,12 @@ describe("bestRun", () => {
 });
 
 describe("a passage", () => {
-  const page = "Chapter III: Radiation\nRadiation damage is permanent until treated with RadAway. A dweller carries a dosimeter.\nRadAway is stocked in the clinic. RadX reduces rads absorbed.";
+  const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length) });
+  const page = [
+    plain("Chapter III: Radiation", true),
+    plain("Radiation damage is permanent until treated with RadAway. A dweller carries a dosimeter."),
+    { heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54) },
+  ];
   /** Answers each sentence question by the noul listed for the sentence's text. */
   const stub = (nouls: Record<string, number>) =>
     ({
@@ -261,10 +248,17 @@ describe("a passage", () => {
       }),
     }) as unknown as Parameters<typeof readPassage>[0];
 
-  test("is the sentences that answer, one a line, as sure as they are on average", async () => {
+  test("is the sentences that answer, their paragraph put back together with its weights, as sure as they are on average", async () => {
     const a = await readPassage(stub({ "RadAway is stocked in the clinic.": 0.9, "RadX reduces rads absorbed.": 0.8 }), "q", "s", page);
-    expect(a.text).toBe("RadAway is stocked in the clinic.\nRadX reduces rads absorbed.");
+    expect(a.text).toBe("RadAway is stocked in the clinic. RadX reduces rads absorbed.");
+    expect(a.passage).toEqual([{ heading: false, text: "RadAway is stocked in the clinic. RadX reduces rads absorbed.", style: "bbbbbbb" + " ".repeat(54) }]);
     expect(a.p).toBeCloseTo(0.85);
+  });
+
+  test("a heading is a unit of its own and keeps its line", async () => {
+    const a = await readPassage(stub({ "Chapter III: Radiation": 0.8, "Radiation damage is permanent until treated with RadAway.": 0.9 }), "q", "s", page);
+    expect(a.text).toBe("Chapter III: Radiation\nRadiation damage is permanent until treated with RadAway.");
+    expect(a.passage?.map((p) => p.heading)).toEqual([true, false]);
   });
 
   test("a page with no sentence of the answer is not stated", async () => {

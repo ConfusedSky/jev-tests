@@ -151,13 +151,19 @@ $ bun jevsec.ts manual.pdf "How is radiation treated?"
   RadAway is stocked in the vault clinic and is dispensed by the doctor on request.
 ```
 
-The text a passage is read from is the page's `-layout` text with its columns
-put one after the other, splitting each line at the gutters most lines share,
-two of them on Heart's three-column equipment tags page, and letting a line
-that runs across one, a heading or a table row, end every column. No extractor read these books in order on its own: `pdftotext`
+The text a passage is read from is the page as `mutool` lays it out, in
+`layout.ts`: lines with their positions and fonts, put back into columns by
+the left edges most lines share (three of them on Heart's equipment tags
+page), into paragraphs by the gaps between lines, with running headers and
+page numbers dropped from the margins and the weight of every character
+kept. A heading is a line in display type; a bold entry name stays bold. In
+a terminal the passage prints wrapped to the window with its headings and
+bold runs in bold; piped, it is plain text, a paragraph a line. A space
+mutool drops between two words is put back from the gap in their character
+boxes, which glued half of every line on Heart's pages. No extractor read these books in order on its own: `pdftotext`
 interleaved the Fallout and Heart columns line by line, its `-raw` order
-glued words together on Legend in the Mist, and `mutool` glued words on
-Heart.
+glued words together on Legend in the Mist, and `mutool`'s text glued words
+on Heart; the positions in its `stext` are what the columns are rebuilt from.
 
 Two probabilities print, and they mean different things: the answer's own
 confidence, and `found p=…` for the window that produced it. Finding the right
@@ -445,6 +451,7 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `jevsec.ts` | search one PDF |
 | `jevfind.ts` | rank paths, then search them |
 | `pdf.ts` | outline, page windows, the walk, links |
+| `layout.ts` | a page's lines, columns, paragraphs and weights, for passages |
 | `answer.ts` | classify the question, read counts and true/false |
 | `shared.ts` | client, key, scoring rubric, timing |
 | `format.ts` | column alignment and path elision |
