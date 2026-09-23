@@ -41,7 +41,7 @@ bun install
 echo 'OPENROUTER_API_KEY=sk-or-v1-...' > .env
 ```
 
-Needs `mutool` (mupdf) and `pdftotext` (poppler) on `PATH`. The key is
+Needs `mutool` (mupdf), `pdftotext` (poppler) and `rg` (ripgrep) on `PATH`. The key is
 read from the environment, or from `.env` next to the scripts, so the tools work
 from any directory.
 
@@ -138,16 +138,20 @@ cost 55, weight 10, damage rating 6  (p=0.99)  fallout.pdf p.97  Equipment > Sma
 The subject comes off the question in the same call that reads its kind: a
 noul per word, "is part of the name of the thing the question is about", so
 "hunting rifle" is looked for and "cost", "weight" and "damage rating" only
-count for a little. Each of the book's pages is scored by its best line: the
-subject as a phrase, then its words, then any other content word, each
-weighted by how rare it is across the book, so a line holding "hunting"
-(nine pages) beats one holding "cost" (a few hundred); among pages with the
-same best line, the one naming the subject on more lines ranks first, which
-is what tells a list of skills from a page that mentions one. The twenty best pages
+count for a little. The looking is one `rg` over the cached texts, every
+term a pattern, the whole shelf in one call and a few milliseconds; only
+the lines it returns are scored. Each of the book's pages is scored by its
+best line: the subject as a phrase, then its words, then any other content
+word, each weighted by how rare it is across the book, so a line holding
+"hunting" (nine pages) beats one holding "cost" (a few hundred); among pages
+with the same best line, the one naming the subject on more lines ranks
+first, which is what tells a list of skills from a page that mentions one.
+The twenty best pages
 go into the ranking call as `excerpts`, each as its page number and that line,
 and the model scores them on the rubric the titles get. A page that wins is
 read on its own, named for the section it lies in. A page read once is never
-read again under its section, and the other way round. A count ranks the
+read again under its section, and the other way round (a window of several
+pages under `--whole-windows` is read whole). A count ranks the
 titles alone: a page dense with the subject is as likely a fragment of the
 list as the list itself, and Legend in the Mist's ten theme kits on one page
 counted as ten at p=0.82.
@@ -158,7 +162,10 @@ answered a membership question wrongly before.
 
 `--no-search` ranks the titles alone. In jevfind every readable PDF on stdin
 is searched, three pages each, and a file opens on the better of its name
-and its best page; the log says which (`2.60  starter.pdf  (by p.12)`).
+and its best page; the log says which (`2.60  starter.pdf  (by p.12)`). The
+first run over a shelf extracts every book, four at a time (a few seconds
+each for a 400-page rulebook); after that the search costs nothing you can
+see, and one pdftotext cannot read is logged and skipped.
 
 ## Three kinds of question
 
@@ -439,18 +446,21 @@ out. `plocate` reads an index instead and makes it disappear.
 
 A book's text is extracted once, whole, and kept under `~/.cache/jev` (or
 `$XDG_CACHE_HOME/jev`) keyed by the file's path, size and mtime: the text
-search needs all of it before a section is picked, and a second question to
-the same book should not pay for `pdftotext` again. The first run on a
-400-page rulebook spends two to eight seconds there; after that `read` is
-the cache file.
+search runs `rg` over those files before a section is picked, and a second
+question to the same book should not pay for `pdftotext` again. The first
+run on a 400-page rulebook spends two to eight seconds there; after that
+`read` is `rg` and the cache file of whatever book is opened.
 
 ## PDFs without an outline
 
 There are no titles to rank, so the pages the text search found are ranked
 and read first, and the rest of the document is cut into page windows and
-read in page order. Ranking those windows by their opening text was tried and
-removed: a 300-character snippet put a credits page above the body, and since
-the walk stops at the first yes, order only costs latency.
+read in page order, `--max` of them: a shelf search opened two 400-page
+books on a page each and then read every page of both, seven minutes for
+no answer. Raise `--max` to read a whole book. Ranking those windows by
+their opening text was tried and removed: a 300-character snippet put a
+credits page above the body, and since the walk stops at the first yes,
+order only costs latency.
 
 ## Tables
 

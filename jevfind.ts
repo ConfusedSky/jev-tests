@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { answerLayer, num, parseFlags, READ_USAGE, readDefaults, readFlags, report, type ReadOpts } from "./cli";
-import { bookText, makeUi, searchPdf, type Candidate, type Hit, type Tried } from "./pdf";
-import { excerpts, weighted, type Excerpt } from "./search";
+import { makeUi, searchPdf, textFile, type Candidate, type Hit, type Tried } from "./pdf";
+import { excerpts, type Excerpt } from "./search";
 import { makeClient, rank, snapshot, split, timed } from "./shared";
 
 type Opts = ReadOpts & { fileFloor: number; maxFiles: number };
@@ -55,16 +55,24 @@ const rankSnap = snapshot();
 // readable PDF that mention the subject are ranked beside the names, and a
 // file opens on the better of the two. Each book is extracted once and cached.
 const found: { file: string; excerpt: Excerpt }[] = [];
-if (search.terms) {
+// A count ranks titles alone inside a file, so its files rank by name alone too.
+if (search.terms && !search.countAcross) {
   const pdfs = (await Promise.all(paths.map(async (p) => (p.toLowerCase().endsWith(".pdf") && (await Bun.file(p).exists()) ? p : undefined)))).filter((p) => p !== undefined);
+  // Extracted four at a time; one book pdftotext cannot read is skipped, not fatal.
+  const texts = new Map<string, string>();
   for (let i = 0; i < pdfs.length; i += 4) {
     await Promise.all(
-      pdfs.slice(i, i + 4).map(async (file) => {
-        const pages = await bookText(file);
-        for (const excerpt of excerpts(pages, weighted(search.terms!, pages), { limit: 3 })) found.push({ file, excerpt });
+      pdfs.slice(i, i + 4).map(async (pdf) => {
+        try {
+          texts.set(pdf, await textFile(pdf));
+        } catch (e) {
+          ui.log(`  --  ${pdf}: ${e instanceof Error ? e.message.split("\n")[0] : e}; skipped`);
+        }
       }),
     );
   }
+  const byFile = await excerpts([...texts.values()], search.terms, { limit: 3 });
+  for (const [pdf, file] of texts) for (const excerpt of byFile.get(file) ?? []) found.push({ file: pdf, excerpt });
 }
 const scored = await rank(
   client,

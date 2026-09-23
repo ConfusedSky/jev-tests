@@ -105,7 +105,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
   -n, --hits N         keep walking until N passages have passed (passage questions only)
       --title-floor F  read sections scoring below F on title only while nothing has
                        answered, 0-3 (default 1.0)
-      --max N          read at most N sections per file (default 12)
+      --max N          read at most N sections per file, or N windows of a book with no outline (default 12)
       --chars N        characters of text per call (default 48000)
       --whole-windows  gate a window of text at a time instead of every page
       --batch N        names per ranking call (default 40)
