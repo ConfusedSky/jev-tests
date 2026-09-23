@@ -83,6 +83,53 @@ export async function windows(pdf: string, s: Section, chars: number): Promise<W
   return out.filter((w) => w.text.trim().length > 200);
 }
 
+/**
+ * Two columns of -layout text, read down the left and then down the right.
+ * A gutter is a stretch of spaces that most lines share at the same place;
+ * a line that runs across it, a heading or a table row, ends both columns
+ * and stands on its own. Neither extractor read these books in order on its
+ * own: pdftotext interleaved the Fallout and Heart columns line by line,
+ * its -raw order glued words on Legend in the Mist, and mutool glued words
+ * on Heart. The gutter is found from the two-column layout they all keep.
+ */
+export function columns(text: string): string {
+  const lines = text.split("\n").map((l) => l.replace(/[\uE000-\uF8FF]/g, "•").trimEnd());
+  const width = Math.max(0, ...lines.map((l) => l.length));
+  const wide = lines.filter((l) => l.length > width / 2);
+  if (wide.length < 4) return lines.join("\n");
+  // Count, per position, the wide lines with a run of three spaces there.
+  const band = new Array<number>(width).fill(0);
+  for (const l of wide) for (const m of l.matchAll(/ {3,}/g)) for (let x = m.index!; x < m.index! + m[0].length; x++) band[x]!++;
+  let gutter = -1;
+  for (let x = Math.floor(width * 0.3); x < width * 0.7; x++) if (band[x]! > (band[gutter] ?? 0)) gutter = x;
+  if (gutter < 0 || band[gutter]! < wide.length * 0.6) return lines.join("\n");
+  const out: string[] = [];
+  let left: string[] = [];
+  let right: string[] = [];
+  const flush = () => {
+    out.push(...left, "", ...right, "");
+    left = [];
+    right = [];
+  };
+  for (const l of lines) {
+    if (l.length <= gutter) {
+      left.push(l.trim());
+      continue;
+    }
+    // A line's own gap may sit a little off the gutter when its left half runs long.
+    const gap = [...l.matchAll(/ {3,}/g)].find((m) => m.index! <= gutter + 3 && m.index! + m[0].length >= gutter - 3);
+    if (gap) {
+      left.push(l.slice(0, gap.index).trim());
+      right.push(l.slice(gap.index! + gap[0].length).trim());
+    } else {
+      flush();
+      out.push(l.trim());
+    }
+  }
+  flush();
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
 /** Page count, for turning an outline-less PDF into one synthetic section. */
 export async function pageCount(pdf: string): Promise<number> {
   const out = await run(["pdfinfo", pdf]);
@@ -183,7 +230,7 @@ export function batches(pages: Window[], chars: number): Window[][] {
  * about skills while the count inside it comes back at p=0.32. A "keep"
  * verdict lets the walk go on instead of settling for that.
  */
-export type Verify = (section: string, page: number, text: string) => Promise<Judged>;
+export type Verify = (section: string, page: number, text: string, pdf: string) => Promise<Judged>;
 
 export type SearchOpts = {
   question: string;
@@ -314,14 +361,16 @@ export async function searchPdf(
         ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
       }
       check = o.countAcross(name, all);
-    } else check = o.verify?.(name, w.page, w.text);
+    } else check = o.verify?.(name, w.page, w.text, pdf);
     if (!check) return hit;
     const { verdict, pages, ...answer } = await check;
     if (pages?.length) {
       const gated = new Set(tried.filter((t) => t.name === name && t.p >= 0.5).map((t) => t.page));
       hit = { ...hit, page: pages.find((p) => gated.has(p)) ?? pages[0]! };
     }
-    ui.log(`${indent}  ${verdict}  ${answer.text} (p=${answer.p.toFixed(2)})  ${label}`);
+    // A passage is lines of text; the log gets its first line, cut short.
+    const shown = answer.text.includes("\n") || answer.text.length > 60 ? `${answer.text.split("\n")[0]!.slice(0, 57)}…` : answer.text;
+    ui.log(`${indent}  ${verdict}  ${shown} (p=${answer.p.toFixed(2)})  ${label}`);
     if (verdict === "take") return { ...hit, answer };
     (verdict === "keep" ? rejected : dropped).push({ hit, answer });
     return rejected.length >= maxAnswers ? "spent" : undefined;

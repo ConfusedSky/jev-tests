@@ -459,6 +459,87 @@ export function answerFrom(
   return truthFrom(client, question, section, text);
 }
 
+/**
+ * The sentences of a page in reading order, each a unit a passage can start
+ * or end on. Wrapped lines are joined and a word broken at the margin is
+ * mended; a bullet starts a sentence, and a heading rides with the sentence
+ * that follows it, so a passage can begin with its title.
+ */
+export function sentencesIn(text: string): string[] {
+  // A heading set with a drop shadow comes out of mutool twice in a row.
+  const lines = text.replace(/\f/g, "\n").split("\n").map((l) => l.trimEnd());
+  // A line ending in a colon is a heading or lead-in of its own; a colon
+  // mid-line ("Chapter III: Radiation") is not.
+  const flat = lines
+    .filter((l, i) => i === 0 || l.trim() === "" || l !== lines[i - 1])
+    .join("\n")
+    .replace(/(\w)[‐\u00ad-]\n(\w)/g, "$1$2")
+    .replace(/:\n/g, ":\n\n")
+    .replace(/\n(?=\s*[•□▪‣]\s)/g, "\n\n")
+    .split(/\n\s*\n/)
+    .map((block) => block.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  return flat.flatMap((block) => block.split(/(?<=[.!?])\s+(?=[^a-z])/)).filter((s) => s.length > 1);
+}
+
+// A sentence counts for a passage by how far it sits above this; the run
+// summing highest is the passage. The bar is above even odds because a
+// column's spillover on the Legend in the Mist creation page sat at 0.6 and
+// would have trailed the passage at 0.5, while a heading's 0.43 dip inside
+// the Fallout RadAway entry is outweighed by the sentences around it.
+const PASSAGE_BAR = 0.65;
+
+/** The run of `ps` with the largest total above `bar`, or none when no run rises above it. */
+export function bestRun(ps: number[], bar = PASSAGE_BAR): { start: number; end: number } | undefined {
+  let best: { start: number; end: number; sum: number } | undefined;
+  let start = 0;
+  let sum = 0;
+  ps.forEach((p, i) => {
+    if (sum <= 0) {
+      start = i;
+      sum = 0;
+    }
+    sum += p - bar;
+    if (sum > 0 && (!best || sum > best.sum)) best = { start, end: i + 1, sum };
+  });
+  return best && { start: best.start, end: best.end };
+}
+
+/**
+ * The stretch of a page that answers a passage question: one noul per
+ * sentence asks whether it is part of the answer, and the run summing
+ * highest above the bar is the passage, as sure as its sentences are on
+ * average. Each sentence rides in its own question with the page in the
+ * state: as a numbered list in the state instead, the sentence "RadAway is
+ * stocked in the vault clinic" sat at 0.47 for "How is radiation treated?",
+ * and a whole Fallout chems page between 0.4 and 0.7.
+ */
+async function passageFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+  const sentences = sentencesIn(text);
+  if (sentences.length === 0) return { text: "not stated", p: 1 };
+  const questions = Object.fromEntries(
+    sentences.map((s, i) => [
+      `s${i}`,
+      noul(
+        { sentence: s, ask: "`sentence` is part of the answer to `question`" },
+        {
+          true: "It states, explains or lists something `question` asks for, or is the heading or lead-in of the passage that does",
+          false: "It is about something else, or merely sits near the answer",
+        },
+      ),
+    ]),
+  );
+  const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
+  const ps = sentences.map((_, i) => (res.answers[`s${i}`] as { noul: number }).noul);
+  const run = bestRun(ps);
+  if (!run) return { text: "not stated", p: 1 };
+  const chosen = ps.slice(run.start, run.end);
+  return { text: sentences.slice(run.start, run.end).join("\n"), p: chosen.reduce((a, b) => a + b, 0) / chosen.length };
+}
+
+/** A passage question reads the answering stretch off the page rather than a value. */
+export const readPassage = passageFrom;
+
 const normalize = (s: string) =>
   s
     .toLowerCase()

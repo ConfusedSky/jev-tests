@@ -95,7 +95,7 @@ follows.
 | "How many themes does a hero have?" | count | `4  (p=0.97)` + link |
 | "How much does the Umber cost?" | number | `80  (p=0.99)` + link |
 | "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.99)` + link |
-| "How do I create a hero?" | passage | link only |
+| "How do I create a hero?" | passage | link + the sentences that answer |
 
 Because jev emits no text, every answer is a decision over options code
 prepared, and the arithmetic stays in code. jev does not tally: it recognises
@@ -134,6 +134,30 @@ one. Then one choice per name goes out in one call over the page, and the
 answer reads `cost 410, weight 34, damage rating not stated`, with the
 confidence of its least certain stated part. `not stated` is a refusal, not an
 answer: the window is dropped and the walk goes on.
+
+A passage question reads the answering stretch off the page. The page's text
+is cut into sentences, each sentence is asked in its own `noul` whether it is
+part of the answer, and the run of sentences whose probabilities sum highest
+above 0.65 is the passage, printed under the link a sentence a line, as sure
+as its sentences are on average. The bar sits above even odds because a
+column's spillover on the Legend in the Mist creation page hung at 0.6 and
+would have trailed the passage at 0.5, while a heading's 0.43 dip inside the
+Fallout RadAway entry is outweighed by the sentences around it and kept. A
+page with no sentence of the answer is dropped and the walk goes on.
+
+```console
+$ bun jevsec.ts manual.pdf "How is radiation treated?"
+(p=0.93)  manual.pdf p.3  Chapter III: Radiation  (found p=0.97)
+  RadAway is stocked in the vault clinic and is dispensed by the doctor on request.
+```
+
+The text a passage is read from is the page's `-layout` text with its columns
+put one after the other, splitting each line at the gutter most lines share
+and letting a line that runs across it, a heading or a table row, end both
+columns. No extractor read these books in order on its own: `pdftotext`
+interleaved the Fallout and Heart columns line by line, its `-raw` order
+glued words together on Legend in the Mist, and `mutool` glued words on
+Heart.
 
 Two probabilities print, and they mean different things: the answer's own
 confidence, and `found p=…` for the window that produced it. Finding the right

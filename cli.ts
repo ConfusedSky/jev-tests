@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, countAcross, KINDS, readQuestion, type Answer, type Judged, type Kind } from "./answer";
-import { GATE, link, openAt, pageUrl, type Outcome, type SearchOpts, type Ui } from "./pdf";
+import { answerFrom, answerFromOutline, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
+import { columns, GATE, link, openAt, pageUrl, run, type Outcome, type SearchOpts, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, type Snapshot } from "./shared";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -103,14 +103,15 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
-      --answer-floor P confidence a count or true/false must reach, 0-1 (default 0.7)
+      --answer-floor P confidence an answer read off a page must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
       --kind K         force count, number, truth or passage instead of asking jev`;
 
 /**
- * Wires the answer layer into a search: only count and truth questions have a
- * value to be confident about, so a passage question gets no verifier.
+ * Wires the answer layer into a search: a count, number or statement has a
+ * value to be confident about, and a passage has the stretch of the page
+ * that answers.
  */
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
   // Kind and quantities come off the wording alone, so one call reads both.
@@ -132,16 +133,19 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
         answerFromOutline(client, kind, o.question, sections, o.answerFloor);
   // "not stated" is a refusal, not an answer, so it never settles a walk
-  // however confident the model is that it cannot say.
+  // however confident the model is that it cannot say; for a passage it
+  // means no sentence of the page was part of the answer.
   const judge = (a: Answer): Judged => ({
     ...a,
     verdict: a.text === "not stated" ? "drop" : a.p >= o.answerFloor ? "take" : "keep",
   });
+  // A passage is read off the page's -layout text with its columns put one
+  // after the other; see columns.
   const verify: SearchOpts["verify"] =
     kind === "passage"
-      ? undefined
-      : async (section, _page, text) =>
-          judge(await answerFrom(client, kind, o.question, section, text, read));
+      ? async (section, page, _text, pdf) =>
+          judge(await readPassage(client, o.question, section, columns(await run(["pdftotext", "-layout", "-f", String(page), "-l", String(page), pdf, "-"]))))
+      : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined
@@ -168,6 +172,14 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
   `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`;
 
+/** A value goes before the link on its line; a passage goes under it, a sentence a line. */
+function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; section: string; p: number }, answer: Answer | undefined, note = "") {
+  const conf = answer ? `(p=${answer.p.toFixed(2)}${note})` : "";
+  if (!answer) console.log(hitLine(hit));
+  else if (kind === "passage") console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
+  else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
+}
+
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
 export async function report(
   tool: string,
@@ -182,10 +194,7 @@ export async function report(
 
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
-    for (const hit of r.hits) {
-      const prefix = hit.answer ? `${hit.answer.text}  (p=${hit.answer.p.toFixed(2)})  ` : "";
-      console.log(`${prefix}${hitLine(hit)}`);
-    }
+    for (const hit of r.hits) printHit(o.kind, hit, hit.answer);
     if (o.open) await openAt(pageUrl(r.hit.pdf, r.hit.page));
     process.exit(0);
   }
@@ -195,7 +204,7 @@ export async function report(
     const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
     ui.log(`total ${split(since)}${walked}`);
     console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
-    console.log(`${answer.text}  (p=${answer.p.toFixed(2)}, below ${o.answerFloor})  ${hitLine(hit)}`);
+    printHit(o.kind, hit, answer, `, below ${o.answerFloor}`);
     process.exit(1);
   }
 

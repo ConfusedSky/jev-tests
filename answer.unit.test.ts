@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readQuestion, subjectOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, sentencesIn, subjectOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -194,6 +194,81 @@ describe("cellsIn", () => {
 
   test("drops prose too long to be a name, cells not starting with a capital, and repeats", () => {
     expect(cellsIn("Aegis\n20\naegis\nThe Bulwark fits in any standard pack\n" + "A".repeat(61))).toEqual(["Aegis"]);
+  });
+});
+
+describe("sentencesIn", () => {
+  test("joins wrapped lines, mends a word broken at the margin, and splits at sentence ends", () => {
+    expect(sentencesIn("Radiation damage is per-\nmanent until treated. Exposure above two\nhundred rads is lethal.")).toEqual([
+      "Radiation damage is permanent until treated.",
+      "Exposure above two hundred rads is lethal.",
+    ]);
+  });
+
+  test("a bullet starts a sentence and a heading rides with the one after it", () => {
+    expect(sentencesIn("HERO CREATION\nYou can create any hero.\n• Think of four themes.\n• Add two tags.")).toEqual([
+      "HERO CREATION You can create any hero.",
+      "• Think of four themes.",
+      "• Add two tags.",
+    ]);
+  });
+
+  // A heading set with a drop shadow comes out of mutool twice in a row.
+  test("drops a line repeated right after itself", () => {
+    expect(sentencesIn("HERO CREATION\nHERO CREATION\nYou can create any hero.")).toEqual(["HERO CREATION You can create any hero."]);
+  });
+
+  test("a blank line ends a sentence even without a full stop", () => {
+    expect(sentencesIn("The Simplest Way:\n\nJust Write It Down\n\nthen more")).toEqual(["The Simplest Way:", "Just Write It Down", "then more"]);
+  });
+
+  test("a colon ends a line's sentence, not a mid-line one", () => {
+    expect(sentencesIn("DELVE:\nProgress into unknown territory.\nChapter III: Radiation\nRadiation damage is permanent.")).toEqual([
+      "DELVE:",
+      "Progress into unknown territory.",
+      "Chapter III: Radiation Radiation damage is permanent.",
+    ]);
+  });
+});
+
+describe("bestRun", () => {
+  test("is the run with the largest total above the bar", () => {
+    expect(bestRun([0.1, 0.9, 0.9, 0.2, 0.9], 0.65)).toEqual({ start: 1, end: 3 });
+  });
+
+  // The bug this guards: the longest run of yeses cut the RadAway entry's
+  // heading off from its text over one sentence at 0.43.
+  test("bridges a dip the sentences around it outweigh", () => {
+    expect(bestRun([0.94, 0.9, 0.43, 0.62, 0.79, 0.96, 0.87, 0.81, 0.49], 0.65)).toEqual({ start: 0, end: 8 });
+  });
+
+  test("leaves out a tail that only just clears even odds", () => {
+    expect(bestRun([0.95, 0.95, 0.67, 0.58, 0.62], 0.65)).toEqual({ start: 0, end: 3 });
+  });
+
+  test("is nothing when no sentence rises above the bar", () => {
+    expect(bestRun([0.1, 0.6, 0.3], 0.65)).toBeUndefined();
+  });
+});
+
+describe("a passage", () => {
+  const page = "Chapter III: Radiation\nRadiation damage is permanent until treated with RadAway. A dweller carries a dosimeter.\nRadAway is stocked in the clinic. RadX reduces rads absorbed.";
+  /** Answers each sentence question by the noul listed for the sentence's text. */
+  const stub = (nouls: Record<string, number>) =>
+    ({
+      systemOne: async ({ questions }: { questions: Record<string, { instructions: { sentence: string } }> }) => ({
+        answers: Object.fromEntries(Object.entries(questions).map(([k, q]) => [k, { type: "noul", noul: nouls[q.instructions.sentence] ?? 0.05 }])),
+      }),
+    }) as unknown as Parameters<typeof readPassage>[0];
+
+  test("is the sentences that answer, one a line, as sure as they are on average", async () => {
+    const a = await readPassage(stub({ "RadAway is stocked in the clinic.": 0.9, "RadX reduces rads absorbed.": 0.8 }), "q", "s", page);
+    expect(a.text).toBe("RadAway is stocked in the clinic.\nRadX reduces rads absorbed.");
+    expect(a.p).toBeCloseTo(0.85);
+  });
+
+  test("a page with no sentence of the answer is not stated", async () => {
+    expect(await readPassage(stub({}), "q", "s", page)).toEqual({ text: "not stated", p: 1 });
   });
 });
 

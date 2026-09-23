@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { batches, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
+import { batches, columns, confine, outline, pageCount, pageScan, parseOutline, pageUrl, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -328,6 +328,48 @@ describe("confine", () => {
 
   test("a top-level section has no chapter above it", () => {
     expect(confine(sections, "Rules")).toEqual([{ path: "Rules", start: 76, end: 90 }]);
+  });
+});
+
+describe("columns", () => {
+  const two = [
+    "                    CHEMS",
+    "",
+    "Psycho Jet is a cocktail of       RadAway purges radiation",
+    "Psycho and Jet, which dulls       from the body. It is also",
+    "pain for a short while.           a potent diuretic.",
+    "                                  Use: apply it as a minor",
+    "  Addiction: a failed roll        action.",
+    "renders you addicted.",
+    "",
+    "42                FALLOUT  The Roleplaying Game",
+  ].join("\n");
+
+  // Read line by line, the two columns of a Fallout page interleave.
+  test("reads the left column down, then the right, around a line that spans both", () => {
+    expect(columns(two).split("\n").filter(Boolean)).toEqual([
+      "CHEMS",
+      "Psycho Jet is a cocktail of",
+      "Psycho and Jet, which dulls",
+      "pain for a short while.",
+      "Addiction: a failed roll",
+      "renders you addicted.",
+      "RadAway purges radiation",
+      "from the body. It is also",
+      "a potent diuretic.",
+      "Use: apply it as a minor",
+      "action.",
+      "42                FALLOUT  The Roleplaying Game",
+    ]);
+  });
+
+  test("leaves a single column alone", () => {
+    const one = "Radiation damage is permanent until treated with RadAway. Exposure above two hundred rads is lethal without\ntreatment, and exposure above fifty rads causes lasting fatigue. A dweller carries a personal dosimeter\nRadAway is stocked in the vault clinic and is dispensed by the doctor on request. RadX taken in advance reduces\nrads absorbed during a trip to the surface, but it does nothing for rads already absorbed.\nmore lines of the same width keep the page a single column of text without any gutter running down it";
+    expect(columns(one)).toBe(one);
+  });
+
+  test("turns a private-use glyph into a bullet", () => {
+    expect(columns("\uF0A7Use: apply it")).toBe("•Use: apply it");
   });
 });
 
