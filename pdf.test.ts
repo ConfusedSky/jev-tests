@@ -396,6 +396,36 @@ describe("columns", () => {
     ]);
   });
 
+  // The bug this guards: Heart's skills list was cut after DISCERN, since
+  // "ENDURE: Resist the effects of the Heart on your" ran into the gutter
+  // with no domain beside it and was taken for a heading across both.
+  test("a line that runs into the gutter with nothing beyond it stays in its column", () => {
+    const page = [
+      "COMPEL: Make people do what you                   CURSED: Actively harmful",
+      "  want via threats or lies.                       locations.",
+      "DELVE: Progress into unknown                      DESOLATE: Wastelands and",
+      "  territory.                                      abandoned towns.",
+      "ENDURE: Resist the effects of the Heart on your",
+      "  body and mind.                                  HAVEN: Settlements where",
+      "EVADE: Get away from someone.                     people live.",
+    ].join("\n");
+    expect(columns(page).split("\n").filter(Boolean)).toEqual([
+      "COMPEL: Make people do what you",
+      "want via threats or lies.",
+      "DELVE: Progress into unknown",
+      "territory.",
+      "ENDURE: Resist the effects of the Heart on your",
+      "body and mind.",
+      "EVADE: Get away from someone.",
+      "CURSED: Actively harmful",
+      "locations.",
+      "DESOLATE: Wastelands and",
+      "abandoned towns.",
+      "HAVEN: Settlements where",
+      "people live.",
+    ]);
+  });
+
   test("leaves a single column alone", () => {
     const one = "Radiation damage is permanent until treated with RadAway. Exposure above two hundred rads is lethal without\ntreatment, and exposure above fifty rads causes lasting fatigue. A dweller carries a personal dosimeter\nRadAway is stocked in the vault clinic and is dispensed by the doctor on request. RadX taken in advance reduces\nrads absorbed during a trip to the surface, but it does nothing for rads already absorbed.\nmore lines of the same width keep the page a single column of text without any gutter running down it";
     expect(columns(one)).toBe(one);

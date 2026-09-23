@@ -128,6 +128,10 @@ export function columns(text: string): string {
     let spans = false;
     for (const g of gutters) {
       if (l.length <= g.start) break;
+      // A line with nothing past the gutter ends in this column, however far
+      // into the gutter its text runs: "ENDURE: Resist the effects of the
+      // Heart on your" beside an empty domains column is not a heading.
+      if (l.slice(g.end).trim() === "") break;
       const gap = gaps.find((m) =>
         m.end >= at && (m.slack ? m.start <= g.end + m.slack && m.end >= g.start - m.slack : m.start >= g.start && m.end <= g.end),
       );
