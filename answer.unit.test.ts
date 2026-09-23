@@ -513,12 +513,13 @@ describe("several figures at once", () => {
 });
 
 describe("a count from the contents", () => {
-  /** Picks the group whose description names `word`. */
-  const picker = (word: string) =>
+  /** Picks the group whose description names `word`; calls every group's entries groups of the things when `groups` is set. */
+  const picker = (word: string, groups = false) =>
     ({
       systemOne: async ({ questions }: { questions: { group: { criteria: Record<string, string> } } }) => {
         const choice = Object.entries(questions.group.criteria).find(([, d]) => d.includes(`${word}" lists`))![0];
-        return { answers: { group: { type: "choice", choice, confidence: 0.9, probabilities: { [choice]: 0.9 } } } };
+        const nouls = Object.fromEntries(Object.keys(questions).filter((k) => /^g\d+$/.test(k)).map((k) => [k, { type: "noul", noul: groups ? 0.9 : 0.1 }]));
+        return { answers: { group: { type: "choice", choice, confidence: 0.9, probabilities: { [choice]: 0.9 } }, ...nouls } };
       },
     }) as unknown as TypeSafeClient;
   const at = (paths: string[]) => paths.map((path, i) => ({ path, start: i + 1, end: i + 1 }));
@@ -527,6 +528,14 @@ describe("a count from the contents", () => {
     const paths = ["Callings", ...["Adventure", "Enlightenment", "Forced", "Heartsong", "Penitent"].map((c) => `Callings > ${c}`)];
     const r = await answerFromOutline(picker("Callings"), "count", "How many callings?", at(paths), 0.7);
     expect(r).toEqual({ answer: { text: "5", p: 0.9 }, parent: "Callings" });
+  });
+
+  // The bug this guards: Cyberpunk Red's skill list bookmarks its nine groups
+  // of skills, "Awareness Skills" and so on, and the contents answered nine.
+  test("reads the pages when the entries are groups of the things, not the things", async () => {
+    const paths = ["Skill List", ...["Awareness", "Body", "Control"].map((g) => `Skill List > ${g} Skills`)];
+    const r = await answerFromOutline(picker("Skill List", true), "count", "How many skills?", at(paths), 0.7, "skills");
+    expect(r).toEqual({ parent: "Skill List" });
   });
 
   // The bug this guards: the Fallout rulebook nests 89 of its 94 perks under

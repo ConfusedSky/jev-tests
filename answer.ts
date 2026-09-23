@@ -659,6 +659,7 @@ export async function answerFromOutline(
   question: string,
   sections: { path: string; start: number; end: number }[],
   floor: number,
+  counted = "",
 ): Promise<OutlineAnswer | undefined> {
   const paths = sections.map((s) => s.path);
   // A stated figure is on a page, never in the contents.
@@ -687,11 +688,26 @@ export async function answerFromOutline(
   );
   criteria["none of these"] = "No section's entries are what the question is about";
 
+  // Asked alongside the pick, for whichever section it lands on: the
+  // Cyberpunk Red skill list bookmarks its nine groups of skills, "Awareness
+  // Skills" and so on, and nine was the answer until the entries were
+  // checked for being the things themselves rather than kinds of them.
+  const things = counted || "the things `question` asks how many there are";
+  const grouped = Object.fromEntries(
+    keyed.map((k, i) => [
+      `g${i}`,
+      noul(
+        { entries: k.kids, ask: `\`entries\` are groups, categories or kinds of ${things}, each holding several, rather than ${things} themselves, one each` },
+        { true: "Each entry names a group of them", false: "Each entry is one of them" },
+      ),
+    ]),
+  );
   const picked = await timed("api", () =>
     client.systemOne({
       state: { question, sections: keyed.map((k) => ({ section: k.parent, entries: k.kids })) },
       questions: {
         group: choice("Which of `sections` has as its entries the things `question` asks how many there are?", criteria),
+        ...grouped,
       },
     }),
   );
@@ -701,6 +717,8 @@ export async function answerFromOutline(
 
   const p = g.probabilities[g.choice] ?? g.confidence;
   if (p < floor) return undefined;
+  const groupsOfThem = (picked.answers as unknown as Record<string, { noul: number } | undefined>)[`g${keyed.indexOf(hit)}`]?.noul ?? 0;
+  if (groupsOfThem >= 0.5) return { parent: hit.parent };
 
   // Counting bookmarks only works while they are the list. The Fallout
   // rulebook nests 89 of its 94 perks under the first perk, so the perks

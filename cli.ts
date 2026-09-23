@@ -136,7 +136,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   const fromOutline = o.noToc
     ? undefined
     : (sections: Parameters<NonNullable<SearchOpts["fromOutline"]>>[0]) =>
-        answerFromOutline(client, kind, o.question, sections, o.answerFloor);
+        answerFromOutline(client, kind, o.question, sections, o.answerFloor, read.counted);
   // "not stated" is a refusal, not an answer, so it never settles a walk
   // however confident the model is that it cannot say; for a passage it
   // means no sentence of the page was part of the answer.

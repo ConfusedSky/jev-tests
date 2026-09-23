@@ -187,7 +187,12 @@ A count asks jev which section's entries the question is about, then counts
 them, so the number itself is exact rather than estimated. Below
 `--answer-floor` the pick is discarded and the pages are read instead.
 
-Counting bookmarks only holds while they are the list. The Fallout rulebook
+Counting bookmarks only holds while they are the list. Cyberpunk Red
+bookmarks its skill list as nine groups, "Awareness Skills" and so on, and
+the contents answered nine until, in the same call that picks the section,
+each section's entries were asked whether they are groups of the things
+rather than the things; they were, so the pages are read instead, and count
+65 of the 66 skills at p=0.83. The Fallout rulebook
 nests 89 of its 94 perks under the first perk, so its perks section lists one
 perk and six statistics; an entry with more entries under it than its parent
 has is where the list went, and the contents are abandoned for that section's
@@ -371,7 +376,8 @@ the same calls and is less sharp, so it is only there for comparison.
 - **A count from the contents trusts the contents.** A section listing three of
   its four classes yields three, with no page read to check. Membership has a
   safeguard for this, a negative being confirmed against the pages; a count has
-  none.
+  only the checks for a list that went into one entry and for entries that are
+  groups of the things.
 - **Counting is only as good as the scraps.** A name over four words or 60
   characters, one not starting with a capital, or one split across a line
   break is never offered, so it is never counted. Measured against the
