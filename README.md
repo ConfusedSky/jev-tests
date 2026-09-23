@@ -443,7 +443,16 @@ hundred or more per page, each a pass over the same text.
 ```sh
 bun test            # offline, free
 bun run test:live   # calls jev, spends tokens
+bun run test:books  # the shelf: real rulebooks, named in .env
 ```
+
+`books.test.ts` keeps every case worked through by hand on the real
+rulebooks, Heart, Fallout, Legend in the Mist and Cyberpunk Red, so a change
+to a prompt or the walk cannot quietly undo one: the counts, the membership
+answers, the passages and their column order. The books are not
+redistributable, so each is named by an environment variable
+(`JEV_HEART_PDF`, `JEV_FALLOUT_PDF`, `JEV_LITM_PDF`, `JEV_CPR_PDF`), read
+from `.env`, and its cases skip when it is unset.
 
 The live tests are gated behind `JEV_LIVE=1` and assert only the direction of an
 answer, never an exact probability. Fixtures are generated PDFs with their
