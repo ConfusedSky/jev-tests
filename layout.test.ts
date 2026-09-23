@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageParagraphs, paragraphs, parseStext, styledCandidates } from "./layout";
+import { pageParagraphs, pageTables, paragraphs, parseStext, styledCandidates, type Table } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -212,6 +212,58 @@ describe("paragraphs", () => {
     expect(paragraphs(parseStext(xml)).map((p) => p.text).slice(1)).toEqual([
       "Air Pistol Fires paint balls. 100eb",
       "Rhinemetall EMG-86 Railgun Assault Rifle that ignores armor lower than SP 11. 5,000eb",
+    ]);
+  });
+});
+
+describe("tables", () => {
+  test("pdfplumber reads a ruled table's rows with their boxes", async () => {
+    const [t] = await pageTables(fixture("table.pdf"), [1]);
+    expect(t?.rows.map((r) => r.cells)).toEqual([
+      ["Small Gun", "Damage", "Weight", "Cost"],
+      [".44 Pistol", "6", "4", "99"],
+      ["Combat Rifle", "5", "11", "117"],
+      ["Hunting Rifle", "6", "10", "55"],
+    ]);
+    expect(t?.rows[1]?.bbox[1]).toBeGreaterThan(t!.rows[0]!.bbox[1]);
+  });
+
+  test("a page's paragraphs carry the table as a record a row, in its place, its lines out of the prose", async () => {
+    const paras = await pageParagraphs(fixture("table.pdf"), 1);
+    expect(paras.map((p) => p.text)).toEqual([
+      "Field Catalogue Tables",
+      "Small Guns",
+      "Every small gun below is available to any crew with the caps to spare, listed with its figures.",
+      '{"Small Gun":".44 Pistol","Damage":"6","Weight":"4","Cost":"99"}',
+      '{"Small Gun":"Combat Rifle","Damage":"5","Weight":"11","Cost":"117"}',
+      '{"Small Gun":"Hunting Rifle","Damage":"6","Weight":"10","Cost":"55"}',
+      "The table ends here and the prose goes on for a line or two more.",
+    ]);
+    expect(paras[3]?.table).toBe(true);
+    expect(paras[3]?.lines).toHaveLength(1);
+    expect(paras[3]?.lines[0]?.page).toBe(1);
+  });
+
+  // Cyberpunk Red's ranged weapons: a row of one cell under each weapon, an
+  // empty head, and two lists side by side under the same heads elsewhere.
+  test("a row of one cell is a line of its own; an empty head is numbered, a repeated one too", () => {
+    const table: Table = {
+      page: 1,
+      bbox: [50, 90, 400, 160],
+      rows: [
+        { cells: ["Weapon Type", "", "Cost", "Weapon Type"], bbox: [50, 90, 400, 110] },
+        { cells: ["Medium Pistol", "", "50eb", "Heavy"], bbox: [50, 110, 400, 130] },
+        { cells: ["Alt. Fire Modes: None", "", "", ""], bbox: [50, 130, 400, 145] },
+        { cells: ["", "", "", ""], bbox: [50, 145, 400, 160] },
+      ],
+    };
+    const body = (x: number, y: number, text: string) => stextLine(x, y, 12, "Alegreya-Regular", text);
+    const xml = page([body(50, 60, "Prose above the table."), body(60, 115, "Medium Pistol"), body(50, 200, "Prose below the table.")]);
+    expect(paragraphs(parseStext(xml), 1, [table]).map((p) => p.text)).toEqual([
+      "Prose above the table.",
+      '{"Weapon Type":"Medium Pistol","Cost":"50eb","Weapon Type 2":"Heavy"}',
+      "Alt. Fire Modes: None",
+      "Prose below the table.",
     ]);
   });
 });

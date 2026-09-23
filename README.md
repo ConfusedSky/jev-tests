@@ -41,7 +41,9 @@ bun install
 echo 'OPENROUTER_API_KEY=sk-or-v1-...' > .env
 ```
 
-Needs `mutool` (mupdf), `pdftotext` (poppler) and `rg` (ripgrep) on `PATH`. The key is
+Needs `mutool` (mupdf), `pdftotext` (poppler) and `rg` (ripgrep) on `PATH`.
+Tables are read with pdfplumber: `bun run tables:install` puts it in `.venv`
+with uv; without it, tables are read as text and the log says so once. The key is
 read from the environment, or from `.env` next to the scripts, so the tools work
 from any directory.
 
@@ -484,6 +486,29 @@ head (`v2.5`, `p12`). A figure on several rows is offered once per row, up to
 three, since the `5` in the header and the `5` in the Combat Rifle row are told
 apart only by their rows and jev cannot pick a row it was never shown.
 
+## Tables as records
+
+A table on the page is read into a record a row before the model sees it.
+pdfplumber (`tables.py`) finds a table by its ruling lines and cell shading,
+which is what a rulebook draws one with, and reads a name wrapped over two
+lines as one cell: Cyberpunk Red's ranged weapons, "Grenade" over
+"Launcher" with the stats on the line between, came out of `pdftotext` as
+four lines and out of a layout parser as two rows. A row prints as one line
+of JSON, keys as the book sets them, set where the table stood; a row of one
+cell ("Alt. Fire Modes & Special Features: None" under a weapon) stays a
+line of its own, and a repeated or empty head is numbered:
+
+```
+{"SMALL GUN":"Combat Rifle","WEAPON TYPE":"Small Guns","DAMAGE RATING":"5 CD","DAMAGE EFFECTS":"–","DAMAGE TYPE":"Physical","FIRE RATE":"2","RANGE":"M","QUALITIES":"Two-Handed","WEIGHT":"11","COST":"117","RARITY":"2"}
+```
+
+A number question reads its page this way, so a figure sits beside its
+column head rather than loose on a line; a passage that lands on a table
+prints its rows as records, each row one sentence of the passage. The gate
+still reads the `pdftotext` text. A table drawn without rules or shading is
+not found and reads as text. A letter in a column ("RANGE": "M") is not a
+figure and a number question cannot read it yet.
+
 ## The exact page
 
 Every page of a section is gated on its own, so the hit is the page that
@@ -629,7 +654,8 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `jevfind.ts` | rank paths, then search them |
 | `pdf.ts` | outline, the text cache, page windows, the walk, links |
 | `search.ts` | search terms and the pages that mention them |
-| `layout.ts` | a page's lines, columns, paragraphs and weights, for passages |
+| `layout.ts` | a page's lines, columns, paragraphs, tables and weights, for passages |
+| `tables.py` | pdfplumber script printing a page's tables as JSON |
 | `answer.ts` | classify the question, read counts and true/false |
 | `shared.ts` | client, key, the ranking call, scoring rubric, timing |
 | `format.ts` | column alignment and path elision |
