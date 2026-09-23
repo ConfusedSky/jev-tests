@@ -176,6 +176,45 @@ describe("searchPdf verification", () => {
   });
 });
 
+describe("a soft title floor", () => {
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+  const base = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40 };
+  const onlyFirst = (t: string) => (t === "Chapter I: Skills" ? 3 : 0);
+
+  test("reads below the floor while nothing has answered", async () => {
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      return { text: "0", p: 0.1, verdict: "keep" as const };
+    };
+    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify }, ui);
+    expect(seen).toEqual(["Chapter I: Skills", "Chapter II: Perks", "Chapter III: Radiation"]);
+  });
+
+  test("stops at the floor once enough has answered", async () => {
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      return { text: "1", p: 0.9, verdict: "take" as const };
+    };
+    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify }, ui);
+    expect(seen).toEqual(["Chapter I: Skills"]);
+    seen.length = 0;
+    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify, hits: 2 }, ui);
+    expect(seen).toEqual(["Chapter I: Skills", "Chapter II: Perks"]);
+  });
+
+  test("--max still bounds the walk below the floor", async () => {
+    const seen: string[] = [];
+    const verify = async (section: string) => {
+      seen.push(section);
+      return { text: "0", p: 0.1, verdict: "keep" as const };
+    };
+    await searchPdf(stubClient(onlyFirst), manual, { ...base, verify, max: 2 }, ui);
+    expect(seen).toHaveLength(2);
+  });
+});
+
 describe("several hits", () => {
   const ui = { log: () => {}, trying: () => {}, clear: () => {} };
   const base = { question: "q", threshold: 0.7, titleFloor: 0, max: 12, chars: 48000, batch: 40 };
@@ -277,9 +316,10 @@ describe("per page", () => {
     const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40 };
     const only = (t: string) => (t === "Characters" ? 3 : 0);
     const onPage = async (_s: string, page: number) => ({ text: "x", p: 0.9, verdict: page === 3 ? ("take" as const) : ("keep" as const) });
-    const whole = await searchPdf(stubClient(only), toc, { ...opts, verify: onPage }, ui);
+    // max 1 keeps the soft floor from walking on to the Classes section, which starts on page 3.
+    const whole = await searchPdf(stubClient(only), toc, { ...opts, max: 1, verify: onPage }, ui);
     expect(whole.hit).toBeUndefined();
-    const paged = await searchPdf(stubClient(only), toc, { ...opts, perPage: true, verify: onPage }, ui);
+    const paged = await searchPdf(stubClient(only), toc, { ...opts, max: 1, perPage: true, verify: onPage }, ui);
     expect(paged.hit?.page).toBe(3);
   });
 });

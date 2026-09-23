@@ -13,7 +13,8 @@ function usage(code: number): never {
 Ranks the paths by filename, then walks them best-first: each PDF's outline is
 ranked by section title, and sections are read until one answers the question.
 
-      --file-floor F   skip files scoring below F on filename, 0-3 (default 1.5)
+      --file-floor F   open files scoring below F on filename only while fewer than
+                       -n windows have answered, 0-3 (default 1.5)
       --max-files N    open at most N files (default 5)
 ${READ_USAGE}
 
@@ -49,11 +50,12 @@ const search = await answerLayer(client, opts, ui);
 
 const rankSnap = snapshot();
 const all = await rankTitles(client, opts.question, paths, opts.batch, "file named");
-const ranked = all.filter((r) => r.score >= opts.fileFloor).slice(0, opts.maxFiles);
+const ranked = all.slice(0, opts.maxFiles);
+const above = all.filter((r) => r.score >= opts.fileFloor).length;
 ui.log(
   `ranked ${all.length} paths in ${split(rankSnap)}, ` +
-    `${ranked.length} above file floor ${opts.fileFloor}` +
-    (all.length > ranked.length ? ` (${all.length - ranked.length} skipped)` : ""),
+    `${above} above file floor ${opts.fileFloor}` +
+    (all.length > above ? ` (${all.length - above} below)` : ""),
 );
 
 const hits: Hit[] = [];
@@ -61,8 +63,17 @@ const tried: Tried[] = [];
 const rejected: Candidate[] = [];
 const dropped: Candidate[] = [];
 let opened = 0;
+let below = false;
 
 for (const r of ranked) {
+  // The floor is soft: a file that scored under it is opened only while
+  // nothing has answered. "Which items cost more than 900 caps" says nothing a
+  // filename can match, and the rulebook holding the answer scored 1.48.
+  if (r.score < opts.fileFloor) {
+    if (hits.length >= opts.hits) break;
+    if (!below) ui.log(`nothing above the file floor answered; opening files below it`);
+    below = true;
+  }
   const fileSnap = snapshot();
   ui.log(`${r.score.toFixed(2)}  ${r.name}`);
   if (!r.name.toLowerCase().endsWith(".pdf")) {
@@ -93,6 +104,6 @@ for (const r of ranked) {
 await report("jevfind", { hit: hits[0], hits, tried, rejected, dropped }, search, ui, startSnap, {
   files: opened,
   nothing:
-    `nothing searchable above the floors in ${split(startSnap)}; ` +
-    `${ranked.length} paths passed the filename floor, ${opened} were readable PDFs`,
+    `nothing searchable in ${split(startSnap)}; ` +
+    `${above} paths passed the filename floor, ${opened} of the first ${ranked.length} were readable PDFs`,
 });

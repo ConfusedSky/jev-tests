@@ -11,7 +11,7 @@ number, a true/false, or a page to go read.
 $ ls *.pdf | bun jevfind.ts "How does hero creation work in Legend in the Mist?"
 ranked 52 paths in 0.4s (jev 0.4s, read 0.0s, other 0.0s), 1 above file floor 1.5 (51 skipped)
 2.91  Legend-in-the-Mist-Core-Book.pdf
-  ranked 169 sections in 0.5s (jev 0.5s, read 0.0s, other 0.0s), 12 above title floor 1
+  ranked 169 sections in 0.5s (jev 0.5s, read 0.0s, other 0.0s), 12 above title floor 1 (157 below)
     yes  0.96   0.3s jev  Core Book Vol. I > Hero & Fellowship Creation > Hero Creation p.73
   file 0.8s (jev 0.7s, read 0.1s, other 0.0s)  1 windows read
 total 1.2s (jev 1.1s, read 0.1s, other 0.0s), 1 files opened, 1 windows read
@@ -312,8 +312,11 @@ the same calls and is less sharp, so it is only there for comparison.
   named `Brotherhood`. A wrong match now costs a page read rather than a wrong
   answer, but it still costs one.
 - **Filenames carry no signal sometimes.** `RTG-CPRed-SingleShotPackv1.1.pdf` is
-  the Cyberpunk Red starter set; no question about netrunning will rank it.
-  Lower `--file-floor`, or search it directly with jevsec.
+  the Cyberpunk Red starter set; no question about netrunning will rank it
+  above the file floor. The floors are soft: files and sections under them are
+  read, in rank order, only while fewer than `-n` windows have answered, so such
+  a book is still reached within `--max-files` and `--max`. It just costs the reads above it
+  first.
 - **Scanned PDFs are invisible.** Extraction is text-only; no OCR.
 - **`--count-max` above 252 is clamped**, because a `choice` takes at most 255
   options and two are spent on `over N` and `not stated`.

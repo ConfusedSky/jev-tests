@@ -97,7 +97,8 @@ export const readFlags = (): Flags<ReadOpts> => ({
 
 export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop, 0-1 (default 0.7)
   -n, --hits N         keep walking until N passages have passed (passage questions only)
-      --title-floor F  skip sections scoring below F on title, 0-3 (default 1.0)
+      --title-floor F  read sections scoring below F on title only while fewer than
+                       -n windows have answered, 0-3 (default 1.0)
       --max N          read at most N sections per file (default 12)
       --chars N        characters of text per call (default 48000)
       --whole-windows  gate a window of text at a time instead of every page

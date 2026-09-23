@@ -341,18 +341,28 @@ export async function searchPdf(
 
   const rankSnap = snapshot();
   const all = await rankTitles(client, o.question, pool.map((s) => s.path), o.batch, "section");
-  const ranked = all.filter((r) => r.score >= floor).slice(0, o.max);
+  const ranked = all.slice(0, o.max);
+  const above = all.filter((r) => r.score >= floor).length;
   ui.log(
     `${indent}ranked ${all.length} sections in ${split(rankSnap)}, ` +
-      `${ranked.length} above title floor ${floor}` +
-      (all.length > ranked.length ? ` (${all.length - ranked.length} skipped)` : ""),
+      `${above} above title floor ${floor}` +
+      (all.length > above ? ` (${all.length - above} below)` : ""),
   );
 
   const byPath = new Map(sections.map((s) => [s.path, s]));
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
+  let below = false;
   for (const r of ranked) {
+    // The floor is soft: a title that scored under it is read only while
+    // fewer windows than asked for have answered, so a book whose titles say
+    // little still gets searched, bounded by --max rather than by the floor.
+    if (r.score < floor) {
+      if (hits.length >= wanted) break;
+      if (!below) ui.log(`${indent}  nothing above the title floor answered; reading on below it`);
+      below = true;
+    }
     const s = byPath.get(r.name)!;
     const under = counted.find((c) => r.name.startsWith(`${c} > `));
     if (under) {
