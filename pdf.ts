@@ -1,6 +1,6 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rankTitles, secs, snapshot, split, timed } from "./shared";
-import type { Answer, Judged, OutlineAnswer } from "./answer";
+import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
 
 export type Section = { path: string; start: number; end: number };
@@ -159,22 +159,20 @@ export const GATE = {
   list: (of) => [noul(`${of} lists entries of the kind \`question\` asks how many there are`)],
   // A negative has no answer on the page to contain: Heart's class list
   // gated at 0.32 for "Is knight a class?" asked that way. Three nouls, one
-  // judgment each, the same three the answer is read with.
-  claim: (of) => [
-    noul(`${of} states the claim made in \`question\`, naming the exact, whole name the claim gives as one of the kind-word the claim uses`),
-    noul(`${of} contradicts the claim made in \`question\``),
-    noul(`${of} lists or headlines things called by the same kind-word \`question\` uses (a class, a perk, a calling)`),
-  ],
+  // judgment each, the same three the answer is read with, so a page that
+  // passes is answered without another call.
+  claim: claimNouls,
 } satisfies Record<string, Gate>;
 
 const keyed = (key: string, gate: Gate, of: string) => gate(of).map((q, j) => [`${key}:${j}`, q] as const);
-const highest = (answers: Record<string, { noul: number }>, key: string, n: number) =>
-  Math.max(...Array.from({ length: n }, (_, j) => answers[`${key}:${j}`]!.noul));
+/** A window's gate nouls in order; its value is the highest. */
+const gated = (answers: Record<string, { noul: number }>, key: string, n: number) =>
+  Array.from({ length: n }, (_, j) => answers[`${key}:${j}`]!.noul);
 
 async function askWindow(client: TypeSafeClient, question: string, section: string, text: string, gate: Gate) {
   const questions = Object.fromEntries(keyed("w", gate, "`text`"));
   const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
-  return highest(res.answers as Record<string, { noul: number }>, "w", gate("").length);
+  return gated(res.answers as Record<string, { noul: number }>, "w", gate("").length);
 }
 
 /**
@@ -188,7 +186,7 @@ async function askPages(client: TypeSafeClient, question: string, section: strin
     state: { question, section, pages: Object.fromEntries(pages.map((w) => [key(w), w.text])) },
     questions: Object.fromEntries(pages.flatMap((w) => keyed(key(w), gate, `\`pages.${key(w)}\``))),
   });
-  return pages.map((w) => highest(res.answers as Record<string, { noul: number }>, key(w), gate("").length));
+  return pages.map((w) => gated(res.answers as Record<string, { noul: number }>, key(w), gate("").length));
 }
 
 /** Pages packed into batches of at most `chars`; a page over the limit travels alone. */
@@ -212,7 +210,8 @@ export function batches(pages: Window[], chars: number): Window[][] {
  * about skills while the count inside it comes back at p=0.32. A "keep"
  * verdict lets the walk go on instead of settling for that.
  */
-export type Verify = (section: string, page: number, text: string, pdf: string, end: number) => Promise<Judged>;
+/** `nouls` are the window's gate nouls, in the gate's order, for a verifier that can read its answer off them. */
+export type Verify = (section: string, page: number, text: string, pdf: string, end: number, nouls: number[]) => Promise<Judged>;
 
 export type SearchOpts = {
   question: string;
@@ -280,7 +279,7 @@ export async function searchPdf(
   const counted: string[] = [];
 
   const gate = o.gate ?? GATE.answer;
-  type Passed = { w: Window; p: number; label: string };
+  type Passed = { w: Window; p: number; nouls: number[]; label: string };
 
   /**
    * The windows worth reading out, best first. Whole windows are gated one at
@@ -293,12 +292,13 @@ export async function searchPdf(
       for (const [i, w] of ws.entries()) {
         ui.trying(label(w, i));
         const t = Date.now();
-        const p = await askWindow(client, o.question, name, w.text, gate);
+        const nouls = await askWindow(client, o.question, name, w.text, gate);
+        const p = Math.max(...nouls);
         tried.push({ name, page: w.page, p });
         ui.clear();
         const yes = p >= o.threshold;
         ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label(w, i)}`);
-        if (yes) yield { w, p, label: label(w, i) };
+        if (yes) yield { w, p, nouls, label: label(w, i) };
       }
       return;
     }
@@ -310,7 +310,7 @@ export async function searchPdf(
       const t = Date.now();
       const ps = await timed("api", () => askPages(client, o.question, name, group, gate));
       ui.clear();
-      const scored = group.map((w, j) => ({ w, p: ps[j]!, label: label(w, i + j) }));
+      const scored = group.map((w, j) => ({ w, p: Math.max(...ps[j]!), nouls: ps[j]!, label: label(w, i + j) }));
       i += group.length;
       for (const { w, p } of scored) tried.push({ name, page: w.page, p });
       const yes = scored.filter((s) => s.p >= o.threshold).sort((a, b) => b.p - a.p);
@@ -325,7 +325,7 @@ export async function searchPdf(
    * "spent" once maxAnswers windows have answered below the floor, or
    * undefined to keep walking.
    */
-  const settle = async ({ w, p, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
+  const settle = async ({ w, p, nouls, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
     let hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
     // than the window that happened to answer. It links to the first page
@@ -343,7 +343,7 @@ export async function searchPdf(
         ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
       }
       check = o.countAcross(name, all);
-    } else check = o.verify?.(name, w.page, w.text, pdf, w.end);
+    } else check = o.verify?.(name, w.page, w.text, pdf, w.end, nouls);
     if (!check) return hit;
     const { verdict, pages, ...answer } = await check;
     if (pages?.length) {

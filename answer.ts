@@ -414,52 +414,55 @@ function named(text: string, question: string): boolean {
  * "Is heretic a calling?" at 0.5 stated until the question said a calling is
  * not a class.
  */
-async function truthFrom(
-  client: TypeSafeClient,
-  question: string,
-  section: string,
-  text: string,
-): Promise<Answer> {
-  const res = await timed("api", () =>
-    client.systemOne({
-      state: { question, section, text },
-      questions: {
-        // The whole-name clause sits in the instruction, not only the false
-        // criterion: with it there alone, "Is knight a class?" was stated at
-        // 0.40 beside "Vermissian Knight"; with it here, 0.09.
-        stated: noul(
-          "`text` states the claim made in `question`: the exact, whole name the claim gives, no longer and no shorter, " +
-            "is named there as one of the kind-word (class, perk, calling, spell) the claim uses",
-          {
-            true: "That exact whole name is there, as that kind",
-            false:
-              "`text` does not say this, says it of another kind, or only has a longer name that contains the claim's name as a part: " +
-              "'Vermissian Knight' is not 'knight', 'fire bolt' is not 'bolt'.",
-          },
-        ),
-        contradicted: noul("`text` contradicts the claim made in `question`", {
-          true: "`text` says otherwise",
-          false: "`text` agrees with the claim, or does not speak to it at all",
-        }),
-        // Whether the page lists things of that kind is the model's; whether
-        // the exact name is among them is a string comparison, code's.
-        kind: noul("`text` lists or headlines things called by the same kind-word `question` uses (a class, a perk, a calling)", {
-          true: "Things of exactly that kind are listed or headlined there",
-          false: "No list of things of that kind, whatever other kinds `text` lists",
-        }),
+/**
+ * The three nouls a statement is judged by, over `of` (a state path such as
+ * `text` or `pages.p12`): stated, contradicted, and lists the kind. The walk
+ * gates a page on the same three, so a page that passes has its answer.
+ */
+export function claimNouls(of: string): ReturnType<typeof noul>[] {
+  return [
+    // The whole-name clause sits in the instruction, not only the false
+    // criterion: with it there alone, "Is knight a class?" was stated at
+    // 0.40 beside "Vermissian Knight"; with it here, 0.09.
+    noul(
+      `${of} states the claim made in \`question\`: the exact, whole name the claim gives, no longer and no shorter, ` +
+        "is named there as one of the kind-word (class, perk, calling, spell) the claim uses",
+      {
+        true: "That exact whole name is there, as that kind",
+        false:
+          `${of} does not say this, says it of another kind, or only has a longer name that contains the claim's name as a part: ` +
+          "'Vermissian Knight' is not 'knight', 'fire bolt' is not 'bolt'.",
       },
+    ),
+    noul(`${of} contradicts the claim made in \`question\``, {
+      true: `${of} says otherwise`,
+      false: `${of} agrees with the claim, or does not speak to it at all`,
     }),
-  );
-  const s = res.answers.stated.noul;
-  const c = res.answers.contradicted.noul;
-  const a = named(text, question) ? 0 : res.answers.kind.noul;
-  if (s >= 0.5 && s >= c) return { text: "true", p: s };
+    // Whether the page lists things of that kind is the model's; whether
+    // the exact name is among them is a string comparison, code's.
+    noul(`${of} lists or headlines things called by the same kind-word \`question\` uses (a class, a perk, a calling)`, {
+      true: "Things of exactly that kind are listed or headlined there",
+      false: `No list of things of that kind, whatever other kinds ${of} lists`,
+    }),
+  ];
+}
+
+/** The verdict on a statement from its three nouls over `text`, in the order claimNouls gives them. */
+export function claimVerdict(question: string, text: string, [s, c, kind]: number[]): Answer {
+  const a = named(text, question) ? 0 : kind!;
+  if (s! >= 0.5 && s! >= c!) return { text: "true", p: s! };
   // A false is as sure as the contradiction or the list without the name.
   // Folding in 1 - stated read 0.96 off a page that never mentioned the
   // claim once its list noul crossed 0.5, and one noul's complement is not
   // another noul's probability.
-  if (c >= 0.5 || a >= 0.5) return { text: "false", p: Math.max(c, a) };
-  return { text: "not stated", p: 1 - Math.max(s, c, a) };
+  if (c! >= 0.5 || a >= 0.5) return { text: "false", p: Math.max(c!, a) };
+  return { text: "not stated", p: 1 - Math.max(s!, c!, a) };
+}
+
+async function truthFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+  const questions = Object.fromEntries(claimNouls("`text`").map((q, i) => [`c${i}`, q]));
+  const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
+  return claimVerdict(question, text, [0, 1, 2].map((i) => (res.answers[`c${i}`] as { noul: number }).noul));
 }
 
 /** `read` supplies what the question named: the quantities a number wants, the kind a count counts. */

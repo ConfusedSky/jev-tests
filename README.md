@@ -305,7 +305,8 @@ statement's gate is three `noul`s per page in the same call, the same three
 the answer is read with, does the page state the claim, contradict it, or
 list things of its kind, and the page passes on the highest; the class list
 then gates at 0.94 and answers knight false from there rather than from the
-Vermissian Knight's own page.
+Vermissian Knight's own page. Since those are the three the answer is read
+with, a page that passes is answered off its gate nouls, with no second call.
 
 A count also changes what a window has to satisfy to be worth reading. No page
 says "there are 94 perks", so asking whether a window "contains the answer"

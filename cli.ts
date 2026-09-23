@@ -1,5 +1,5 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
 import { pageParagraphs, type Para } from "./layout";
 import { GATE, highlighted, link, openAt, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
@@ -154,7 +154,10 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
           const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
           return judge(await readPassage(client, o.question, section, paras));
         }
-      : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
+      : kind === "truth"
+        ? // The gate asked the statement's three nouls of the page; no second call.
+          async (_section, _page, text, _pdf, _end, nouls) => judge(claimVerdict(o.question, text, nouls))
+        : async (section, _page, text) => judge(await answerFrom(client, kind, o.question, section, text, read));
   const across: SearchOpts["countAcross"] =
     kind !== "count"
       ? undefined

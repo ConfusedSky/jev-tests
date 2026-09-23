@@ -351,15 +351,27 @@ describe("a whole window's pages", () => {
 });
 
 describe("a gate of several nouls", () => {
+  const quiet = { log: () => {}, trying: () => {}, clear: () => {} };
+  const gate = (key: string) => (key === "p3:2" ? 0.9 : key === "p3:0" ? 0.2 : 0.1);
+  const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, perPage: true, gate: GATE.claim };
+
   // A statement's gate asks stated, contradicted and lists-the-kind; a page
   // passes on the highest of them.
   test("takes the highest noul as the window's value", async () => {
-    const gate = (key: string) => (key === "p3:2" ? 0.9 : 0.1);
-    const opts = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, perPage: true, gate: GATE.claim };
-    const { hit, tried } = await searchPdf(stubClient((t) => (t === "Characters" ? 3 : 0), gate), toc, opts, { log: () => {}, trying: () => {}, clear: () => {} });
+    const { hit, tried } = await searchPdf(stubClient((t) => (t === "Characters" ? 3 : 0), gate), toc, opts, quiet);
     expect(tried.find((t) => t.page === 3)?.p).toBe(0.9);
     expect(tried.find((t) => t.page === 2)?.p).toBe(0.1);
     expect(hit?.page).toBe(3);
+  });
+
+  test("hands the passed window's nouls to the verifier, in the gate's order", async () => {
+    const seen: number[][] = [];
+    const verify = async (_s: string, _p: number, _t: string, _pdf: string, _e: number, nouls: number[]) => {
+      seen.push(nouls);
+      return { text: "false", p: 0.9, verdict: "take" as const };
+    };
+    await searchPdf(stubClient((t) => (t === "Characters" ? 3 : 0), gate), toc, { ...opts, verify }, quiet);
+    expect(seen).toEqual([[0.2, 0.1, 0.9]]);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, cellsIn, childrenByParent, claimVerdict, countAcross, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 
 const HEART: [string, string[]][] = [
@@ -326,10 +326,15 @@ describe("a count off the page", () => {
 describe("a statement", () => {
   const stub = (stated: number, contradicted: number, kind: number) =>
     ({
-      systemOne: async () => ({ answers: { stated: { noul: stated }, contradicted: { noul: contradicted }, kind: { noul: kind } } }),
+      systemOne: async () => ({ answers: { c0: { noul: stated }, c1: { noul: contradicted }, c2: { noul: kind } } }),
     }) as unknown as Parameters<typeof answerFrom>[0];
   const ask = (s: number, c: number, a = 0.1, text = "Cleaver\nDeadwalker\nVermissian Knight") =>
     answerFrom(stub(s, c, a), "truth", "Is knight a class?", "Classes", text);
+
+  test("the verdict off the gate's nouls is the same verdict", () => {
+    expect(claimVerdict("Is knight a class?", "Cleaver\nDeadwalker\nVermissian Knight", [0.1, 0.2, 0.9])).toEqual({ text: "false", p: 0.9 });
+    expect(claimVerdict("Is witch a class?", "Cleaver\nWitch", [0.8, 0.1, 0.9])).toEqual({ text: "true", p: 0.8 });
+  });
 
   test("stated is true", async () => {
     expect(await ask(0.9, 0.1)).toEqual({ text: "true", p: 0.9 });
