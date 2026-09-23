@@ -320,6 +320,24 @@ describe("the text search", () => {
     expect(seen.some((k) => k.startsWith("excerpts"))).toBe(false);
   });
 
+  test("a book without an outline is scanned --max windows deep, past what its excerpts read", async () => {
+    // The catalogue with its one bookmark cut out.
+    const plain = `${cacheDir()}/plain.pdf`;
+    const strip = `${cacheDir()}/strip.js`;
+    await Bun.write(strip, 'var d = Document.openDocument(scriptArgs[0]); d.getTrailer().Root.delete("Outlines"); d.save(scriptArgs[1], "");');
+    await run(["mutool", "run", strip, fixture("catalogue.pdf"), plain]);
+    expect(await outline(plain)).toEqual([]);
+    const verify = async () => ({ text: "0", p: 0.1, verdict: "keep" as const });
+    const opts = { ...base, titleFloor: 0, chars: 0, max: 2, maxAnswers: 99, verify, terms: terms("q", ["Yor Tether"]) };
+    const { tried } = await searchPdf(stubClient((t) => (t.startsWith("p.2 ") ? 3 : 0)), plain, opts, ui);
+    // Every excerpt page first (the floor is soft), then the first two pages left, in order, none twice.
+    const pages = tried.map((t) => t.page);
+    const left = Array.from({ length: 24 }, (_, i) => i + 1).filter((p) => !pages.slice(0, -2).includes(p));
+    expect(pages[0]).toBe(2);
+    expect(pages.slice(-2)).toEqual(left.slice(0, 2));
+    expect(new Set(pages).size).toBe(pages.length);
+  });
+
   test("a book without an outline ranks its excerpts before the page-order scan", async () => {
     const { hit, tried } = await searchPdf(stubClient((t) => (t.startsWith("p.1 ") ? 3 : 0)), heart, { ...base, terms: terms("q", ["Vermissian"]) }, ui);
     expect(hit?.page).toBe(1);

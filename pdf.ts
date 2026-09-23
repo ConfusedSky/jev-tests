@@ -1,7 +1,8 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
+import { resolve } from "node:path";
 import { rank, secs, snapshot, split, timed } from "./shared";
-import { excerpts, weighted, type Term } from "./search";
+import { excerpts, type Term } from "./search";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
 
@@ -60,41 +61,53 @@ export type Window = { page: number; end: number; text: string };
 
 export const cacheDir = () => `${process.env.XDG_CACHE_HOME ?? `${process.env.HOME}/.cache`}/jev`;
 
+const files = new Map<string, Promise<string>>();
 const texts = new Map<string, Promise<string[]>>();
 
 /**
- * Every page's text, `pages[p - 1]` for page p, extracted once per book and
- * kept on disk: the text search reads the whole book before any section is
- * picked, and a shelf of books searched again should not pay for extraction
- * twice. The key carries size and mtime so a replaced file is read afresh.
+ * The cached text of a book, extracted if need be, as a path for ripgrep:
+ * the text search reads a whole shelf before any section is picked, and a
+ * shelf searched again should not pay for extraction twice. The key carries
+ * the resolved path's hash, size and mtime, so a replaced file is read afresh.
  */
+export function textFile(pdf: string): Promise<string> {
+  let file = files.get(pdf);
+  if (!file) {
+    file = extract(pdf);
+    files.set(pdf, file);
+    // A failed extraction is tried again next time, not remembered.
+    file.catch(() => files.delete(pdf));
+  }
+  return file;
+}
+
+async function extract(pdf: string): Promise<string> {
+  const file = Bun.file(pdf);
+  const cached = `${cacheDir()}/${Bun.hash(resolve(pdf)).toString(36).slice(0, 6)}-${file.size}-${Math.round(file.lastModified)}.txt`;
+  if (await Bun.file(cached).exists()) return cached;
+  // -layout keeps a table's row on one line and two prose columns side by
+  // side; reading order interleaved the columns line by line and put each
+  // table cell on a line of its own, three lines from its label.
+  const text = (await run(["pdftotext", "-layout", pdf, "-"])).replace(/[ \t]+$/gm, "");
+  // A second run extracting the same book must never read half a file.
+  const tmp = `${cached}.${process.pid}`;
+  await Bun.write(tmp, text);
+  await rename(tmp, cached);
+  return cached;
+}
+
+/** Every page's text, `pages[p - 1]` for page p, for the books the walk opens. */
 export function bookText(pdf: string): Promise<string[]> {
   let pages = texts.get(pdf);
   if (!pages) {
-    pages = extract(pdf);
+    pages = textFile(pdf).then(async (file) => {
+      const pages = (await timed("extract", () => Bun.file(file).text())).split("\f");
+      if (pages.at(-1) === "") pages.pop();
+      return pages;
+    });
     texts.set(pdf, pages);
+    pages.catch(() => texts.delete(pdf));
   }
-  return pages;
-}
-
-async function extract(pdf: string): Promise<string[]> {
-  const file = Bun.file(pdf);
-  // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
-  const cached = Bun.file(`${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${file.size}-${Math.round(file.lastModified)}.txt`);
-  let text: string;
-  if (await cached.exists()) text = await timed("extract", () => cached.text());
-  else {
-    // -layout keeps a table's row on one line and two prose columns side by
-    // side; reading order interleaved the columns line by line and put each
-    // table cell on a line of its own, three lines from its label.
-    text = (await run(["pdftotext", "-layout", pdf, "-"])).replace(/[ \t]+$/gm, "");
-    // A second run extracting the same book must never read half a file.
-    const tmp = `${cached.name}.${process.pid}`;
-    await Bun.write(tmp, text);
-    await rename(tmp, cached.name!);
-  }
-  const pages = text.split("\f");
-  if (pages.at(-1) === "") pages.pop();
   return pages;
 }
 
@@ -396,19 +409,16 @@ export async function searchPdf(
   };
 
   // Extraction overlaps the outline and contents calls.
-  const text = bookText(pdf);
+  const file = textFile(pdf);
   const sections = await outline(pdf);
   // Pages already gated, by a section or an excerpt; a page never answers twice.
   const readPages = new Set<number>();
-  const nameOf = (ws: Window[], w: Window, i: number) => {
-    const next = ws[i + 1];
-    return o.perPage ? `p.${w.page}` : next ? `p.${w.page}-${next.page - 1}` : `p.${w.page}+`;
-  };
+  const nameOf = (w: Window) => (w.page === w.end ? `p.${w.page}` : `p.${w.page}-${w.end}`);
   /** Reads windows in order under `name`, or each under its own page name when there is none. */
-  const scan = async (ws: Window[], name = "", label = (w: Window, i: number) => `${nameOf(ws, w, i)} (window ${i + 1}/${ws.length})`) => {
+  const scan = async (ws: Window[], name = "", label = (w: Window, i: number) => `${nameOf(w)} (window ${i + 1}/${ws.length})`) => {
     for (const w of ws) for (let p = w.page; p <= w.end; p++) readPages.add(p);
     for await (const c of passed(ws, name, label)) {
-      const out = await settle(c, name || nameOf(ws, c.w, ws.indexOf(c.w)));
+      const out = await settle(c, name || nameOf(c.w));
       if (out === "spent") return "spent";
       if (out && took(out)) return "stop";
     }
@@ -445,11 +455,10 @@ export async function searchPdf(
   // confinement was there to keep it off. A count ranks the titles alone:
   // a page dense with the subject is as likely a fragment of the list as
   // the list, and ten theme kits on one page counted as ten at p=0.82.
-  const pages = await text;
   const confined = pool !== sections;
   const ex =
     o.terms && !o.countAcross
-      ? excerpts(pages, weighted(o.terms, pages), { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })
+      ? ((await excerpts([await file], o.terms, { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })).get(await file) ?? [])
       : [];
   const rankSnap = snapshot();
   const all = pool.length + ex.length === 0 ? [] : await rank(
@@ -467,18 +476,20 @@ export async function searchPdf(
   // limit, or a spread of twenty pages would push a section out of reach.
   let sectionsLeft = o.max;
   const ranked = all.filter((r) => r.list === "excerpts" || sectionsLeft-- > 0);
-  const above = all.filter((r) => r.score >= floor).length;
+  const above = all.filter((r) => r.list === "candidates" && r.score >= floor).length;
   if (all.length > 0)
     ui.log(
       `${indent}ranked ${pool.length} sections and ${ex.length} excerpts in ${split(rankSnap)}, ` +
         (confined ? "confined by the contents" : `${above} above title floor ${floor}`) +
-        (all.length > above ? ` (${all.length - above} below)` : ""),
+        (pool.length > above ? ` (${pool.length - above} below)` : ""),
     );
 
   const byPath = new Map([...sections, ...pool].map((s) => [s.path, s]));
   /** The narrowest bookmarked section a page falls in, for naming an excerpt's page. */
   const around = (page: number) =>
-    sections.filter((s) => page >= s.start && page <= s.end).sort((a, b) => a.end - a.start - (b.end - b.start))[0];
+    sections
+      .filter((s) => page >= s.start && page <= s.end)
+      .sort((a, b) => a.end - a.start - (b.end - b.start) || b.path.split(" > ").length - a.path.split(" > ").length)[0];
   // A parent and its only child, or siblings on one page, resolve to the same
   // pages; reading them twice would cost a call and change nothing.
   const read = new Set<string>();
@@ -536,16 +547,20 @@ export async function searchPdf(
       const page = ex[r.index]!.page;
       if (readPages.has(page)) continue;
       const name = around(page)?.path ?? `p.${page}`;
-      out = await scan([{ page, end: page, text: pages[page - 1]! }], name, () => `${name} p.${page} (excerpt)`);
+      const text = (await bookText(pdf))[page - 1]!;
+      out = await scan([{ page, end: page, text }], name, () => `${name} p.${page} (excerpt)`);
     }
     if (out === "spent" || out === "stop") return done();
   }
-  // With no outline the rest of the book is read in page order.
+  // With no outline the rest of the book is read in page order, --max
+  // windows of it: a shelf search opened two 400-page books on a page each
+  // and then read every page of both, seven minutes for no answer.
   if (sections.length === 0 && hits.length < wanted) {
     const scanSnap = snapshot();
-    const ws = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
-    if (ws.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-    else ui.log(`${indent}no outline: scanning ${ws.length} windows in page order, read in ${split(scanSnap)}`);
+    const left = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
+    const ws = left.slice(0, o.max);
+    if (left.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
+    else ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order, read in ${split(scanSnap)}`);
     await scan(ws);
   }
   return done();
