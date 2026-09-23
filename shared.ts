@@ -1,4 +1,4 @@
-import { TypeSafeClient, score, type ScoreResponse } from "@typesafe-ai/sdk";
+import { TypeSafeClient, score, type JsonValue, type ScoreResponse } from "@typesafe-ai/sdk";
 import { makeSemifClient } from "./semif";
 
 export const RUBRIC = [
@@ -75,32 +75,48 @@ export function split(s: Snapshot): string {
   return `${secs(total)} (${parts.join(", ")})`;
 }
 
-export type Ranked = { name: string; score: number; confidence: number; reason: string };
+/** One list of candidates for a ranking call, named as the model sees it in `state`. */
+export type List = { key: string; noun: string; items: { label: string; value: JsonValue }[] };
+/** `list` and `index` say which item of which list scored; `name` is its label. */
+export type Ranked = { name: string; list: string; index: number; score: number; confidence: number; reason: string };
+
+/**
+ * Score every item of every list against one question, batched into fan-out
+ * calls. Lists share a call so a section title and a page excerpt are judged
+ * in the same light; each chunk's state holds one key per list.
+ */
+export async function rank(client: TypeSafeClient, question: string, lists: List[], batch: number): Promise<Ranked[]> {
+  const flat = lists.flatMap((l) => l.items.map((item, index) => ({ ...item, list: l, index })));
+  const chunks: (typeof flat)[] = [];
+  for (let i = 0; i < flat.length; i += batch) chunks.push(flat.slice(i, i + batch));
+  const scored = await timed("api", () =>
+    Promise.all(
+      chunks.map(async (chunk) => {
+        // Each list's slice of the chunk is an array in the state, and a
+        // question names its item by position in that slice.
+        const slices: Record<string, JsonValue[]> = {};
+        const asked = chunk.map((item) => {
+          const slice = (slices[item.list.key] ??= []);
+          const id = `${item.list.key}${slice.length}`;
+          const q = score(`The ${item.list.noun} \`${item.list.key}[${slice.length}]\` ("${item.label}") answers \`question\``, RUBRIC);
+          slice.push(item.value);
+          return { item, id, q };
+        });
+        const res = await client.systemOne({
+          state: { question, ...slices },
+          questions: Object.fromEntries(asked.map(({ id, q }) => [id, q])),
+        });
+        return asked.map(({ item, id }) => {
+          const a = res.answers[id]!;
+          return { name: item.label, list: item.list.key, index: item.index, score: a.score, confidence: a.confidence, reason: reason(a) };
+        });
+      }),
+    ),
+  );
+  return scored.flat().sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+}
 
 /** Score many short strings against one question, batched into fan-out calls. */
-export async function rankTitles(
-  client: TypeSafeClient,
-  question: string,
-  names: string[],
-  batch: number,
-  subject: string,
-): Promise<Ranked[]> {
-  const chunks: string[][] = [];
-  for (let i = 0; i < names.length; i += batch) chunks.push(names.slice(i, i + batch));
-  const scored = await timed("api", () => Promise.all(
-    chunks.map(async (chunk) => {
-      const questions = Object.fromEntries(
-        chunk.map((name, i) => [`f${i}`, score(`The ${subject} \`candidates[${i}]\` ("${name}") answers \`question\``, RUBRIC)]),
-      );
-      const res = await client.systemOne({
-        state: { question, candidates: chunk },
-        questions,
-      });
-      return chunk.map((name, i) => {
-        const a = res.answers[`f${i}`]!;
-        return { name, score: a.score, confidence: a.confidence, reason: reason(a) };
-      });
-    }),
-  ));
-  return scored.flat().sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+export function rankTitles(client: TypeSafeClient, question: string, names: string[], batch: number, subject: string): Promise<Ranked[]> {
+  return rank(client, question, [{ key: "candidates", noun: subject, items: names.map((n) => ({ label: n, value: n })) }], batch);
 }

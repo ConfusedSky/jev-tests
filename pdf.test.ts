@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { terms } from "./search";
 import { batches, bookText, cacheDir, confine, GATE, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
@@ -269,6 +270,60 @@ describe("several hits", () => {
   test("one hit by default", async () => {
     const { hits } = await searchPdf(stubClient(), manual, base, ui);
     expect(hits).toHaveLength(1);
+  });
+});
+
+describe("the text search", () => {
+  const base = { question: "q", threshold: 0.7, titleFloor: 1, max: 12, chars: 48000, batch: 40, terms: terms("How much RadAway?", ["RadAway"]) };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+  /** Scores the excerpt from page 3 alone; every title is a zero. */
+  const byExcerpt = (t: string) => (t.startsWith("p.3 ") ? 3 : 0);
+
+  test("a page that mentions the subject is read before any section, under the section it lies in", async () => {
+    let calls = 0;
+    const c = stubClient(byExcerpt);
+    const counting = { systemOne: (...a: Parameters<typeof c.systemOne>) => (calls++, c.systemOne(...a)) } as unknown as typeof c;
+    const { hit, tried } = await searchPdf(counting, manual, base, ui);
+    expect(hit?.page).toBe(3);
+    expect(hit?.section).toBe("Chapter III: Radiation");
+    expect(tried).toEqual([{ name: "Chapter III: Radiation", page: 3, p: 1 }]);
+    expect(calls).toBe(2);
+  });
+
+  test("a page read as an excerpt is not read again under its section", async () => {
+    const verify = async () => ({ text: "0", p: 0.1, verdict: "keep" as const });
+    const { tried } = await searchPdf(stubClient((t) => (t.startsWith("p.3 ") ? 3 : t.includes("Radiation") ? 2 : 0)), manual, { ...base, verify }, ui);
+    expect(tried.filter((t) => t.page === 3)).toHaveLength(1);
+  });
+
+  test("--max bounds the sections read, not the excerpts ranked above them", async () => {
+    const verify = async () => ({ text: "0", p: 0.1, verdict: "keep" as const });
+    const score = (t: string) => (t.startsWith("p.3 ") ? 3 : t === "Chapter I: Skills" ? 2 : 1);
+    const { tried } = await searchPdf(stubClient(score), manual, { ...base, max: 1, verify }, ui);
+    expect(tried.map((t) => t.page)).toEqual([3, 1]);
+  });
+
+  test("a contents pointer keeps the search inside the section it named", async () => {
+    const seen: number[] = [];
+    const verify = async (_s: string, page: number) => (seen.push(page), { text: "false", p: 0.9, verdict: "take" as const });
+    const fromOutline = async () => ({ parent: "Chapter II: Perks" });
+    await searchPdf(stubClient(byExcerpt), manual, { ...base, verify, fromOutline }, ui);
+    expect(seen).toEqual([2]);
+  });
+
+  test("a count reads the whole section the page is in, since a list outruns a page", async () => {
+    const counted: [string, number][] = [];
+    const countAcross = async (section: string, ws: unknown[]) => (counted.push([section, ws.length]), { text: "9", p: 1, verdict: "take" as const });
+    const subject = { ...base, chars: 0, terms: terms("How many tethers?", ["Yor Tether"]), countAcross };
+    const { hit } = await searchPdf(stubClient((t) => (t.startsWith("p.2 ") ? 3 : 0)), fixture("catalogue.pdf"), subject, ui);
+    expect(counted).toEqual([["Catalogue", 24]]);
+    expect(hit?.section).toBe("Catalogue");
+  });
+
+  test("a book without an outline ranks its excerpts before the page-order scan", async () => {
+    const { hit, tried } = await searchPdf(stubClient((t) => (t.startsWith("p.1 ") ? 3 : 0)), heart, { ...base, terms: terms("q", ["Vermissian"]) }, ui);
+    expect(hit?.page).toBe(1);
+    expect(tried).toEqual([{ name: "p.1", page: 1, p: 1 }]);
   });
 });
 
