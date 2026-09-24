@@ -252,9 +252,8 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       if (before > 0) names[i] = `${n} ${before + 1}`;
     }
     const records: Para[] = rows.flatMap((r) => {
-      const filled = r.cells.map((c, i) => [names[i]!, c] as const).filter(([, c]) => c);
-      if (filled.length === 0) return [];
-      const text = filled.length === 1 ? filled[0]![1] : JSON.stringify(Object.fromEntries(filled));
+      const text = rowText({ heads: names, cells: r.cells });
+      if (!text) return [];
       const [x0, y0, x1, y1] = r.bbox;
       return [{ heading: false, table: { heads: names, cells: r.cells }, text, style: " ".repeat(text.length), lines: [{ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length }] }];
     });
@@ -263,6 +262,15 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   }
   return paras;
 }
+
+/** A row as one line of JSON keyed by its heads, a lone cell bare, an empty row "". */
+export function rowText(row: Row): string {
+  const filled = row.cells.map((c, i) => [row.heads[i]!, c] as const).filter(([, c]) => c);
+  return filled.length === 1 ? filled[0]![1] : filled.length ? JSON.stringify(Object.fromEntries(filled)) : "";
+}
+
+/** A row that fills only one cell, a note under the row above rather than a row of its own. */
+export const lone = (row: Row) => row.cells.filter(Boolean).length === 1;
 
 /** Trims and single-spaces `text`, keeping `style` in step; a space keeps its span's weight. */
 function tidy(text: string, style: string): [string, string] {

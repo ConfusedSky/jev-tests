@@ -99,6 +99,40 @@ const CASES: Case[] = [
     // its other cells higher than the name.
     contains: ["Air Pistol", "100eb (Premium)", "Dartgun", "Flamethrower", "Kendachi Mono-Three"],
   },
+  // A figure for each of several things is read as a passage, not one figure.
+  {
+    book: "cpr",
+    question: "How much do each type of magazine cost in cyberpunk red?",
+    truth: "passage",
+    page: 344,
+    contains: ["Drum Magazine", "500eb", "Extended Magazine", "100eb"],
+  },
+  // The note under each weapon's row must not break the table apart, and
+  // only the damage column stays beside the name.
+  {
+    book: "cpr",
+    question: "What is the damage of all the standard ranged weapons?",
+    truth: "passage",
+    contains: ['"Medium Pistol","Single Shot Damage":"2d6"', '"Rocket Launcher","Single Shot Damage":"8d6"'],
+    without: ["Standard Magazine", "Cost", "Alt. Fire"],
+  },
+  {
+    book: "fallout",
+    question: "What is the cost and weight of every small gun?",
+    truth: "passage",
+    page: 97,
+    contains: ['"Combat Rifle","WEIGHT":"11","COST":"117"', '"Hunting Rifle","WEIGHT":"10","COST":"55"'],
+    without: ["DAMAGE"],
+  },
+  // "damage" is one column, DAMAGE RATING, not DAMAGE EFFECTS or TYPE too.
+  {
+    book: "fallout",
+    question: "What is the damage of every small gun?",
+    truth: "passage",
+    page: 97,
+    contains: ['"Combat Rifle","DAMAGE RATING":"5 CD"'],
+    without: ["DAMAGE EFFECTS", "DAMAGE TYPE", "COST"],
+  },
 ];
 
 type Result = {

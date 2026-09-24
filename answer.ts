@@ -1,5 +1,5 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import { pageLines, paragraphs, styledCandidates, type Para } from "./layout";
+import { lone, pageLines, paragraphs, rowText, styledCandidates, type Para } from "./layout";
 import { timed } from "./shared";
 
 export const KINDS = ["count", "number", "truth", "passage"] as const;
@@ -646,6 +646,60 @@ export function unitsOf(paras: Para[]): Unit[] {
   return out.filter((u) => u.text.length > 1);
 }
 
+/**
+ * A note under a table's row ("Alt. Fire Modes & Special Features: None")
+ * is as much the answer as its row: judged alone it sits far below the bar,
+ * and every weapon's note broke the table into runs of one row each.
+ */
+function notesWithRows(units: Unit[], paras: Para[], ps: number[]): number[] {
+  return ps.map((p, i) => {
+    const [t, above] = [paras[units[i]!.para]!.table, paras[units[i - 1]?.para ?? -1]?.table];
+    return t && above && lone(t) && !lone(above) && t.heads === above.heads ? Math.max(p, ps[i - 1]!) : p;
+  });
+}
+
+/**
+ * The columns of a passage's table rows that hold the quantities the
+ * question names, with the first, which names the row: "the damage of all
+ * the standard ranged weapons" wants the weapon and its damage, not its
+ * magazine and cost. Each quantity picks one column of each table, as a
+ * figure does in numberFrom, so "damage" is Fallout's DAMAGE RATING and not
+ * its DAMAGE EFFECTS too. Notes under the rows go. A table where no quantity
+ * has a column stays whole.
+ */
+async function pickColumns<P extends Para>(client: TypeSafeClient, question: string, quantities: string[], passage: P[]): Promise<P[]> {
+  const tables = [...new Map(passage.flatMap((p) => (p.table ? [[p.table.heads.join("\t"), p.table.heads] as const] : []))).values()];
+  if (quantities.length === 0 || tables.length === 0) return passage;
+  const key = (t: number, q: number) => `t${t}q${q}`;
+  const questions = Object.fromEntries(
+    tables.flatMap((heads, t) =>
+      quantities.map((q, i) => [
+        key(t, i),
+        choice(`Which column of the table holds the ${q} \`question\` asks for?`, {
+          ...Object.fromEntries(heads.slice(1).map((h, c) => [`c${c + 1}`, `The column headed "${h}"`])),
+          none: "No column holds it",
+        }),
+      ]),
+    ),
+  );
+  const res = await timed("api", () => client.systemOne({ state: { question }, questions }));
+  const picked = new Map(
+    tables.map((heads, t) => {
+      const cols = quantities.flatMap((_, i) => /^c\d+$/.exec((res.answers[key(t, i)] as { choice: string }).choice)?.map((c) => Number(c.slice(1))) ?? []);
+      return [heads.join("\t"), cols.length ? [0, ...new Set(cols)].sort((a, b) => a - b) : undefined] as const;
+    }),
+  );
+  return passage.flatMap((p) => {
+    const t = p.table;
+    const keep = t && picked.get(t.heads.join("\t"));
+    if (!t || !keep) return [p];
+    if (lone(t)) return [];
+    const row = { heads: keep.map((i) => t.heads[i]!), cells: keep.map((i) => t.cells[i] ?? "") };
+    const text = rowText(row);
+    return [{ ...p, table: row, text, style: " ".repeat(text.length), lines: p.lines.map((l) => ({ ...l, start: 0, end: text.length })) }];
+  });
+}
+
 /** Pages a passage may grow onto past the window it was found in. */
 const PASSAGE_REACH = 2;
 
@@ -664,6 +718,7 @@ export async function readPassage(
   section: string,
   paras: Para[],
   more?: () => Promise<Para[]>,
+  quantities: string[] = [],
 ): Promise<Answer> {
   let units = unitsOf(paras);
   if (units.length === 0) return { text: "not stated", p: 1 };
@@ -694,7 +749,7 @@ export async function readPassage(
     return ps.flat();
   };
   const whole = () => paras.map((p) => p.text).join("\n\n");
-  let ps = await judge(units, whole());
+  let ps = notesWithRows(units, paras, await judge(units, whole()));
   let runs = bestRuns(ps);
   // A passage goes on past its window when the next page holds more of the
   // answer: the phases of combat are listed and explained over two pages.
@@ -707,7 +762,7 @@ export async function readPassage(
     if (next.length === 0) break;
     const fresh = unitsOf(next);
     const grown = [...paras, ...next];
-    const fps = await judge(fresh, grown.map((p) => p.text).join("\n\n"));
+    const fps = notesWithRows(fresh, next, await judge(fresh, grown.map((p) => p.text).join("\n\n")));
     if (bestRuns(fps).length === 0) break;
     paras = grown;
     units = [...units, ...fresh.map((u) => ({ ...u, para: u.para + paras.length - next.length }))];
@@ -732,12 +787,13 @@ export async function readPassage(
       } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines, table: paras[u.para]!.table });
     }
   }
+  const shown = await pickColumns(client, question, quantities, passage);
   return {
-    text: passage.map((p) => p.text).join("\n"),
+    text: shown.map((p) => p.text).join("\n"),
     p: chosen.reduce((a, b) => a + b, 0) / chosen.length,
     // A window of several pages links to the page the passage starts on.
-    pages: [...new Set(passage.flatMap((p) => p.lines.map((l) => l.page)))],
-    passage: passage.map(({ heading, text, style, lines, table }) => ({ heading, text, style, lines, table })),
+    pages: [...new Set(shown.flatMap((p) => p.lines.map((l) => l.page)))],
+    passage: shown.map(({ heading, text, style, lines, table }) => ({ heading, text, style, lines, table })),
   };
 }
 

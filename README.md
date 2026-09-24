@@ -521,6 +521,24 @@ when too wide for the window; JSON a row when piped):
   Combat Rifle   5       11      117
 ```
 
+A passage question that names quantities keeps only their columns, beside
+the first, which names the row. Each quantity picks one column of each
+table ("damage" is Fallout's DAMAGE RATING, not its DAMAGE EFFECTS too), and
+the notes under the rows go; a table where no quantity has a column stays
+whole. "What is the damage of all the standard ranged weapons?" in Cyberpunk
+Red:
+
+```
+  Weapon Type        Single Shot Damage
+  Medium Pistol      2d6
+  Heavy Pistol       3d6
+  Very Heavy Pistol  4d6
+```
+
+A note under a row, "Alt. Fire Modes & Special Features: None" under each
+weapon, counts toward the passage as its row does; judged alone it sat far
+below the bar and broke the table into runs of one row, too small to show.
+
 The gate
 still reads the `pdftotext` text. A table drawn without rules or shading is
 not found and reads as text. A letter in a column ("RANGE": "M") is not a

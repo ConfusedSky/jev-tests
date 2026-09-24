@@ -330,6 +330,52 @@ describe("a passage", () => {
     expect(a.passage?.[0]?.table).toEqual(table);
   });
 
+  describe("over a table", () => {
+    const heads = ["Weapon Type", "Damage", "Cost"];
+    const row = (cells: string[]) => {
+      const text = cells.filter(Boolean).length === 1 ? cells.find(Boolean)! : JSON.stringify(Object.fromEntries(cells.map((c, i) => [heads[i]!, c]).filter(([, c]) => c)));
+      return { ...plain(text), lines: [box(100, 0, text.length)], table: { heads, cells } };
+    };
+    const note = row(["Alt. Fire: None", "", ""]);
+    const rows = [row(["Medium Pistol", "2d6", "50eb"]), note, row(["Heavy Pistol", "3d6", "100eb"]), { ...note }, row(["SMG", "2d6", "100eb"])];
+    /** Rows near the bar, their notes far below it, and each quantity's column as `columns` names it. */
+    const client = (columns: Record<string, string>) =>
+      ({
+        systemOne: async ({ questions }: { questions: Record<string, { type: string; instructions: string | { sentence: string } }> }) => ({
+          answers: Object.fromEntries(
+            Object.entries(questions).map(([k, q]) => {
+              if (q.type === "choice") {
+                const quantity = /holds the (.*?) `question`/.exec(q.instructions as string)![1]!;
+                const choice = columns[quantity] ? `c${heads.indexOf(columns[quantity])}` : "none";
+                return [k, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }];
+              }
+              return [k, { type: "noul", noul: (q.instructions as { sentence: string }).sentence.startsWith("{") ? 0.82 : 0.08 }];
+            }),
+          ),
+        }),
+      }) as unknown as Parameters<typeof readPassage>[0];
+
+    test("a note under a row counts as its row, so the notes do not break the table into rows too small to show", async () => {
+      const a = await readPassage(client({}), "q", "s", [plain("Guns."), ...rows]);
+      expect(a.passage?.map((p) => p.text)).toEqual(rows.map((r) => r.text));
+    });
+
+    test("the rows keep their first column and the one each quantity names, and lose their notes", async () => {
+      const a = await readPassage(client({ damage: "Damage" }), "q", "s", rows, undefined, ["damage"]);
+      expect(a.passage?.map((p) => p.table)).toEqual([
+        { heads: ["Weapon Type", "Damage"], cells: ["Medium Pistol", "2d6"] },
+        { heads: ["Weapon Type", "Damage"], cells: ["Heavy Pistol", "3d6"] },
+        { heads: ["Weapon Type", "Damage"], cells: ["SMG", "2d6"] },
+      ]);
+      expect(a.text.split("\n")[0]).toBe('{"Weapon Type":"Medium Pistol","Damage":"2d6"}');
+    });
+
+    test("a table where no quantity has a column stays whole", async () => {
+      const a = await readPassage(client({}), "q", "s", rows, undefined, ["rarity"]);
+      expect(a.passage?.map((p) => p.text)).toEqual(rows.map((r) => r.text));
+    });
+  });
+
   test("a page with no sentence of the answer is not stated", async () => {
     expect(await readPassage(stub({}), "q", "s", page)).toEqual({ text: "not stated", p: 1 });
   });
