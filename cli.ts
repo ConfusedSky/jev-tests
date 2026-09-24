@@ -1,5 +1,5 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
+import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
 import { lone, pageParagraphs, type Para, type Row } from "./layout";
 import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
@@ -57,6 +57,10 @@ export type ReadOpts = SearchOpts & {
   /** Search the text for the question's subject and rank the pages found beside the titles. */
   search: boolean;
   kind?: Kind;
+  /** Piped, a table's rows as tab-separated lines under their heads instead of JSON. */
+  tsv: boolean;
+  /** What jev read off the question, kept for a table to build its searches from. */
+  reading?: Reading;
 };
 
 export const readDefaults = (): ReadOpts => ({
@@ -76,6 +80,7 @@ export const readDefaults = (): ReadOpts => ({
   perPage: true,
   hits: 1,
   search: true,
+  tsv: false,
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -94,6 +99,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--whole-windows": (o) => (o.perPage = false),
   "--no-toc": (o) => (o.noToc = true),
   "--no-search": (o) => (o.search = false),
+  "--tsv": (o) => (o.tsv = true),
   "--kind": (o, next, fail) => {
     const k = next();
     if (!KINDS.some((x) => x === k)) fail(`must be one of ${KINDS.join(", ")}`);
@@ -117,16 +123,17 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
       --no-search      rank outline titles only, without searching the text
-      --kind K         force count, number, truth or passage instead of asking jev`;
+      --tsv            piped, print a table's rows tab-separated under their heads, not as JSON
+      --kind K         force count, number, truth, passage or table instead of asking jev`;
 
 /**
  * Wires the answer layer into a search: a count, number or statement has a
  * value to be confident about, and a passage has the stretch of the page
  * that answers.
  */
-export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): Promise<ReadOpts> {
+export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, preset?: Reading): Promise<ReadOpts> {
   // Kind and quantities come off the wording alone, so one call reads both.
-  const read = await readQuestion(client, o.question);
+  const read = preset ?? (await readQuestion(client, o.question));
   const kind = o.kind ?? read.kind;
   ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
   // A count, number or statement has one answer; only a passage question has
@@ -156,7 +163,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
   // columns and weights and all, not the -layout text the walk gates on;
   // see layout.ts. Under --whole-windows a window spans pages.
   const verify: SearchOpts["verify"] =
-    kind === "passage"
+    kind === "passage" || kind === "table"
       ? async (section, page, _text, pdf, end) => {
           const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
           const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
@@ -199,7 +206,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
             ),
           );
   const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found };
+  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read };
 }
 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
@@ -211,7 +218,7 @@ const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =
  * as a grid, all indented. Piped, it is plain text, a paragraph or a row's
  * JSON a line, so it stays greppable.
  */
-export function renderPassage(paras: Para[], width: number | undefined, styled: boolean): string {
+export function renderPassage(paras: Para[], width: number | undefined, styled: boolean, tsv = false): string {
   const indent = "  ";
   const window = (width && width >= 40 ? width : 80) - indent.length;
   // Prose wraps at a readable measure; a table takes the whole window.
@@ -240,11 +247,11 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
   const blocks: string[] = [];
   for (let i = 0; i < paras.length; i++) {
     const t = paras[i]!.table;
-    if (styled && t) {
+    if ((styled || tsv) && t) {
       const key = t.heads.join("\t");
       const rows = [t];
       while (paras[i + 1]?.table?.heads.join("\t") === key) rows.push(paras[++i]!.table!);
-      blocks.push(renderRows(rows, window).map((l) => (l && indent + l)).join("\n"));
+      blocks.push(styled ? renderRows(rows, window).map((l) => (l && indent + l)).join("\n") : tsvRows(rows).join("\n"));
     } else blocks.push(renderPara(paras[i]!));
   }
   return blocks.join(styled ? "\n\n" : "\n");
@@ -300,14 +307,21 @@ function wrap(text: string, cols: number): [number, number][] {
   return out;
 }
 
-/** A value goes before the link on its line; a passage goes under it. */
-function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; section: string; p: number }, answer: Answer | undefined, note = "") {
+/** Rows as tab-separated lines under their heads; a row of one cell is that cell alone. Tabs and newlines in a cell become spaces. */
+export function tsvRows(rows: Row[]): string[] {
+  const line = (cells: string[]) => cells.map((c) => c.replace(/[\t\n]/g, " ")).join("\t");
+  return [line(rows[0]!.heads), ...rows.map((r) => (lone(r) ? line([r.cells.find(Boolean)!]) : line(r.cells)))];
+}
+
+/** A value goes before the link on its line; a passage or table goes under it. */
+function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; section: string; p: number }, answer: Answer | undefined, note = "", tsv = false) {
   const conf = answer ? `(p=${answer.p.toFixed(2)}${note})` : "";
+  const long = kind === "passage" || kind === "table";
   if (!answer) console.log(hitLine(hit));
-  else if (kind === "passage" && answer.passage) {
+  else if (long && answer.passage) {
     const tty = process.stdout.isTTY;
-    console.log(`${conf}  ${hitLine(hit)}${tty ? "\n" : ""}\n${renderPassage(answer.passage, process.stdout.columns, tty)}`);
-  } else if (kind === "passage") console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
+    console.log(`${conf}  ${hitLine(hit)}${tty ? "\n" : ""}\n${renderPassage(answer.passage, process.stdout.columns, tty, tsv)}`);
+  } else if (long) console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
@@ -336,7 +350,7 @@ export async function report(
     };
     const hits: Hit[] = [];
     for (const hit of r.hits) hits.push(await at(hit));
-    for (const hit of hits) printHit(o.kind, hit, hit.answer);
+    for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
   }
@@ -346,7 +360,7 @@ export async function report(
     const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
     ui.log(`total ${split(since)}${walked}`);
     console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
-    printHit(o.kind, hit, answer, `, below ${o.answerFloor}`);
+    printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
     process.exit(1);
   }
 

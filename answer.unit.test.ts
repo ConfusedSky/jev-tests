@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, bestRuns, cellsIn, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, bestRuns, cellsIn, columnsFor, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -810,5 +810,19 @@ describe("countAcross", () => {
     const seen: number[] = [];
     await countAcross(stubCells([sure(2), sure(3)]), "q", "s", ws(2), "", 0, (_p, _a, _c, running) => seen.push(running));
     expect(seen).toEqual([2, 5]);
+  });
+});
+
+describe("columnsFor", () => {
+  test("never offers the first column, which names the row, nor one whose head is empty", async () => {
+    let offered: string[] = [];
+    const client = {
+      systemOne: async ({ questions }: { questions: Record<string, { criteria: Record<string, string> }> }) => {
+        offered = Object.keys(Object.values(questions)[0]!.criteria);
+        return { answers: { t0q0: { type: "choice", choice: "c2", confidence: 1, probabilities: { c2: 1 } } } };
+      },
+    } as unknown as Parameters<typeof columnsFor>[0];
+    expect(await columnsFor(client, "q", ["damage"], [["Weapon", "", "Damage"]])).toEqual([[2]]);
+    expect(offered).toEqual(["c2", "none"]);
   });
 });

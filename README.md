@@ -177,7 +177,7 @@ first run over a shelf extracts every book, four at a time (a few seconds
 each for a 400-page rulebook); after that the search costs nothing you can
 see, and one pdftotext cannot read is logged and skipped.
 
-## Three kinds of question
+## Kinds of question
 
 jev classifies the question once, from its wording alone, and the output shape
 follows.
@@ -189,6 +189,7 @@ follows.
 | "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.98)` + link |
 | "How do I create a hero?" | passage | link + the sentences that answer |
 | "How much does each type of magazine cost?" | passage | link + the table's rows that answer |
+| "Make a table of every small gun with its cost and weight" | table | link + the table, a row a gun |
 
 A figure for each of several things ("each type", "every gun") is asked on
 its own beside the kind; a number question that asks it is read as a
@@ -544,6 +545,51 @@ still reads the `pdftotext` text. A table drawn without rules or shading is
 not found and reads as text. A letter in a column ("RANGE": "M") is not a
 figure and a number question cannot read it yet.
 
+## Tables to order
+
+A question that asks outright for a table ("give me a table", "make a
+table") with a row for each of some things and the columns it names is a
+`table` question, built by `compose.ts`:
+
+```
+$ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard ranged weapons as a row. \
+    For each row give me single shot damage, ammo type, weapon skill, rate of fire, \
+    standard magazine size, extended magazine size and drum magazine size"
+
+  Weapon Type        single shot damage  ammo type  weapon skill   rate of fire  standard magazine size  extended magazine size  drum magazine size
+  Medium Pistol      2d6                 M Pistol   Handgun        2             12 (M Pistol)           18                      36
+  …
+  Bows & Crossbows   4d6                 Arrow      Archery        1             N/A (Arrow)             N/A                     N/A
+  Rocket Launcher    8d6                 Rocket     Heavy Weapons  1             1 (Rocket)              2                       3
+```
+
+1. jev reads the request a word at a time: the first name of the things
+   the rows are for ("standard ranged weapons"), and the columns, an "of"
+   kept inside one ("rate of fire"). The rows' own words are never columns.
+2. A passage search for the rows' table ("Show me the table of all the
+   standard ranged weapons") gives the rows, its first column their names.
+   Each column picks a column of that table, as a passage's quantities do.
+3. A column still missing is looked for in each row's own entry on the
+   next eight pages: the paragraphs under a heading that is the row's name
+   (".44 PISTOL"). jev picks, once per column, the label the entries give
+   it under ("Ammunition" for ammo type), and each entry's line with that
+   label is the row's value. Asked a row at a time, "Ammunition: Flare" was
+   no ammo type to jev.
+4. Each column still missing gets a search of its own, collecting up to
+   three passages; every table those find is offered for every missing
+   column, since the extended sizes' search may find the drum sizes too.
+5. Another table's rows are matched to ours by name, then by asking jev for
+   the rest; a weapon it lacks is N/A.
+6. A column nothing else holds is read from each row's own cells, a choice
+   among their pieces: "M Pistol" out of "12 (M Pistol)". None is N/A.
+
+The table prints, pipes and highlights as a passage's rows do, each cell
+marked on the page it came from. A table request that names no columns
+("show me the exotic weapons table") wants the book's own and is read as a
+passage. Piped, a row is a line of JSON; `--tsv` prints heads and rows
+tab-separated, for a built table and a passage's table alike. The full
+request takes about twenty seconds, most of it the column searches.
+
 ## The exact page
 
 Every page of a section is gated on its own, so the hit is the page that
@@ -692,6 +738,7 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `layout.ts` | a page's lines, columns, paragraphs, tables and weights, for passages |
 | `tables.py` | pdfplumber script printing a page's tables as JSON |
 | `answer.ts` | classify the question, read counts and true/false |
+| `compose.ts` | build a table to the question's design from several passages |
 | `shared.ts` | client, key, the ranking call, scoring rubric, timing |
 | `format.ts` | column alignment and path elision |
 | `bench.ts` | the shelf benchmark over real rulebooks |
