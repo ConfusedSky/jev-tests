@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { answerLayer, parseFlags, READ_USAGE, readDefaults, readFlags, report } from "./cli";
 import { makeUi, searchPdf } from "./pdf";
+import { composeTable } from "./compose";
 import { makeClient, snapshot } from "./shared";
 
 function usage(code: number): never {
@@ -30,7 +31,7 @@ if (!(await Bun.file(pdf).exists())) {
 const client = await makeClient(opts.model);
 const ui = makeUi(opts.quiet);
 const search = await answerLayer(client, opts, ui);
-const outcome = await searchPdf(client, pdf, search, ui);
+const outcome = search.kind === "table" ? await composeTable(client, pdf, search, ui) : await searchPdf(client, pdf, search, ui);
 await report("jevsec", outcome, search, ui, startSnap, {
   nothing: `nothing readable scored above the title floor ${opts.titleFloor}`,
 });

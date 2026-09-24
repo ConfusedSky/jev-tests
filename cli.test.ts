@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { num, parseFlags, readDefaults, readFlags, renderPassage } from "./cli";
+import { num, parseFlags, readDefaults, readFlags, renderPassage, tsvRows } from "./cli";
 import type { Para } from "./layout";
 
 const usage = (code: number): never => {
@@ -128,5 +128,18 @@ describe("renderPassage", () => {
 
   test("piped, a row stays its one line of text", () => {
     expect(renderPassage(paras.slice(1, 2), 80, false)).toBe(`  ${paras[1]!.text}`);
+  });
+});
+
+describe("tsvRows", () => {
+  test("heads then a row a line, tab-separated; a note is its one cell; a tab in a cell becomes a space", () => {
+    const heads = ["Weapon", "Damage"];
+    expect(tsvRows([{ heads, cells: ["SMG", "2d6"] }, { heads, cells: ["Alt. Fire:\tNone", ""] }])).toEqual(["Weapon\tDamage", "SMG\t2d6", "Alt. Fire: None"]);
+  });
+
+  test("piped with --tsv, a passage's rows print under their heads instead of as JSON", () => {
+    const heads = ["Weapon", "Damage"];
+    const row = (cells: string[]): Para => ({ heading: false, text: JSON.stringify(cells), style: "", lines: [], table: { heads, cells } });
+    expect(renderPassage([row(["SMG", "2d6"]), row(["Shotgun", "5d6"])], 80, false, true)).toBe("Weapon\tDamage\nSMG\t2d6\nShotgun\t5d6");
   });
 });

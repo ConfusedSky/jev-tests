@@ -2,10 +2,10 @@ import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { lone, pageLines, paragraphs, rowText, styledCandidates, type Para } from "./layout";
 import { timed } from "./shared";
 
-export const KINDS = ["count", "number", "truth", "passage"] as const;
+export const KINDS = ["count", "number", "truth", "passage", "table"] as const;
 export type Kind = (typeof KINDS)[number];
-/** The kinds that yield a value to be confident about; a passage is satisfied by the page itself. */
-export type Valued = Exclude<Kind, "passage">;
+/** The kinds that yield a value to be confident about; a passage is satisfied by the page itself, and a table is built from passages. */
+export type Valued = Exclude<Kind, "passage" | "table">;
 
 export const STOPWORDS = new Set(
   (
@@ -26,14 +26,28 @@ export const STOPWORDS = new Set(
  */
 export type Reading = { kind: Kind; quantities: string[]; counted: string; subject: string[]; game: string[] };
 
-type Word = { word: string; ends: boolean };
+export type Word = { word: string; ends: boolean };
 
-/** Adjacent words that passed form one name, and a comma ends a name. */
-function namesFrom(words: Word[], passed: (i: number) => boolean): string[] {
+/** A question's words, punctuation off, each marking whether a comma or semicolon ends it. */
+export const wordsOf = (question: string): Word[] =>
+  question
+    .split(/\s+/)
+    .map((raw) => ({ word: raw.replace(/[^\w'-]/g, ""), ends: /[,;.]$/.test(raw) }))
+    .filter((w) => w.word);
+
+/**
+ * Adjacent words that passed form one name, and a comma ends a name. With
+ * `of`, an "of" between two words that passed stays in it: a quantity or a
+ * column is "rate of fire", but a subject is searched for, and "type of
+ * magazine" found no page where "type" and "magazine" did.
+ */
+export function namesFrom(words: Word[], passed: (i: number) => boolean, of = false): string[] {
   const names: string[] = [];
   let run: string[] = [];
+  const named = (i: number) => i >= 0 && i < words.length && !STOPWORDS.has(words[i]!.word.toLowerCase()) && passed(i);
   words.forEach((w, i) => {
-    const yes = !STOPWORDS.has(w.word.toLowerCase()) && passed(i);
+    const bridge = of && w.word.toLowerCase() === "of" && !words[i - 1]?.ends && named(i - 1) && named(i + 1);
+    const yes = bridge || named(i);
     if (yes) run.push(w.word);
     if ((!yes || w.ends) && run.length) {
       names.push(run.join(" "));
@@ -59,15 +73,15 @@ const EACH = 0.3;
  * kind, and they end a name.
  */
 export async function readQuestion(client: TypeSafeClient, question: string): Promise<Reading> {
-  const words = question
-    .split(/\s+/)
-    .map((raw) => ({ word: raw.replace(/[^\w'-]/g, ""), ends: /[,;]$/.test(raw) }))
-    .filter((w) => w.word);
+  const words = wordsOf(question);
   const kind = choice("What shape of answer does `question` want?", {
     count: "Asks how many of something there are: a tally of entries, items or options to be counted up",
     number: "Asks for a figure the text states outright: a cost, a weight, a rating, a distance, a limit, how much of something",
     truth: "States something that is either true or false, or asks whether something is the case",
-    passage: "Asks what, how or why, and wants an explanation or the place it is written",
+    passage: "Asks what, how or why, and wants an explanation or the place it is written, or to be shown a table the book prints",
+    table:
+      "Asks outright for a table to be made (give me a table, make a table, build a table) with a row for each of some " +
+      "things and the columns it names; not a table the book prints, nor a question of what each thing costs or weighs",
   });
   // A question of its own rather than a kind's choice, since there the
   // wording pulled one rifle's cost, weight and damage rating over too.
@@ -117,7 +131,7 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
   return {
     // A figure for each of several things is a table's rows, read as a passage.
     kind: res.answers.kind.choice === "number" && res.answers.each.noul >= EACH ? "passage" : res.answers.kind.choice,
-    quantities: namesFrom(words, passed("w")),
+    quantities: namesFrom(words, passed("w"), true),
     // A count counts one kind of thing; the first name is it.
     counted: namesFrom(words, passed("k"))[0] ?? "",
     subject: namesFrom(words, passed("s")),
@@ -670,22 +684,10 @@ function notesWithRows(units: Unit[], paras: Para[], ps: number[]): number[] {
 async function pickColumns<P extends Para>(client: TypeSafeClient, question: string, quantities: string[], passage: P[]): Promise<P[]> {
   const tables = [...new Map(passage.flatMap((p) => (p.table ? [[p.table.heads.join("\t"), p.table.heads] as const] : []))).values()];
   if (quantities.length === 0 || tables.length === 0) return passage;
-  const key = (t: number, q: number) => `t${t}q${q}`;
-  const questions = Object.fromEntries(
-    tables.flatMap((heads, t) =>
-      quantities.map((q, i) => [
-        key(t, i),
-        choice(`Which column of the table holds the ${q} \`question\` asks for?`, {
-          ...Object.fromEntries(heads.slice(1).map((h, c) => [`c${c + 1}`, `The column headed "${h}"`])),
-          none: "No column holds it",
-        }),
-      ]),
-    ),
-  );
-  const res = await timed("api", () => client.systemOne({ state: { question }, questions }));
+  const found = await columnsFor(client, question, quantities, tables);
   const picked = new Map(
     tables.map((heads, t) => {
-      const cols = quantities.flatMap((_, i) => /^c\d+$/.exec((res.answers[key(t, i)] as { choice: string }).choice)?.map((c) => Number(c.slice(1))) ?? []);
+      const cols = found[t]!.filter((c) => c !== undefined);
       return [heads.join("\t"), cols.length ? [0, ...new Set(cols)].sort((a, b) => a - b) : undefined] as const;
     }),
   );
@@ -699,6 +701,36 @@ async function pickColumns<P extends Para>(client: TypeSafeClient, question: str
     const lines = p.lines.filter((l) => l.cell === undefined || keep.includes(l.cell)).map((l) => ({ ...l, start: 0, end: text.length }));
     return [{ ...p, table: row, text, style: " ".repeat(text.length), lines }];
   });
+}
+
+/**
+ * For each table (its heads) and each quantity, the column holding it, or
+ * undefined: one choice per pair, in one call. The first column names the
+ * row and is never offered, nor is a column whose head is "".
+ */
+export async function columnsFor(client: TypeSafeClient, question: string, quantities: string[], tables: string[][]): Promise<(number | undefined)[][]> {
+  const key = (t: number, q: number) => `t${t}q${q}`;
+  const questions = Object.fromEntries(
+    tables.flatMap((heads, t) =>
+      quantities.map((q, i) => [
+        key(t, i),
+        // "That very thing": asked plainly, "drum magazine size" took the
+        // Standard Magazine column about half the time.
+        choice(`Which column of the table holds the ${q} \`question\` asks for, that very thing and not something like it?`, {
+          ...Object.fromEntries(heads.flatMap((h, c) => (c > 0 && h ? [[`c${c}`, `The column headed "${h}"`]] : []))),
+          none: `No column holds the ${q} itself; a column of something like it does not count`,
+        }),
+      ]),
+    ),
+  );
+  if (Object.keys(questions).length === 0) return tables.map(() => quantities.map(() => undefined));
+  const res = await timed("api", () => client.systemOne({ state: { question }, questions }));
+  return tables.map((_, t) =>
+    quantities.map((_, i) => {
+      const c = /^c(\d+)$/.exec((res.answers[key(t, i)] as { choice: string }).choice)?.[1];
+      return c === undefined ? undefined : Number(c);
+    }),
+  );
 }
 
 /** Pages a passage may grow onto past the window it was found in. */
@@ -900,7 +932,7 @@ export async function answerFromOutline(
 ): Promise<OutlineAnswer | undefined> {
   const paths = sections.map((s) => s.path);
   // A stated figure is on a page, never in the contents.
-  if (kind === "passage" || kind === "number") return undefined;
+  if (kind === "passage" || kind === "number" || kind === "table") return undefined;
 
   const children = childrenByParent(paths);
   const groups = [...children].filter(([, kids]) => kids.length > 1);

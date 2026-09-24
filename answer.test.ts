@@ -35,6 +35,12 @@ describe.if(live)("readQuestion", () => {
     ["What does the Lockpick skill cover?", "passage"],
     ["How much do each type of magazine cost in cyberpunk red?", "passage"],
     ["What does every small gun weigh?", "passage"],
+    ["What is the cost and weight of every small gun?", "passage"],
+    ["Make a table of every small gun with its cost, weight and damage rating", "table"],
+    [
+      "Give me a table that contains each of the standard ranged weapons as a row. For each row give me single shot damage, ammo type and weapon skill",
+      "table",
+    ],
     ["What do all the chems cost?", "passage"],
   ] as [string, Kind][])("%s is a %s question", async (question, kind) => {
     expect((await readQuestion(client, question)).kind).toBe(kind);

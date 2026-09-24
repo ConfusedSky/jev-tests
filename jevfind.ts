@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { composeTable } from "./compose";
 import { answerLayer, num, parseFlags, READ_USAGE, readDefaults, readFlags, report, type ReadOpts } from "./cli";
 import { makeUi, searchPdf, textFile, type Candidate, type Hit, type Tried } from "./pdf";
 import { excerpts, type Excerpt } from "./search";
@@ -136,13 +137,10 @@ for (const r of ranked) {
   }
   opened++;
   // The answer budget spans files, so each file gets what the last one left.
-  const res = await searchPdf(
-    client,
-    r.name,
-    { ...search, maxAnswers: opts.maxAnswers - rejected.length, hits: opts.hits - hits.length },
-    ui,
-    "  ",
-  );
+  const res =
+    search.kind === "table"
+      ? await composeTable(client, r.name, search, ui, "  ")
+      : await searchPdf(client, r.name, { ...search, maxAnswers: opts.maxAnswers - rejected.length, hits: opts.hits - hits.length }, ui, "  ");
   tried.push(...res.tried);
   rejected.push(...res.rejected);
   dropped.push(...res.dropped);

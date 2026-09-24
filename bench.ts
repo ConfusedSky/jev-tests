@@ -14,13 +14,14 @@
  *   bun bench.ts --no-search  titles only, to see what the text search adds
  */
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
+import { composeTable } from "./compose";
 import { makeUi, searchPdf, type Outcome } from "./pdf";
 import { DEFAULT_MODEL, makeClient } from "./shared";
 
 type Case = {
   book: "heart" | "fallout" | "litm" | "cpr";
   question: string;
-  /** A count's true number, a statement's truth, a figure question's true answer text. */
+  /** A count's true number, a statement's truth, a figure question's true answer text; a built table scores as a passage. */
   truth: number | string;
   /** Strings a passage must contain, in this order. */
   contains?: string[];
@@ -133,6 +134,45 @@ const CASES: Case[] = [
     contains: ['"Combat Rifle","DAMAGE RATING":"5 CD"'],
     without: ["DAMAGE EFFECTS", "DAMAGE TYPE", "COST"],
   },
+  // A table asked for by name and no columns is the book's own, read as a
+  // passage even when jev takes it for one to be made.
+  {
+    book: "cpr",
+    question: "Show me the exotic weapons table (as a table request)",
+    truth: "passage",
+    opts: { kind: "table", question: "Show me the exotic weapons table" },
+    contains: ["Air Pistol", "100eb (Premium)", "Dartgun"],
+  },
+  // A column no table holds, stated under each gun's heading instead
+  // ("Ammunition: Flare"), picked by the entries' label for all of them.
+  {
+    book: "fallout",
+    question: "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, and Ammo Type",
+    truth: "passage",
+    contains: [
+      '".44 Pistol","Damage":"6 CD","Fire Rate":"1","Cost":"99","Ammo Type":".44 Magnum"}',
+      '"Flare Gun","Damage":"3 CD","Fire Rate":"0","Cost":"50","Ammo Type":"Flare"}',
+      '"Railway Rifle","Damage":"10 CD","Fire Rate":"0","Cost":"290","Ammo Type":"Railway Spike"}',
+    ],
+  },
+  // A table to the question's design: columns from p.95, the extended and
+  // drum sizes from p.345 matched by name, the ammo type read out of the
+  // standard magazine's cell, and a weapon p.345 lacks left N/A.
+  {
+    book: "cpr",
+    question:
+      "Give me a table that contains each of the standard ranged weapons as a row. For each row give me single shot damage, " +
+      "ammo type, weapon skill, rate of fire, standard magazine size, extended magazine size and drum magazine size",
+    truth: "passage",
+    contains: [
+      '{"Weapon Type":"Medium Pistol","single shot damage":"2d6","ammo type":"M Pistol"',
+      '"extended magazine size":"18","drum magazine size":"36"}',
+      '"Bows & Crossbows"',
+      '"extended magazine size":"N/A","drum magazine size":"N/A"}',
+      '"Rocket Launcher","single shot damage":"8d6","ammo type":"Rocket"',
+      '"drum magazine size":"3"}',
+    ],
+  },
 ];
 
 type Result = {
@@ -187,7 +227,7 @@ for (const c of picked) {
   let r: Outcome | undefined;
   try {
     const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, ...c.opts }, ui);
-    r = await searchPdf(client, pdf, opts, ui);
+    r = opts.kind === "table" ? await composeTable(client, pdf, opts, ui) : await searchPdf(client, pdf, opts, ui);
   } catch (e) {
     console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);
   }
