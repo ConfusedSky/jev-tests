@@ -10,6 +10,7 @@ directory) and have no tests. Run them from the repo root so Bun loads
 | `ranking/` | `rankexp.ts`: ranking prompt variants; `tier.ts`: full vs coarse-to-fine ranking; `simcache.ts`: the first 16-question jev similarity test | [token-usage.md](../docs/token-usage.md), [ranking-cache.md](../docs/ranking-cache.md) |
 | `ranking-cache/` | the 42-question similarity study | [ranking-cache.md](../docs/ranking-cache.md) |
 | `choice-ranking/` | ranking by one choice question: a patch and its comparison script | [choice-ranking.md](../docs/choice-ranking.md) |
+| `embed/` | page embeddings as a ranking shortlist and as a page check | [token-usage.md](../docs/token-usage.md), [dead-ends.md](../docs/dead-ends.md) |
 
 ## ranking-cache
 
@@ -45,3 +46,16 @@ variants; `PROBE=` prints the near-miss table), `grid.ts`, `sgrid.ts`
 `choice-ranking.patch` applies to commit 8416595 (`git apply`); it adds
 `rankChoice` to `shared.ts` and `rankPool` with a `JEV_CHOICE=1` flag to
 `pdf.ts`. `compare.ts` needs the patch applied.
+
+## embed
+
+`lib.ts` embeds every page of the four bench books through a running
+Ollama with `qwen3-embedding:4b` into `embed/cache/` (gitignored;
+`build.ts`, a few minutes a book). `evalA.ts` scores pages by embedding
+against the answer pages; `c2f.ts`, `c2f2.ts` compare shortlists for jev's
+ranking; `run42.ts`, `cmp42.ts` run the 42 ranking-cache questions both
+ways; `seed.ts` copies the vectors into the app's store
+(`~/.cache/jev/embeddings/`). `evalB.ts` (the page-check bars) reads the
+JSONL log that `embed-gate-and-rank.patch` writes under `JEV_GATE_LOG`;
+that patch applies to commit 7373c0a and holds the experimental flags
+(`JEV_EMBED_RANK`, `JEV_EMBED_GATE`).

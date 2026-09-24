@@ -42,3 +42,6 @@ experiments/ranking-cache/embs*/
 experiments/ranking-cache/.venv/
 # Worktrees agents make for isolated experiments.
 .claude/worktrees/
+
+# Page embeddings the embedding experiment writes; its scripts make them again.
+experiments/embed/cache/

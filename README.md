@@ -96,13 +96,23 @@ ranked 169 sections in 0.5s, 79 above title floor 1 (90 below)
   …
 ```
 
-An outline of more than 200 sections is ranked coarse to fine: its top two
-levels and the excerpts first, then only the sections under the best eight
-of those levels. Ranking costs a jev question per section, and all 1058 of
-Fallout's were most of a question's tokens; coarse to fine spent about 40%
-fewer tokens over the bench with the same scores, the section that answers
-still near the top. A shorter outline, or one the contents already
-confine, is ranked whole.
+An outline of more than 200 sections is not ranked whole: ranking costs a
+jev question per section, and all 1058 of Fallout's were most of a
+question's tokens. Every page of the book is embedded once
+(Qwen3-Embedding-4B through Ollama, kept in `~/.cache/jev/embeddings/`;
+the first question on a book says so and takes a few minutes), and jev
+ranks only the sections holding one of the 20 pages most like the question
+or one of the text search's pages:
+
+```
+ranked 99 of 1058 sections and 20 excerpts in 11.1s (…; 14,470 tokens in, …)
+```
+
+"How is radiation treated?" costs 27,958 tokens so, against 51,661 with
+the outline ranked coarse to fine, which is what happens without Ollama:
+the top two levels and the excerpts first, then only the sections under
+the best eight of those levels. A shorter outline, or one the contents
+already confine, is ranked whole. docs/token-usage.md has the measurements.
 
 ### The ranking cache
 
