@@ -150,8 +150,10 @@ Cells were the same in every run; drum and extended sizes still came from
 the p.345 clip chart (jev reads no such value from the cells).
 
 Built in `composeTable` (a column the rows' cells fill for at least half
-the rows, `OWN_SHARE`, is not searched for; what they give for a column
-still searched fills rows its table lacks). Against the code before it,
+the rows, `OWN_SHARE`, and at least two, `OWN_MIN`, is not searched for;
+what they give for a column still searched fills rows its table lacks).
+The accepted risk: such a column's value is the cells' reading even where
+another table holds the column, and rows the cells leave empty stay N/A. Against the code before it,
 both with the embedding shortlist:
 
 | table (CPR) | before | after |

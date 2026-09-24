@@ -103,7 +103,9 @@ $ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard rang
    label is the row's value, so every row reads the same line.
 4. A column still missing is read from each row's own cells, a choice
    among their pieces: "M Pistol" out of "12 (M Pistol)". A column the
-   cells fill for at least half the rows is not searched for.
+   cells fill for at least half the rows (and at least two) is not
+   searched for: the cells are trusted over a table no search looked for,
+   and rows they leave empty stay N/A.
 5. Each column still missing gets a search of its own, collecting up to
    three passages; every table those find is offered for every missing
    column, since the extended sizes' search may find the drum sizes too.
@@ -148,5 +150,5 @@ marked on the page it came from. A table request that names no columns
 passage. Piped, a row is a line of JSON; `--tsv` prints heads and rows
 tab-separated, for a built table and a passage's table alike, with the link
 on stderr so stdout is the table alone. A table found but with no column
-for any row is not an answer: it prints as the best found and exits 1. The full
-request takes about twenty seconds, most of it the column searches.
+for any row is not an answer: it prints as the best found and exits 1. Most of a
+table's time and tokens go to the column searches it still needs.
