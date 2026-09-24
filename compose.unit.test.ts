@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { deriveCells, entriesOf, entryPieces, labelsFor, matchRows, piecesOf, readRequest, sameNames, tablesIn, type Found } from "./compose";
+import { deriveCells, entriesOf, entryPieces, labelsFor, matchRows, pickTable, piecesOf, readRequest, sameNames, tablesIn, type Found } from "./compose";
 import type { Para } from "./layout";
 import type { Hit } from "./pdf";
 
@@ -38,6 +38,32 @@ describe("tablesIn", () => {
     expect(t!.heads).toBe(heads);
     expect(t!.rows.map((r) => r.cells[0])).toEqual(["Medium Pistol", "Shotgun"]);
   });
+
+  test("a heading between rows of the same heads starts another table; the ellipsis between two runs of one does not", () => {
+    const tables = tablesIn(
+      hit([
+        row(["Medium Pistol", "12 (M Pistol)", "50eb"]),
+        { heading: false, text: "…", style: " ", lines: [] },
+        row(["Shotgun", "4 (Slug)", "500eb"]),
+        { heading: true, text: "Exotic Weapons", style: "", lines: [] },
+        row(["Air Pistol", "N/A", "100eb"]),
+      ]),
+    );
+    expect(tables.map((t) => t.rows.map((r) => r.cells[0]))).toEqual([["Medium Pistol", "Shotgun"], ["Air Pistol"]]);
+  });
+});
+
+describe("pickTable", () => {
+  test("of several tables, takes the one jev says has a row for each of the things", async () => {
+    const [ammo, guns] = [
+      { heads: ["Ammo", "Cost"], rows: [{ cells: ["Slug", "10eb"], lines: [] }], hit: hit([]) },
+      { heads: ["Gun", "Cost"], rows: [{ cells: ["Shotgun", "500eb"], lines: [] }], hit: hit([]) },
+    ];
+    let offered = "";
+    const client = stub((_, q) => ((offered = JSON.stringify(q.criteria)), picked("t1")));
+    expect(await pickTable(client, "q", "guns", [ammo, guns])).toBe(guns);
+    expect(offered).toContain('with rows such as \\"Shotgun\\"');
+  });
 });
 
 describe("sameNames", () => {
@@ -47,6 +73,13 @@ describe("sameNames", () => {
 });
 
 describe("piecesOf", () => {
+  test("the same text in two cells is offered for each, so a pick is marked on its own cell", () => {
+    expect(piecesOf(["1", "1"])).toEqual([
+      { text: "1", cell: 0 },
+      { text: "1", cell: 1 },
+    ]);
+  });
+
   test("offers each cell whole, around and inside its brackets, and between its bullets", () => {
     expect(piecesOf(["12 (M Pistol)", "Autofire (3) • Suppressive Fire"])).toEqual([
       { text: "12 (M Pistol)", cell: 0 },
@@ -70,6 +103,11 @@ describe("readRequest", () => {
     const rows = ["each", "standard", "ranged", "weapons"].includes(word) && i < 8;
     const cols = ["rate", "fire", "standard", "magazine", "size", "ammo", "type"].includes(word);
     return { type: "noul", noul: (key[0] === "r" ? rows : cols) ? 0.9 : 0.1 };
+  });
+
+  test("with no word naming the rows, there are none, and every column word stays a column", async () => {
+    const none = stub((key) => ({ type: "noul", noul: key[0] === "c" && key !== "c0" ? 0.9 : 0.1 }));
+    expect(await readRequest(none, "Columns damage, cost")).toEqual({ things: "", columns: ["damage", "cost"] });
   });
 
   test("the rows are the first name, without its each; its words are not columns; an of between column words stays", async () => {
@@ -116,7 +154,10 @@ describe("deriveCells", () => {
   test("reads a value from a piece of the row's own cells, marked on that cell, keyed by row and column; none leaves it out", async () => {
     // Picks the bracketed piece for the pistol, and none for the launcher.
     const client = stub((key) => picked(key === "a0" ? "p2" : "none"));
-    const d = await deriveCells(client, "q", ours, [{ column: "ammo type", j: 4 }]);
+    const d = await deriveCells(client, "q", ours, [
+      { row: 0, j: 4, column: "ammo type" },
+      { row: 1, j: 4, column: "ammo type" },
+    ]);
     expect([...d.entries()]).toEqual([["0 4", { text: "M Pistol", from: "12 (M Pistol)", lines: [box(1)] }]]);
   });
 });

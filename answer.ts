@@ -28,7 +28,7 @@ export type Reading = { kind: Kind; quantities: string[]; counted: string; subje
 
 export type Word = { word: string; ends: boolean };
 
-/** A question's words, punctuation off, each marking whether a comma or semicolon ends it. */
+/** A question's words, punctuation off, each marking whether a comma, semicolon or full stop ends it. */
 export const wordsOf = (question: string): Word[] =>
   question
     .split(/\s+/)
@@ -36,7 +36,8 @@ export const wordsOf = (question: string): Word[] =>
     .filter((w) => w.word);
 
 /**
- * Adjacent words that passed form one name, and a comma ends a name. With
+ * Adjacent words that passed form one name, and a comma, semicolon or full
+ * stop ends a name. With
  * `of`, an "of" between two words that passed stays in it: a quantity or a
  * column is "rate of fire", but a subject is searched for, and "type of
  * magazine" found no page where "type" and "magazine" did.
@@ -714,8 +715,8 @@ export async function columnsFor(client: TypeSafeClient, question: string, quant
     tables.flatMap((heads, t) =>
       quantities.map((q, i) => [
         key(t, i),
-        // "That very thing": asked plainly, "drum magazine size" took the
-        // Standard Magazine column about half the time.
+        // "That very thing": asked plainly, a column of something like the
+        // quantity passed for it, Standard Magazine for a drum magazine size.
         choice(`Which column of the table holds the ${q} \`question\` asks for, that very thing and not something like it?`, {
           ...Object.fromEntries(heads.flatMap((h, c) => (c > 0 && h ? [[`c${c}`, `The column headed "${h}"`]] : []))),
           none: `No column holds the ${q} itself; a column of something like it does not count`,
