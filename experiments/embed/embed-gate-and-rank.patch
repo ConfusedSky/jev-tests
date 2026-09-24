@@ -1,0 +1,269 @@
+diff --git a/.gitignore b/.gitignore
+index 8176234..0217481 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -42,3 +42,6 @@ experiments/ranking-cache/embs*/
+ experiments/ranking-cache/.venv/
+ # Worktrees agents make for isolated experiments.
+ .claude/worktrees/
++
++# Page embeddings the embedding experiment writes; build.ts makes them again.
++experiments/embed/cache/
+diff --git a/embed.test.ts b/embed.test.ts
+new file mode 100644
+index 0000000..c11b974
+--- /dev/null
++++ b/embed.test.ts
+@@ -0,0 +1,34 @@
++import { expect, test } from "bun:test";
++import { mkdtemp } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { chunks, pageSim } from "./embed";
++
++test("a page over the chunk size is cut into equal parts, and an empty page into none", () => {
++  expect(chunks("  a \n b ")).toEqual(["a b"]);
++  expect(chunks(" \n ")).toEqual([]);
++  const parts = chunks("x".repeat(13000));
++  expect(parts.map((p) => p.length)).toEqual([4334, 4334, 4332]);
++});
++
++test("pages are embedded once and scored by their best chunk", async () => {
++  const dir = await mkdtemp(`${tmpdir()}/jev-embed-`);
++  let embedded = 0;
++  // The question points along x; a page's chunk "y…" along y.
++  const embed = async (texts: string[]) => {
++    embedded += texts.length;
++    return texts.map((t) => (t.startsWith("Instruct") ? [1, 0] : t.startsWith("y") ? [0, 1] : [1, 1]));
++  };
++  const sim = pageSim("fixture/catalogue.pdf", "q", dir, embed);
++  const pages = [
++    { page: 1, text: "yes" },
++    { page: 2, text: `${"a".repeat(5000)}${"y".repeat(7000)}` },
++    { page: 3, text: "" },
++  ];
++  const cos = await sim(pages);
++  expect(cos[0]).toBeCloseTo(0);
++  expect(cos[1]).toBeCloseTo(Math.SQRT1_2);
++  expect(cos[2]).toBe(-1);
++  const before = embedded;
++  await pageSim("fixture/catalogue.pdf", "q", dir, embed)(pages);
++  expect(embedded - before).toBe(1); // only the new question
++});
+diff --git a/embed.ts b/embed.ts
+new file mode 100644
+index 0000000..46daf42
+--- /dev/null
++++ b/embed.ts
+@@ -0,0 +1,65 @@
++/**
++ * Page embeddings for JEV_EMBED_GATE and JEV_EMBED_RANK (see pdf.ts): each
++ * page is embedded once, the first time a walk needs it, and kept on disk
++ * per book. The bars were measured with this chunking and prefix; change
++ * either and remeasure (experiments/embed/).
++ */
++import { mkdir } from "node:fs/promises";
++import { bookKey, CACHE_MODELS, embedder, type Embed } from "./cache";
++
++const PREFIX = "Instruct: Given a question about a tabletop rulebook, retrieve the rulebook page that answers it\nQuery: ";
++const CHUNK = 6000;
++
++/** A page's text, whitespace collapsed, in equal chunks of at most CHUNK characters; the page scores its best chunk. */
++export function chunks(text: string): string[] {
++  const t = text.replace(/\s+/g, " ").trim();
++  if (!t) return [];
++  if (t.length <= CHUNK) return [t];
++  const n = Math.ceil(t.length / CHUNK);
++  const size = Math.ceil(t.length / n);
++  return Array.from({ length: n }, (_, i) => t.slice(i * size, (i + 1) * size));
++}
++
++const unit = (v: number[]) => {
++  const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
++  return v.map((x) => x / n);
++};
++const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i]!, 0);
++
++type Store = Record<string, number[][]>;
++/** Each book's page vectors, read from disk once a process. */
++const stores = new Map<string, Promise<Store>>();
++
++export type PageSim =(pages: { page: number; text: string }[]) => Promise<number[]>;
++
++/** Cosine of each page to `question`, embedding pages the book's store lacks and saving them. */
++export function pageSim(pdf: string, question: string, dir: string, embed: Embed = embedder(CACHE_MODELS["qwen3-4b"]!)): PageSim {
++  const file = `${dir}/${bookKey(pdf)}-pages-qwen3-4b.json`;
++  let q: Promise<number[]> | undefined;
++  const read = async () => {
++    const f = Bun.file(file);
++    return (await f.exists()) ? ((await f.json()) as Store) : {};
++  };
++  return async (pages) => {
++    q ??= embed([PREFIX + question]).then(([v]) => unit(v!));
++    let loading = stores.get(file);
++    if (!loading) stores.set(file, (loading = read()));
++    const store = await loading;
++    const missing = pages.filter((p) => !store[p.page]);
++    if (missing.length) {
++      const texts = missing.map((p) => chunks(p.text));
++      const flat = texts.flat();
++      const vecs: number[][] = [];
++      for (let i = 0; i < flat.length; i += 8) vecs.push(...(await embed(flat.slice(i, i + 8))).map(unit));
++      let at = 0;
++      missing.forEach((p, i) => (store[p.page] = texts[i]!.map(() => vecs[at++]!)));
++      // Merged with the file as it is now, so another process's pages survive.
++      Object.assign(store, { ...(await read()), ...store });
++      await mkdir(dir, { recursive: true });
++      await Bun.write(file, JSON.stringify(store));
++    }
++    const qv = await q;
++    // A page with no text scores as unlike anything.
++    return pages.map((p) => Math.max(-1, ...store[p.page]!.map((v) => dot(qv, v))));
++  };
++}
+diff --git a/pdf.ts b/pdf.ts
+index dceaf18..a8ffa20 100644
+--- a/pdf.ts
++++ b/pdf.ts
+@@ -1,9 +1,11 @@
+ import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
++import { appendFileSync } from "node:fs";
+ import { rename } from "node:fs/promises";
+ import { resolve } from "node:path";
+-import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
++import { rank, secs, snapshot, split, timed, tokens, type List, type Ranked } from "./shared";
+ import type { RankingCache } from "./cache";
+ import { excerpts, type Term } from "./search";
++import { pageSim } from "./embed";
+ import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
+ import type { Box } from "./layout";
+ 
+@@ -360,8 +362,45 @@ export async function searchPdf(
+   const counted: string[] = [];
+ 
+   const gate = o.gate ?? GATE.answer;
++  const gateLog = (rec: Record<string, unknown>) => process.env.JEV_GATE_LOG && appendFileSync(process.env.JEV_GATE_LOG, `${JSON.stringify({ q: o.question, pdf, ...rec })}\n`);
+   type Passed = { w: Window; p: number; nouls: number[]; label: string };
+ 
++  const embedSim = pageSim(pdf, o.question, `${cacheDir()}/embeddings`);
++  // JEV_EMBED_GATE=1: a page whose embedding scores under JEV_EMBED_LOW
++  // against the question is a no without asking jev (in the sample no page
++  // jev passed scored under 0.33). JEV_EMBED_HIGH passes a page without asking, never for a claim, whose
++  // verdict is read off the gate's own nouls.
++  const embedGate =
++    process.env.JEV_EMBED_GATE === "1"
++      ? {
++          low: Number(process.env.JEV_EMBED_LOW ?? 0.3),
++          high: gate === GATE.claim ? Infinity : Number(process.env.JEV_EMBED_HIGH ?? Infinity),
++          on: true,
++        }
++      : undefined;
++  /** askPages, with the pages the embedding settles left out of the call. */
++  const gatePages = async (name: string, group: Window[]): Promise<number[][]> => {
++    if (!embedGate?.on) return askPages(client, o.question, name, group, gate);
++    let cos: number[];
++    try {
++      cos = await embedSim(group);
++    } catch (e) {
++      // Without Ollama the gate is jev's alone, as it was.
++      embedGate.on = false;
++      ui.log(`${indent}  embedding gate off: ${e instanceof Error ? e.message : e}`);
++      return askPages(client, o.question, name, group, gate);
++    }
++    const n = gate("").length;
++    const ask = group.filter((_, i) => cos[i]! >= embedGate.low && cos[i]! < embedGate.high);
++    const asked = ask.length ? await askPages(client, o.question, name, ask, gate) : [];
++    return group.map((w, i) => {
++      gateLog({ ev: "embed", name, page: w.page, cos: cos[i] });
++      if (cos[i]! < embedGate.low) return Array<number>(n).fill(0);
++      if (cos[i]! >= embedGate.high) return Array<number>(n).fill(o.threshold);
++      return asked[ask.indexOf(w)]!;
++    });
++  };
++
+   /**
+    * The windows worth reading out, best first. Whole windows are gated one at
+    * a time and stop at the first yes. Pages are gated a batch at a time, each
+@@ -376,6 +415,7 @@ export async function searchPdf(
+         const nouls = await askWindow(client, o.question, name, w.text, gate);
+         const p = Math.max(...nouls);
+         tried.push({ name, page: w.page, p });
++        gateLog({ ev: "gate", name, page: w.page, end: w.end, p, len: w.text.length });
+         ui.clear();
+         const yes = p >= o.threshold;
+         ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label(w, i)}`);
+@@ -389,11 +429,14 @@ export async function searchPdf(
+       const batch = `batch ${g + 1}/${groups.length}`;
+       ui.trying(`${name} ${group.length} pages (${batch})`);
+       const t = Date.now();
+-      const ps = await timed("api", () => askPages(client, o.question, name, group, gate));
++      const before = tokens.in;
++      const ps = await timed("api", () => gatePages(name, group));
++      gateLog({ ev: "call", name, tokens: tokens.in - before, pages: group.map((w) => w.page), lens: group.map((w) => w.text.length) });
+       ui.clear();
+       const scored = group.map((w, j) => ({ w, p: Math.max(...ps[j]!), nouls: ps[j]!, label: label(w, i + j) }));
+       i += group.length;
+       for (const { w, p } of scored) tried.push({ name, page: w.page, p });
++      for (const { w, p } of scored) gateLog({ ev: "gate", name, page: w.page, end: w.end, p, len: w.text.length, batch: group.length });
+       const yes = scored.filter((s) => s.p >= o.threshold).sort((a, b) => b.p - a.p);
+       ui.log(`${indent}  gated ${group.length} pages (${batch}), ${secs(Date.now() - t)} jev, ${yes.length} yes  ${name}`);
+       for (const s of scored) ui.log(`${indent}  ${s.p >= o.threshold ? "yes" : "no "}  ${s.p.toFixed(2)}  ${s.label}`);
+@@ -434,6 +477,7 @@ export async function searchPdf(
+     }
+     // A passage is lines of text; the log gets its first line, cut short.
+     const shown = answer.text.includes("\n") || answer.text.length > 60 ? `${answer.text.split("\n")[0]!.slice(0, 57)}…` : answer.text;
++    gateLog({ ev: "settle", name, page: w.page, hitPage: hit.page, p, verdict, answerP: answer.p });
+     ui.log(`${indent}  ${verdict}  ${shown} (p=${answer.p.toFixed(2)})  ${label}`);
+     if (verdict === "take") return { ...hit, answer };
+     (verdict === "keep" ? rejected : dropped).push({ hit, answer });
+@@ -504,6 +548,25 @@ export async function searchPdf(
+     const second = under.length ? await rank(client, o.question, lists(under, false), o.batch) : [];
+     return [...first, ...second].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+   };
++  /**
++   * JEV_EMBED_RANK=1: jev ranks only the sections holding one of the
++   * JEV_EMBED_PAGES pages most like the question by embedding, and the
++   * excerpts. Every page of the book is embedded the first time.
++   */
++  const rankByPages = async (): Promise<Ranked[]> => {
++    try {
++      const pages = (await bookText(pdf)).map((text, i) => ({ page: i + 1, text }));
++      const cos = await embedSim(pages);
++      const best = pages.map((p, i) => ({ page: p.page, c: cos[i]! })).sort((a, b) => b.c - a.c).slice(0, Number(process.env.JEV_EMBED_PAGES ?? 20));
++      // The excerpts' pages too: Fallout's RadAway page ranks 43rd by
++      // embedding for "How is radiation treated?", but the text search finds it.
++      const top = [...best.map((b) => b.page), ...ex.map((e) => e.page)];
++      return await rank(client, o.question, lists(pool.filter((s) => top.some((p) => p >= s.start && p <= s.end)), true), o.batch);
++    } catch (e) {
++      ui.log(`${indent}  embedding ranking off: ${e instanceof Error ? e.message : e}`);
++      return rankTiered();
++    }
++  };
+   const lists = (of: Section[], withEx: boolean): List[] => [
+     // The titles stay under `candidates`: as `sections`, Fallout's perk list
+     // ranked its child bookmark above the chapter itself, every run.
+@@ -515,10 +578,11 @@ export async function searchPdf(
+     : pool.length + ex.length === 0
+       ? []
+       : !confined && pool.length > TIER_MIN
+-        ? await rankTiered()
++        ? await (process.env.JEV_EMBED_RANK === "1" ? rankByPages() : rankTiered())
+         : await rank(client, o.question, lists(pool, true), o.batch);
+   // --max bounds the sections read; the excerpts are bounded by their own
+   // limit, or a spread of twenty pages would push a section out of reach.
++  gateLog({ ev: "rank", tokens: tokens.in - rankSnap.in, ms: Date.now() - rankSnap.at, n: pool.length + ex.length, top: all.slice(0, 20).map((r) => (r.list === "excerpts" ? `p.${ex[r.index]!.page}` : r.name)) });
+   let sectionsLeft = o.max;
+   const ranked = all.filter((r) => r.list === "excerpts" || sectionsLeft-- > 0);
+   const above = all.filter((r) => r.list === "candidates" && r.score >= floor).length;
+@@ -600,9 +664,11 @@ export async function searchPdf(
+     const todo = [...new Set(ranked.filter((r) => r.list === "excerpts").map((r) => ex[r.index]!.page))].filter((p) => !readPages.has(p));
+     const groups = batches(todo.map((page) => ({ page, end: page, text: pages[page - 1]! })), o.chars);
+     const gateSnap = snapshot();
+-    const res = await timed("api", () => Promise.all(groups.map((g) => askPages(client, o.question, pdf.split("/").pop()!, g, gate))));
++    const res = await timed("api", () => Promise.all(groups.map((g) => gatePages(pdf.split("/").pop()!, g))));
++    gateLog({ ev: "call", name: "excerpt", tokens: tokens.in - gateSnap.in, pages: groups.flat().map((w) => w.page), lens: groups.flat().map((w) => w.text.length) });
+     // A step of its own between sections; each excerpt it passes is read as one after it.
+     ui.log(`${indent}excerpts: gated ${todo.length} pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"})  in ${split(gateSnap)}`);
++    groups.forEach((g, i) => g.forEach((w, j) => gateLog({ ev: "gate", name: "excerpt", page: w.page, end: w.page, p: Math.max(...res[i]![j]!), len: w.text.length, batch: g.length })));
+     return new Map(groups.flatMap((g, i) => g.map((w, j) => [w.page, { w, p: Math.max(...res[i]![j]!), nouls: res[i]![j]! }] as const)));
+   };
+ 

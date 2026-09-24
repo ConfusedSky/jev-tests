@@ -84,10 +84,30 @@ replaced them. Numbers are from the runs at the time (September 2026).
 - **Parallel column searches** shared one token counter, so each section's
   count included the other search's calls. They run one at a time.
 
+## Embeddings in place of jev
+
+- **Ranking pages by embedding alone** (no jev ranking): the answer page in
+  the top 1 for 9–12 of 23 bench questions against jev's 17 of 19; Heart's
+  class list 101st, RadAway 43rd. Kept only as a shortlist for jev
+  (docs/token-usage.md).
+- **Embedding bars on the page check** (drop a page below a low bar, pass
+  one above a high bar without asking jev). On 1,666 checked pages from 60
+  questions: a low bar of 0.30 drops 141 pages (8% of check tokens) and no
+  page jev passed; 0.32 drops 11% safely; 0.35 loses an answer page
+  (Lockpick p.376 at 0.335). No high bar is usable: jev said no to pages up
+  to 0.77 (T-60 armour p.144 at 0.771); at 0.70, 16 of 50 kept pages were
+  jev no. Bars relative to a book's best page, or by rank, did worse. The
+  page check is ~18% of bench tokens, so the safe bar saves 2–4% of a run,
+  embedding pages as they are checked slowed a CPR table from 28 s to 98 s,
+  and dropping pages changed jev's scores within a batch (the magazine
+  page failed 3 of 3). Not built; `experiments/embed/embed-gate-and-rank.patch`
+  holds it (`JEV_EMBED_GATE`) with the logging used to measure it.
+
 ## Known flaky, not fixed
 
 - CPR "How much do each type of magazine cost?": p.344 gates between 0.61 and
   0.72 against the 0.7 threshold, so some runs find no page or take the
   ammunition page (p.346).
-- CPR "How many skills are there in the game?" counts 50–61 of 66 run to
-  run.
+- CPR "How many skills are there in the game?" counts 32–61 of 66 run to
+  run under either ranking, and once 86 when the contents step did not
+  confine the walk.

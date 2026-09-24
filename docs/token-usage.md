@@ -24,7 +24,53 @@ Reading a section costs ~1,300–13,000 tokens; reading the question 1,600–9,5
 (it grows with its words: four nouls per word); a table request reads its
 words again for rows and columns (~7,600–9,300).
 
-## Adopted: coarse-to-fine ranking (commit 8416595)
+## Adopted: page embeddings pick the sections jev ranks (commit 0e90d1d)
+
+On an outline of more than 200 sections that the contents do not
+confine, every page is embedded once (Qwen3-Embedding-4B Q4 through
+Ollama; whitespace collapsed, pages cut into equal chunks of at most 6,000
+characters, a page scoring its best chunk; query prefix "Instruct: Given a
+question about a tabletop rulebook, retrieve the rulebook page that answers
+it"). jev then ranks only the sections holding one of the 20 pages most
+like the question, and the text search's excerpt pages (`rankByPages`,
+`sectionsHolding` in `pdf.ts`; `embed.ts`). Without Ollama it falls back
+to coarse-to-fine. Scripts: `experiments/embed/`.
+
+Embeddings alone do not rank well enough to replace jev. Bench questions
+with a known answer page, answer page in the top 1 / 3 / 5 / 12:
+
+| method | @1 | @3 | @5 | @12 |
+| --- | --- | --- | --- | --- |
+| page text by embedding (23 questions) | 9 | 14 | 15 | 19 |
+| section path + page | 9 | 15 | 16 | 19 |
+| section title + page | 12 | 14 | 17 | 20 |
+| jev section ranking (19 it ranks) | 17 | 19 | 19 | 19 |
+
+Heart's class list came 101st by embedding, Fallout's RadAway p.171 43rd,
+Legend in the Mist's tropes 34th. As a shortlist they work:
+
+| shortlist for jev to rank | answer section kept | mean sections |
+| --- | --- | --- |
+| sections holding the best 20 pages | 51/52 (missed RadAway) | 55 |
+| … plus the excerpts' pages (adopted) | 52/52 | |
+| sections under the best 8 depth-2 sections by page | 51/52 | 104 |
+
+- Ranking on Fallout or CPR: ~44–45k tokens → ~12k (−73%).
+- "How is radiation treated?": 51,661 → 27,958 tokens, same RadAway page,
+  4 of 4 runs.
+- On the 42 ranking-cache questions: 3.03M → 1.83M tokens (−40%); answers
+  the same or a neighbouring page of the same topic (death saves p.223 vs
+  p.189); "damage of every ranged weapon" now finds the weapon table p.342
+  and "List all the skills" p.85, which it missed.
+- Full bench (saved run on 0e90d1d): 2.23M tokens against 2.42M with
+  coarse-to-fine; the agent's four runs gave 2.05–2.24M against 2.43–2.61M.
+  Scores equal but for the known flaky cases (the magazine page check; CPR's
+  skill count, 76–92% with the shortlist and 48–92% coarse to fine).
+- Cost: embedding a book's pages took ~0.5 s a page on a GPU shared with
+  another project (Heart 110 s, Legend in the Mist 260 s, CPR 280 s,
+  Fallout 200 s), once per book; a question's embedding ~250 ms.
+
+## Adopted before it: coarse-to-fine ranking (commit 8416595), now the fallback without Ollama
 
 An outline of more than 200 sections (`TIER_MIN`) that the contents do not
 confine is ranked by its top two levels and the excerpts first, then only
