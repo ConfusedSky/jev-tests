@@ -4,11 +4,11 @@
  * rows and whatever columns their table holds come from one passage search
  * for the rows' table, asked without the columns, which no one page holds;
  * a column still missing is read from each row's own entry on the pages
- * after the table ("Ammunition: .44 Magnum" under ".44 PISTOL"), then
- * searched for as a table of its own, whose rows are matched to ours by
- * name; a value none of those hold is read from our row's own cells ("M
- * Pistol" out of "12 (M Pistol)"), and anything left is N/A. The result
- * is a passage of table rows, so it prints, pipes and highlights as one.
+ * after the table ("Ammunition: .44 Magnum" under ".44 PISTOL"), then from
+ * the row's own cells ("M Pistol" out of "12 (M Pistol)"), and only when
+ * they leave most rows empty searched for as a table of its own, whose rows
+ * are matched to ours by name; anything left is N/A. The result is a
+ * passage of table rows, so it prints, pipes and highlights as one.
  */
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { columnsFor, normalize, singular, STOPWORDS, wordsOf, type Answer, type Reading, type Word } from "./answer";
@@ -26,6 +26,8 @@ const COLUMN_HITS = 3;
 
 /** The share of rows a column's own cells must fill for the column not to be searched for. */
 const OWN_SHARE = 0.5;
+/** Nor fewer rows than this, so one row's pick does not decide a column of a longer table. */
+const OWN_MIN = 2;
 
 /** Pages from the rows' table on that are read for an entry per row. */
 const ENTRY_PAGES = 8;
@@ -267,13 +269,17 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
 }
 
 /** A search for a passage, its question and reading set here rather than asked of jev. */
-async function passageSearch(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent: string, question: string, subject: string[], hits = 1): Promise<Outcome> {
+async function passageSearch(io: Io, client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent: string, question: string, subject: string[], hits = 1): Promise<Outcome> {
   const read: Reading = { kind: "passage", quantities: [], counted: "", subject, game: o.reading?.game ?? [] };
-  const search = await answerLayer(client, { ...o, question, kind: "passage", hits, highlight: false }, { ...ui, log: () => {} }, read);
-  return searchPdf(client, pdf, search, ui, indent);
+  const search = await io.answerLayer(client, { ...o, question, kind: "passage", hits, highlight: false }, { ...ui, log: () => {} }, read);
+  return io.searchPdf(client, pdf, search, ui, indent);
 }
 
-export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent = ""): Promise<Outcome> {
+/** What composeTable reads the book through; a test passes its own. */
+export type Io = { answerLayer: typeof answerLayer; searchPdf: typeof searchPdf; pageCount: typeof pageCount; pageParagraphs: typeof pageParagraphs };
+const IO: Io = { answerLayer, searchPdf, pageCount, pageParagraphs };
+
+export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent = "", io: Io = IO): Promise<Outcome> {
   // Each step says what it took and spent. One with lines of its own names
   // itself first and sums up after them, so what is indented under it is
   // part of its sum. Several columns' lookups run side by side on one count
@@ -294,11 +300,11 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   // table kind reads a page as a passage does, so the search runs as one.
   if (columns.length === 0 || !things) {
     ui.log(`${indent}${columns.length ? "no rows" : "no columns"} named; read as a passage`);
-    return searchPdf(client, pdf, o, ui, indent);
+    return io.searchPdf(client, pdf, o, ui, indent);
   }
   ui.log(`${indent}table of ${things}: ${columns.join(", ")}${add ? `, ${add} beside each ${annotated.map((j) => columns[j]).join(", ")} item` : ""}  in ${took()}`);
   begin(`rows: finding the table of ${things}`);
-  const main = await passageSearch(client, pdf, o, ui, `${indent}  `, `Show me the table of all the ${things}`, [things]);
+  const main = await passageSearch(io, client, pdf, o, ui, `${indent}  `, `Show me the table of all the ${things}`, [things]);
   const first = main.hit && tablesIn(main.hit);
   if (!main.hit || !first?.length) {
     ui.log(`${indent}no table of ${things} found  in ${took()}`);
@@ -335,8 +341,8 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   let near: Promise<{ to: number; paras: Para[] }> | undefined;
   const nearby = () =>
     (near ??= (async () => {
-      const to = Math.min(await pageCount(pdf), from + ENTRY_PAGES);
-      return { to, paras: (await Promise.all(Array.from({ length: to - from + 1 }, (_, k) => pageParagraphs(pdf, from + k)))).flat() };
+      const to = Math.min(await io.pageCount(pdf), from + ENTRY_PAGES);
+      return { to, paras: (await Promise.all(Array.from({ length: to - from + 1 }, (_, k) => io.pageParagraphs(pdf, from + k)))).flat() };
     })());
   if (unplaced().length) {
     const { to, paras } = await nearby();
@@ -358,11 +364,12 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     ui.log(`${indent}entries: ${entries.size} of ${names.length} ${things} on p.${from}-${to}, ${count(byEntry.size, "column")} from them  in ${took()}`);
   }
 
-  // A column the rows' own cells state for most rows is read from them
-  // before any search: CPR's ammo type sits in each "12 (M Pistol)", and
-  // its search spent more than the rest of the table and found no table.
-  // What they give for a column still searched fills the rows its table
-  // lacks, so no cell is asked of the rows twice.
+  // A column the rows' own cells state for most rows is read from them and
+  // not searched for: a search walks sections a page at a time, and CPR's
+  // ammo type sits in each row's "12 (M Pistol)" in no other table. The
+  // cells are trusted over a table no search looked for, and rows they
+  // leave empty stay N/A. What they give for a column still searched fills
+  // the rows its table lacks, so no cell is asked of the rows twice.
   const own = new Map<string, Piece>();
   const fromOwn = new Set<number>();
   const askOwn = unplaced().filter((j) => !byEntry.has(j));
@@ -370,7 +377,6 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     for (const [k, v] of await deriveCells(client, o.question, ours, names.flatMap((_, i) => askOwn.map((j) => ({ row: i, j, column: columns[j]! })))))
       own.set(k, v);
     for (const j of mostlyFilled(own, names.length, askOwn)) fromOwn.add(j);
-    for (const j of fromOwn) for (const [i] of names.entries()) if (own.has(`${i} ${j}`)) read.set(`${i} ${j}`, own.get(`${i} ${j}`)!);
     ui.log(`${indent}rows' own cells: ${fromOwn.size ? [...fromOwn].map((j) => columns[j]).join(", ") : `none of ${count(askOwn.length, "column")}`} for most rows  in ${took()}`);
   }
 
@@ -385,7 +391,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     ui.log(`${indent}  ${columns[j]}: searching…`);
     // A column's first passage is often the rows' own table again, which
     // lacks it; the drum sizes stand two pages on, in the clip chart.
-    const r = await passageSearch(client, pdf, o, ui, `${indent}    `, q, [columns[j]!], COLUMN_HITS);
+    const r = await passageSearch(io, client, pdf, o, ui, `${indent}    `, q, [columns[j]!], COLUMN_HITS);
     tried.push(...r.tried);
     // A table two searches both found is offered once.
     const same = (a: Found, b: Found) => a.heads.join("\t") === b.heads.join("\t") && a.rows[0]?.cells[0] === b.rows[0]?.cells[0];
@@ -398,7 +404,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   }
   // A column's own search may land elsewhere while another's found its
   // table: the drum magazine column stands beside the extended one.
-  const still = unplaced().filter((j) => !byEntry.has(j));
+  const still = missing.filter((j) => !sources[j]);
   const others = seen.filter((t) => !first.includes(t));
   if (still.length && others.length) {
     const pooling = snapshot();
@@ -430,7 +436,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   // A cell the rows were already asked for is not asked again.
   const gaps = names.flatMap((_, i) => columns.flatMap((column, j) => (read.has(`${i} ${j}`) || askOwn.includes(j) ? [] : [{ row: i, j, column }])));
   for (const [k, v] of await deriveCells(client, o.question, ours, gaps)) read.set(k, v);
-  ui.log(`${indent}cells: ${read.size} of ${names.length * columns.length} filled, ${count(matches.size, "other table")} matched by row, ${count(gaps.length, "gap")} looked for in the rows' own cells  in ${took()}`);
+  ui.log(`${indent}cells: ${read.size} of ${names.length * columns.length} filled, ${count(matches.size, "other table")} matched by row, ${count(gaps.length, "gap")} left to the rows' own cells  in ${took()}`);
   if (read.size === 0) ui.log(`${indent}no column found for any ${things}`);
 
   if (add && annotated.length) {
@@ -599,9 +605,8 @@ export async function matchRows(client: TypeSafeClient, question: string, names:
 }
 
 /**
- * Values read from a row's own cells where nothing else gave one: for each
- * gap, one choice among the pieces of the row's other cells, or none.
- * Keyed "row column".
+ * Values read from a row's own cells: for each gap, one choice among the
+ * pieces of the row's other cells, or none. Keyed "row column".
  */
 export async function deriveCells(client: TypeSafeClient, question: string, ours: Found, gaps: { row: number; j: number; column: string }[]): Promise<Map<string, Piece>> {
   const asks = gaps.flatMap(({ row: i, j, column }) => {
@@ -631,9 +636,10 @@ export async function pickTable(client: TypeSafeClient, question: string, things
   return tables[Number((res.answers.table as { choice: string }).choice.slice(1))] ?? tables[0]!;
 }
 
-/** Of `columns`, those `cells` (keyed "row column") fill for at least OWN_SHARE of `rows` rows. */
+/** Of `columns`, those `cells` (keyed "row column") fill for at least OWN_SHARE of `rows` rows, and at least OWN_MIN of them. */
 export function mostlyFilled(cells: Map<string, unknown>, rows: number, columns: number[]): number[] {
-  return columns.filter((j) => Array.from({ length: rows }, (_, i) => cells.has(`${i} ${j}`)).filter(Boolean).length >= rows * OWN_SHARE);
+  const need = Math.max(Math.min(rows, OWN_MIN), rows * OWN_SHARE);
+  return columns.filter((j) => Array.from({ length: rows }, (_, i) => cells.has(`${i} ${j}`)).filter(Boolean).length >= need);
 }
 
 /** For each ask, the piece it picks, or none; all in one call, keyed by the ask's key. */

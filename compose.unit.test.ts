@@ -327,4 +327,10 @@ describe("mostlyFilled", () => {
     const cells = new Map([["0 1", 1], ["3 1", 1], ["2 2", 1]]);
     expect(mostlyFilled(cells, 4, [1, 2, 3])).toEqual([1]);
   });
+
+  test("one row's pick does not decide a column of a longer table, but a one-row table's row does", () => {
+    expect(mostlyFilled(new Map([["0 1", 1]]), 2, [1])).toEqual([]);
+    expect(mostlyFilled(new Map([["0 1", 1], ["1 1", 1]]), 2, [1])).toEqual([1]);
+    expect(mostlyFilled(new Map([["0 1", 1]]), 1, [1])).toEqual([1]);
+  });
 });
