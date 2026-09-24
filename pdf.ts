@@ -163,10 +163,24 @@ export async function highlighted(pdf: string, lines: Box[], fresh = true): Prom
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
   // A passage read across a window's pages is marked on each of them.
   for (const page of new Set(lines.map((l) => l.page))) {
-    const quads = lines.filter((l) => l.page === page).map((l) => [l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]);
-    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quads)]);
+    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quadsOn(lines, page))]);
   }
   return copy;
+}
+
+/**
+ * The highlight quads of `lines` on `page`, each box once: a built table
+ * uses one mod's cost cell for every gun that takes the mod, and a viewer
+ * blends overlapping highlights, so repeats would darken it by use.
+ */
+export function quadsOn(lines: Box[], page: number): number[][] {
+  const seen = new Set<string>();
+  return lines.flatMap((l) => {
+    const key = `${l.x0} ${l.y0} ${l.x1} ${l.y1}`;
+    if (l.page !== page || seen.has(key)) return [];
+    seen.add(key);
+    return [[l.x0, l.y0, l.x1, l.y0, l.x0, l.y1, l.x1, l.y1]];
+  });
 }
 
 export function pageUrl(pdf: string, page: number): string {
