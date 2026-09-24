@@ -3,23 +3,28 @@ import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
 import type { RankingCache } from "./cache";
+import { pageSim } from "./embed";
 import { excerpts, type Term } from "./search";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
 
 export type Section = { path: string; start: number; end: number };
 /**
- * An outline this long is ranked coarse to fine: its top two levels, then
- * only what lies under the best TIER_K of them. Ranking every one of
- * Fallout's 1058 sections was most of a question's tokens, and the section
- * that answers stood near the top either way.
+ * An outline this long is not ranked whole: ranking every one of Fallout's
+ * 1058 sections was most of a question's tokens. jev ranks the sections
+ * holding one of the EMBED_PAGES pages most like the question by
+ * embedding, or without embeddings coarse to fine: the top two levels,
+ * then only what lies under the best TIER_K of them.
  */
 const TIER_MIN = 200;
 const TIER_K = 8;
+const EMBED_PAGES = 20;
 
 const depth = (s: Section) => s.path.split(" > ").length;
 /** The sections of an outline's top two levels. */
 export const coarse = (pool: Section[]) => pool.filter((s) => depth(s) <= 2);
+/** The sections holding one of `pages`. */
+export const sectionsHolding = (pool: Section[], pages: number[]) => pool.filter((s) => pages.some((p) => p >= s.start && p <= s.end));
 /** The sections deeper than the top two levels that lie under one of `best`. */
 export const sectionsUnder = (pool: Section[], best: string[]) => pool.filter((s) => depth(s) > 2 && best.some((b) => s.path.startsWith(`${b} > `)));
 
@@ -504,6 +509,30 @@ export async function searchPdf(
     const second = under.length ? await rank(client, o.question, lists(under, false), o.batch) : [];
     return [...first, ...second].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
   };
+  /**
+   * jev ranks only the sections holding one of the EMBED_PAGES pages most
+   * like the question, and the excerpts' pages: by embedding alone Fallout's
+   * RadAway page ranked 43rd for "How is radiation treated?", and the text
+   * search finds it. Without Ollama the outline is ranked coarse to fine.
+   */
+  /** How many sections the page embeddings left jev to rank, when they did. */
+  let shortlist: number | undefined;
+  const rankByPages = async (): Promise<Ranked[]> => {
+    try {
+      const pages = (await bookText(pdf)).map((text, i) => ({ page: i + 1, text }));
+      const sim = pageSim(pdf, o.question, `${cacheDir()}/embeddings`, undefined, (n) =>
+        ui.log(`${indent}  embedding ${n} pages of ${pdf.split("/").pop()}, once for the book…`),
+      );
+      const cos = await sim(pages);
+      const best = pages.map((p, i) => ({ page: p.page, c: cos[i]! })).sort((a, b) => b.c - a.c).slice(0, EMBED_PAGES);
+      const picked = sectionsHolding(pool, [...best.map((b) => b.page), ...ex.map((e) => e.page)]);
+      shortlist = picked.length;
+      return await rank(client, o.question, lists(picked, true), o.batch);
+    } catch (e) {
+      ui.log(`${indent}  no page embeddings (${e instanceof Error ? e.message : e}); ranking coarse to fine`);
+      return rankTiered();
+    }
+  };
   const lists = (of: Section[], withEx: boolean): List[] => [
     // The titles stay under `candidates`: as `sections`, Fallout's perk list
     // ranked its child bookmark above the chapter itself, every run.
@@ -515,7 +544,7 @@ export async function searchPdf(
     : pool.length + ex.length === 0
       ? []
       : !confined && pool.length > TIER_MIN
-        ? await rankTiered()
+        ? await rankByPages()
         : await rank(client, o.question, lists(pool, true), o.batch);
   // --max bounds the sections read; the excerpts are bounded by their own
   // limit, or a spread of twenty pages would push a section out of reach.
@@ -529,9 +558,9 @@ export async function searchPdf(
     );
   else if (all.length > 0)
     ui.log(
-      `${indent}ranked ${pool.length} sections and ${ex.length} excerpts in ${split(rankSnap)}, ` +
+      `${indent}ranked ${shortlist === undefined ? "" : `${shortlist} of `}${pool.length} sections and ${ex.length} excerpts in ${split(rankSnap)}, ` +
         (confined ? "confined by the contents" : `${above} above title floor ${floor}`) +
-        (pool.length > above ? ` (${pool.length - above} below)` : ""),
+        ((shortlist ?? pool.length) > above ? ` (${(shortlist ?? pool.length) - above} below)` : ""),
     );
 
   // A ranking is kept only once its walk has taken an answer: a ranking that
