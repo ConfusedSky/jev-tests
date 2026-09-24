@@ -803,6 +803,8 @@ answer, never an exact probability. Fixtures are generated PDFs with their
 | `format.ts` | column alignment and path elision |
 | `bench.ts` | the shelf benchmark over real rulebooks |
 | `outline.js` | mutool script printing `path<TAB>start<TAB>end` |
+| `docs/` | what experiments measured, what was adopted, what was tried and dropped |
+| `experiments/` | the one-off scripts and data behind `docs/` |
 
 ## Highlighting the answer
 
