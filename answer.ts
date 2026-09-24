@@ -696,7 +696,8 @@ async function pickColumns<P extends Para>(client: TypeSafeClient, question: str
     if (lone(t)) return [];
     const row = { heads: keep.map((i) => t.heads[i]!), cells: keep.map((i) => t.cells[i] ?? "") };
     const text = rowText(row);
-    return [{ ...p, table: row, text, style: " ".repeat(text.length), lines: p.lines.map((l) => ({ ...l, start: 0, end: text.length })) }];
+    const lines = p.lines.filter((l) => l.cell === undefined || keep.includes(l.cell)).map((l) => ({ ...l, start: 0, end: text.length }));
+    return [{ ...p, table: row, text, style: " ".repeat(text.length), lines }];
   });
 }
 

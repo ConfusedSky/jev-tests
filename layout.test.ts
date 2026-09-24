@@ -240,8 +240,10 @@ describe("tables", () => {
       "The table ends here and the prose goes on for a line or two more.",
     ]);
     expect(paras[3]?.table).toEqual({ heads: ["Small Gun", "Damage", "Weight", "Cost"], cells: [".44 Pistol", "6", "4", "99"] });
-    expect(paras[3]?.lines).toHaveLength(1);
-    expect(paras[3]?.lines[0]?.page).toBe(1);
+    // A box a cell, left to right, each naming its column, so a passage can mark only some.
+    const boxes = paras[3]!.lines;
+    expect(boxes.map((b) => b.cell)).toEqual([0, 1, 2, 3]);
+    expect(boxes.every((b, i) => b.page === 1 && (i === 0 || b.x0 >= boxes[i - 1]!.x1 - 1))).toBe(true);
   });
 
   // Cyberpunk Red's ranged weapons: a row of one cell under each weapon, an

@@ -334,7 +334,8 @@ describe("a passage", () => {
     const heads = ["Weapon Type", "Damage", "Cost"];
     const row = (cells: string[]) => {
       const text = cells.filter(Boolean).length === 1 ? cells.find(Boolean)! : JSON.stringify(Object.fromEntries(cells.map((c, i) => [heads[i]!, c]).filter(([, c]) => c)));
-      return { ...plain(text), lines: [box(100, 0, text.length)], table: { heads, cells } };
+      const lines = cells.flatMap((c, i) => (c ? [{ ...box(100, 0, text.length), x0: 72 + i * 100, x1: 172 + i * 100, cell: i }] : []));
+      return { ...plain(text), lines, table: { heads, cells } };
     };
     const note = row(["Alt. Fire: None", "", ""]);
     const rows = [row(["Medium Pistol", "2d6", "50eb"]), note, row(["Heavy Pistol", "3d6", "100eb"]), { ...note }, row(["SMG", "2d6", "100eb"])];
@@ -368,6 +369,8 @@ describe("a passage", () => {
         { heads: ["Weapon Type", "Damage"], cells: ["SMG", "2d6"] },
       ]);
       expect(a.text.split("\n")[0]).toBe('{"Weapon Type":"Medium Pistol","Damage":"2d6"}');
+      // Only the kept cells are marked on the page.
+      expect(a.passage?.map((p) => p.lines.map((l) => l.cell))).toEqual([[0, 1], [0, 1], [0, 1]]);
     });
 
     test("a table where no quantity has a column stays whole", async () => {

@@ -8,8 +8,8 @@
 export type Span = { text: string; bold: boolean; italic: boolean; font: string };
 /** `block` is the mutool block the line came from. */
 export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[]; block: number };
-/** A line's box, the page it is on, and which characters of its paragraph's text it holds. */
-export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number };
+/** A line's box, the page it is on, and which characters of its paragraph's text it holds; a table cell's box names its column. */
+export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number; cell?: number };
 /**
  * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
  * for both and " " for neither, and the boxes of its lines for highlighting.
@@ -19,7 +19,8 @@ export type Para = { heading: boolean; text: string; style: string; lines: Box[]
 export type Row = { heads: string[]; cells: string[] };
 
 /** A table as tables.py reads it: rows of cells, each row with its box on the page, the first row the heads. */
-export type Table = { page: number; bbox: [number, number, number, number]; rows: { cells: string[]; bbox: [number, number, number, number] }[] };
+type Rect = [number, number, number, number];
+export type Table = { page: number; bbox: Rect; rows: { cells: string[]; bbox: Rect; boxes?: (Rect | null)[] }[] };
 
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -254,8 +255,10 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     const records: Para[] = rows.flatMap((r) => {
       const text = rowText({ heads: names, cells: r.cells });
       if (!text) return [];
-      const [x0, y0, x1, y1] = r.bbox;
-      return [{ heading: false, table: { heads: names, cells: r.cells }, text, style: " ".repeat(text.length), lines: [{ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length }] }];
+      // A box a filled cell, so a passage that keeps some columns marks only those.
+      const boxes: { rect: Rect; cell?: number }[] = r.boxes ? r.cells.flatMap((c, i) => (c && r.boxes![i] ? [{ rect: r.boxes![i]!, cell: i }] : [])) : [{ rect: r.bbox, cell: undefined }];
+      const lines = boxes.map(({ rect: [x0, y0, x1, y1], cell }) => ({ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length, cell }));
+      return [{ heading: false, table: { heads: names, cells: r.cells }, text, style: " ".repeat(text.length), lines }];
     });
     const at = paras.findIndex((p) => p.lines[0] && p.lines[0].y0 > t.bbox[1] && p.lines[0].x1 > t.bbox[0] && p.lines[0].x0 < t.bbox[2]);
     paras.splice(at < 0 ? paras.length : at, 0, ...records);
