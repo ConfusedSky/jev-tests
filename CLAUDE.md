@@ -109,6 +109,12 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 
 What the tools do and how is in README.md and docs/. Notes for working on it:
 
+- jev is a general tool for a library of PDFs. Don't design around this
+  library (tabletop rulebooks): what is specific to it (what the documents
+  are, prompt examples, the unit a document belongs to) belongs in a library
+  profile (issue #13), with generic defaults. Prompt examples measured on
+  the rulebooks stay as they are until that profile exists.
+
 - Every jev call costs money ($0.042 per million input tokens; output is
   free) and every log step prints its tokens. A new call needs its own
   counted line in the log: a step with lines of its own prints a header
