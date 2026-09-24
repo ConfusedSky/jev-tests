@@ -66,8 +66,8 @@ Legend in the Mist's tropes 34th. As a shortlist they work:
   coarse-to-fine; the agent's four runs gave 2.05–2.24M against 2.43–2.61M.
   Scores equal but for the known flaky cases (the magazine page check; CPR's
   skill count, 76–92% with the shortlist and 48–92% coarse to fine).
-- Cost: embedding a book's pages took ~0.5 s a page on a GPU shared with
-  another project (Heart 110 s, Legend in the Mist 260 s, CPR 280 s,
+- Cost: embedding a book's pages took ~0.5 s a page with the model partly
+  on the CPU (8 GB GPU, ~2.8 GB free) (Heart 110 s, Legend in the Mist 260 s, CPR 280 s,
   Fallout 200 s), once per book; a question's embedding ~250 ms.
 
 ## Adopted before it: coarse-to-fine ranking (commit 8416595), now the fallback without Ollama
