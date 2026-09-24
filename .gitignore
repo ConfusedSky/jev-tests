@@ -36,3 +36,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # SemIf stand-in for jev (semif/server.py)
 semif/.venv
 .venv
+
+# Embeddings the ranking-cache experiment writes; its scripts make them again.
+experiments/ranking-cache/embs*/
+experiments/ranking-cache/.venv/
+# Worktrees agents make for isolated experiments.
+.claude/worktrees/

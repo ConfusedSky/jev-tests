@@ -1,0 +1,10 @@
+const texts = await Bun.file(import.meta.dir + "/texts2.json").json() as Record<string, string[]>;
+const model = process.argv[2]!;
+const embed = async (input: string[]) => { const s = performance.now(); const j: any = await (await fetch("http://localhost:11434/api/embed", { method: "POST", body: JSON.stringify({ model, input }) })).json(); return { v: j.embeddings as number[][], ms: performance.now() - s }; };
+await embed(["warm"]);
+const out: any = { model };
+for (const k of Object.keys(texts)) out[k] = (await embed(texts[k])).v;
+const lat: number[] = []; for (let i = 0; i < 7; i++) lat.push((await embed([texts.q[i]!])).ms);
+out.msPerQuery = lat.sort((a, b) => a - b)[3]; out.dim = out.q[0].length;
+await Bun.write(`${import.meta.dir}/embs2/ollama_${model.replace(/[:/]/g, "-")}.json`, JSON.stringify(out));
+console.log(model, "dim", out.dim, "ms/query", out.msPerQuery.toFixed(1));

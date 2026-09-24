@@ -1,0 +1,185 @@
+diff --git a/pdf.ts b/pdf.ts
+index 757ec25..b231057 100644
+--- a/pdf.ts
++++ b/pdf.ts
+@@ -1,8 +1,8 @@
+ import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+ import { rename } from "node:fs/promises";
+ import { resolve } from "node:path";
+-import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
+-import { excerpts, type Term } from "./search";
++import { rank, rankChoice, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
++import { excerpts, type Excerpt, type Term } from "./search";
+ import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
+ import type { Box } from "./layout";
+ 
+@@ -15,6 +15,8 @@ export type Section = { path: string; start: number; end: number };
+  */
+ const TIER_MIN = 200;
+ const TIER_K = 8;
++/** Ranks by one "which of these" choice instead of a score per item; an experiment. */
++const CHOICE = process.env.JEV_CHOICE === "1";
+ 
+ const depth = (s: Section) => s.path.split(" > ").length;
+ /** The sections of an outline's top two levels. */
+@@ -22,6 +24,53 @@ export const coarse = (pool: Section[]) => pool.filter((s) => depth(s) <= 2);
+ /** The sections deeper than the top two levels that lie under one of `best`. */
+ export const sectionsUnder = (pool: Section[], best: string[]) => pool.filter((s) => depth(s) > 2 && best.some((b) => s.path.startsWith(`${b} > `)));
+ 
++/**
++ * The pool's sections and the excerpts, best first. A long outline is
++ * ranked coarse to fine: the top two levels and the excerpts first, then
++ * the sections under the best of those levels.
++ */
++export async function rankPool(
++  client: TypeSafeClient,
++  o: { question: string; batch: number; max: number },
++  pool: Section[],
++  ex: Excerpt[],
++  confined: boolean,
++  byChoice = CHOICE,
++): Promise<Ranked[]> {
++  if (pool.length + ex.length === 0) return [];
++  const lists = (of: Section[], withEx: boolean): List[] => [
++    // The titles stay under `candidates`: as `sections`, Fallout's perk list
++    // ranked its child bookmark above the chapter itself, every run.
++    { key: "candidates", noun: "section", items: of.map((s) => ({ label: s.path, value: s.path })) },
++    { key: "excerpts", noun: "page excerpt", items: withEx ? ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) : [] },
++  ];
++  const ranker = (ls: List[]) => (byChoice ? rankChoice(client, o.question, ls, { want: o.max }) : rank(client, o.question, ls, o.batch));
++  if (confined || pool.length <= TIER_MIN) return ranker(lists(pool, true));
++  const first = await ranker(lists(coarse(pool), true));
++  const under = sectionsUnder(pool, first.filter((r) => r.list === "candidates").slice(0, TIER_K).map((r) => r.name));
++  if (!byChoice) {
++    const second = under.length ? await rank(client, o.question, lists(under, false), o.batch) : [];
++    return [...first, ...second].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
++  }
++  if (!under.length) return first;
++  // A choice's probabilities hold only among its own options, so the first
++  // round's picks are asked again beside the sections under them.
++  const again = first.filter((r) => r.score > 0);
++  const againEx = again.filter((r) => r.list === "excerpts");
++  const byPath = new Map(pool.map((s) => [s.path, s]));
++  const second = (
++    await ranker([
++      { key: "candidates", noun: "section", items: [...again.filter((r) => r.list === "candidates").map((r) => byPath.get(r.name)!), ...under].map((s) => ({ label: s.path, value: s.path })) },
++      { key: "excerpts", noun: "page excerpt", items: againEx.map((r) => ({ label: r.name, value: r.index })) },
++    ])
++  ).map((r) => (r.list === "excerpts" ? { ...r, index: againEx[r.index]!.index } : r));
++  const key = (r: Ranked) => `${r.list}:${r.name}`;
++  const picked = new Set(second.filter((r) => r.score > 0).map(key));
++  const rest = first.filter((r) => !picked.has(key(r)));
++  const [hi, lo] = [(r: Ranked) => r.score > 0, (r: Ranked) => r.score === 0];
++  return [...second.filter(hi), ...rest.filter(hi), ...second.filter(lo), ...rest.filter(lo)];
++}
++
+ export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
+ /** A window that answered, with whatever the answer layer read out of it. */
+ export type Candidate = { hit: Hit; answer: Answer };
+@@ -490,20 +539,7 @@ export async function searchPdf(
+       ? ((await excerpts([await file], o.terms, { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })).get(await file) ?? [])
+       : [];
+   const rankSnap = snapshot();
+-  /** The top two levels and the excerpts first, then the sections under the best of those levels. */
+-  const rankTiered = async (): Promise<Ranked[]> => {
+-    const first = await rank(client, o.question, lists(coarse(pool), true), o.batch);
+-    const under = sectionsUnder(pool, first.filter((r) => r.list === "candidates").slice(0, TIER_K).map((r) => r.name));
+-    const second = under.length ? await rank(client, o.question, lists(under, false), o.batch) : [];
+-    return [...first, ...second].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+-  };
+-  const lists = (of: Section[], withEx: boolean): List[] => [
+-    // The titles stay under `candidates`: as `sections`, Fallout's perk list
+-    // ranked its child bookmark above the chapter itself, every run.
+-    { key: "candidates", noun: "section", items: of.map((s) => ({ label: s.path, value: s.path })) },
+-    { key: "excerpts", noun: "page excerpt", items: withEx ? ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) : [] },
+-  ];
+-  const all = pool.length + ex.length === 0 ? [] : !confined && pool.length > TIER_MIN ? await rankTiered() : await rank(client, o.question, lists(pool, true), o.batch);
++  const all = await rankPool(client, o, pool, ex, confined);
+   // --max bounds the sections read; the excerpts are bounded by their own
+   // limit, or a spread of twenty pages would push a section out of reach.
+   let sectionsLeft = o.max;
+diff --git a/shared.ts b/shared.ts
+index 3a55fde..44355ee 100644
+--- a/shared.ts
++++ b/shared.ts
+@@ -1,4 +1,4 @@
+-import { TypeSafeClient, score, type JsonValue, type ScoreResponse } from "@typesafe-ai/sdk";
++import { TypeSafeClient, choice, score, type JsonValue, type ScoreResponse } from "@typesafe-ai/sdk";
+ import { makeSemifClient } from "./semif";
+ 
+ export const RUBRIC = [
+@@ -146,6 +146,74 @@ export async function rank(client: TypeSafeClient, question: string, lists: List
+   return scored.flat().sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+ }
+ 
++/** Options a choice holds beside "none of these". */
++const CHOICE_MAX = 254;
++const NONE = "none of these";
++
++/** One choice among `items`, or a choice per chunk and a final among the chunks' picks; the picks best first. */
++async function pickRound<T extends { label: string }>(client: TypeSafeClient, question: string, noun: string, items: T[]): Promise<{ item: T; p: number }[]> {
++  const ask = async (of: T[]) => {
++    // A label is the option's key; two alike would merge.
++    const keyed = new Map<string, T>();
++    for (const it of of) {
++      let k = it.label;
++      for (let n = 2; keyed.has(k) || k === NONE; n++) k = `${it.label} #${n}`;
++      keyed.set(k, it);
++    }
++    const res = await client.systemOne({
++      state: { question },
++      questions: { pick: choice(`Which of these ${noun}s answers \`question\`?`, { ...Object.fromEntries([...keyed.keys()].map((k) => [k, null])), [NONE]: null }) },
++    });
++    const probs = (res.answers.pick as { probabilities: Record<string, number> }).probabilities;
++    // jev rounds to 0.01, so every option under half a percent is a zero
++    // and has no order; only the ones above it are picks.
++    return [...keyed].map(([k, item]) => ({ item, p: probs[k] ?? 0 })).filter((x) => x.p > 0).sort((a, b) => b.p - a.p);
++  };
++  if (items.length <= CHOICE_MAX) return ask(items);
++  const chunks: T[][] = [];
++  for (let i = 0; i < items.length; i += CHOICE_MAX) chunks.push(items.slice(i, i + CHOICE_MAX));
++  const heats = (await Promise.all(chunks.map(ask))).flat();
++  if (heats.length <= 1) return heats;
++  const final = await ask(heats.slice(0, CHOICE_MAX).map((h) => h.item));
++  // A heat's pick the final gave nothing still beats what no heat picked.
++  const inFinal = new Set(final.map((f) => f.item));
++  return [...final, ...heats.filter((h) => !inFinal.has(h.item)).map((h) => ({ ...h, p: 0 }))];
++}
++
++/**
++ * `rank` as choices instead of a score per item: every item an option of
++ * one "which of these answers" choice, ranked by its probability. The
++ * picks are taken out and the rest asked again until `want` items of
++ * `wantList` are ranked or a round picks nothing; what no round picked
++ * follows, in list order. A pick scores 1 to 3 by its place, so the title
++ * floor keeps meaning "picked at all".
++ */
++export async function rankChoice(
++  client: TypeSafeClient,
++  question: string,
++  lists: List[],
++  { want = 12, wantList = "candidates", rounds = 4 } = {},
++): Promise<Ranked[]> {
++  type Item = { label: string; list: List; index: number };
++  let left: Item[] = lists.flatMap((l) => l.items.map((item, index) => ({ label: item.label, list: l, index })));
++  const noun = lists.filter((l) => l.items.length).map((l) => l.noun).join(" or ") || "item";
++  const picked: { item: Item; p: number }[] = [];
++  await timed("api", async () => {
++    for (let r = 0; r < rounds && left.length && picked.filter((x) => x.item.list.key === wantList).length < want; r++) {
++      const round = await pickRound(client, question, noun, left);
++      if (!round.length) break;
++      picked.push(...round);
++      const out = new Set(round.map((x) => x.item));
++      left = left.filter((it) => !out.has(it));
++    }
++  });
++  const n = picked.length;
++  return [
++    ...picked.map(({ item, p }, i) => ({ name: item.label, list: item.list.key, index: item.index, score: 3 - (2 * i) / Math.max(1, n), confidence: p, reason: `picked ${i + 1} of ${n} (p=${p.toFixed(2)})` })),
++    ...left.map((item) => ({ name: item.label, list: item.list.key, index: item.index, score: 0, confidence: 0, reason: "never picked" })),
++  ];
++}
++
+ /** Score many short strings against one question, batched into fan-out calls. */
+ export function rankTitles(client: TypeSafeClient, question: string, names: string[], batch: number, subject: string): Promise<Ranked[]> {
+   return rank(client, question, [{ key: "candidates", noun: subject, items: names.map((n) => ({ label: n, value: n })) }], batch);

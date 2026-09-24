@@ -1,0 +1,479 @@
+{
+ "tokensPerQuestion": 2262.2380952380954,
+ "readings": [
+  {
+   "q": "How is radiation treated?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "radiation"
+   ],
+   "game": []
+  },
+  {
+   "q": "How do I cure radiation sickness?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "radiation sickness"
+   ],
+   "game": []
+  },
+  {
+   "q": "What does RadAway do?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "RadAway"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the cost of RadAway?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "RadAway"
+   ],
+   "game": [
+    "RadAway"
+   ]
+  },
+  {
+   "q": "What does a Stimpak heal?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "Stimpak"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much does a Stimpak cost?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "Stimpak"
+   ],
+   "game": []
+  },
+  {
+   "q": "How many perks are there?",
+   "kind": "count",
+   "quantities": [],
+   "counted": "perks",
+   "subject": [
+    "perks"
+   ],
+   "game": []
+  },
+  {
+   "q": "Is Gunslinger a perk?",
+   "kind": "truth",
+   "quantities": [],
+   "counted": "Gunslinger",
+   "subject": [
+    "Gunslinger"
+   ],
+   "game": []
+  },
+  {
+   "q": "Is Lockpick a perk?",
+   "kind": "truth",
+   "quantities": [],
+   "counted": "Lockpick",
+   "subject": [
+    "Lockpick",
+    "perk"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the cost, weight and damage rating of a combat rifle?",
+   "kind": "number",
+   "quantities": [
+    "cost",
+    "weight",
+    "damage rating"
+   ],
+   "counted": "",
+   "subject": [
+    "combat rifle"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the cost, weight and damage rating of a hunting rifle?",
+   "kind": "number",
+   "quantities": [
+    "cost",
+    "weight",
+    "damage rating"
+   ],
+   "counted": "",
+   "subject": [
+    "hunting rifle"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the damage of every small gun?",
+   "kind": "passage",
+   "quantities": [
+    "damage"
+   ],
+   "counted": "",
+   "subject": [
+    "small gun"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the damage of a power fist?",
+   "kind": "number",
+   "quantities": [
+    "damage"
+   ],
+   "counted": "",
+   "subject": [
+    "power fist"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the damage of every melee weapon?",
+   "kind": "passage",
+   "quantities": [
+    "damage"
+   ],
+   "counted": "",
+   "subject": [
+    "melee weapon"
+   ],
+   "game": []
+  },
+  {
+   "q": "How many skills are there?",
+   "kind": "count",
+   "quantities": [],
+   "counted": "skills",
+   "subject": [
+    "skills"
+   ],
+   "game": []
+  },
+  {
+   "q": "What are the skills available to a character?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "skills",
+   "subject": [
+    "skills",
+    "character"
+   ],
+   "game": []
+  },
+  {
+   "q": "How do I heal an injury?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "injury"
+   ],
+   "game": []
+  },
+  {
+   "q": "How does initiative work in combat?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "initiative"
+   ],
+   "game": []
+  },
+  {
+   "q": "How are action points spent?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "action points"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much can my character carry?",
+   "kind": "number",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "character"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much damage resistance does T-60 power armor give?",
+   "kind": "number",
+   "quantities": [
+    "resistance"
+   ],
+   "counted": "resistance",
+   "subject": [
+    "damage resistance",
+    "T-60 power armor"
+   ],
+   "game": []
+  },
+  {
+   "q": "Show me the exotic weapons table",
+   "kind": "table",
+   "quantities": [],
+   "counted": "exotic weapons",
+   "subject": [
+    "exotic weapons table"
+   ],
+   "game": []
+  },
+  {
+   "q": "What do the exotic weapons cost?",
+   "kind": "passage",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "exotic weapons"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much do each type of magazine cost?",
+   "kind": "passage",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "type",
+    "magazine"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much does a drum magazine cost?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "drum magazine"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much does ammunition cost?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "ammunition"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the cost of a heavy pistol?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "heavy pistol"
+   ],
+   "game": []
+  },
+  {
+   "q": "What is the damage of every ranged weapon?",
+   "kind": "passage",
+   "quantities": [
+    "damage"
+   ],
+   "counted": "",
+   "subject": [
+    "ranged weapon"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much armor does a kevlar vest give?",
+   "kind": "number",
+   "quantities": [
+    "armor"
+   ],
+   "counted": "",
+   "subject": [
+    "armor",
+    "kevlar vest"
+   ],
+   "game": []
+  },
+  {
+   "q": "How many skills are there in the game?",
+   "kind": "count",
+   "quantities": [],
+   "counted": "skills",
+   "subject": [
+    "skills"
+   ],
+   "game": []
+  },
+  {
+   "q": "List all the skills in Cyberpunk Red",
+   "kind": "passage",
+   "quantities": [
+    "all"
+   ],
+   "counted": "skills",
+   "subject": [
+    "skills"
+   ],
+   "game": [
+    "Cyberpunk Red"
+   ]
+  },
+  {
+   "q": "How do death saves work?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "death saves work"
+   ],
+   "game": []
+  },
+  {
+   "q": "What happens when I fail a death save?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "death save"
+   ],
+   "game": []
+  },
+  {
+   "q": "What are the critical injuries to the head?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "critical injuries",
+    "head"
+   ],
+   "game": []
+  },
+  {
+   "q": "How do I treat a critical injury?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "critical injury"
+   ],
+   "game": []
+  },
+  {
+   "q": "How does cyberpsychosis work?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "cyberpsychosis"
+   ],
+   "game": []
+  },
+  {
+   "q": "How is Humanity lost when installing cyberware?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "Humanity",
+    "cyberware"
+   ],
+   "game": []
+  },
+  {
+   "q": "What street drugs are there?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "street drugs",
+   "subject": [
+    "street drugs"
+   ],
+   "game": []
+  },
+  {
+   "q": "How much does housing cost per month?",
+   "kind": "number",
+   "quantities": [
+    "cost"
+   ],
+   "counted": "",
+   "subject": [
+    "housing"
+   ],
+   "game": []
+  },
+  {
+   "q": "How does initiative work?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "initiative"
+   ],
+   "game": []
+  },
+  {
+   "q": "What programs can a netrunner use?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "programs",
+   "subject": [
+    "programs",
+    "netrunner"
+   ],
+   "game": [
+    "netrunner"
+   ]
+  },
+  {
+   "q": "What does Black ICE do?",
+   "kind": "passage",
+   "quantities": [],
+   "counted": "",
+   "subject": [
+    "Black ICE"
+   ],
+   "game": [
+    "Black ICE"
+   ]
+  }
+ ]
+}
