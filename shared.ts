@@ -26,7 +26,7 @@ export async function makeClient(model: string): Promise<TypeSafeClient> {
     console.error("OPENROUTER_API_KEY is not set");
     process.exit(2);
   }
-  return new TypeSafeClient({
+  const client = new TypeSafeClient({
     apiKey,
     baseURL: "https://openrouter.ai/api",
     defaultModel: model,
@@ -34,6 +34,19 @@ export async function makeClient(model: string): Promise<TypeSafeClient> {
     // SDK's ten seconds on a slow day, and a timed-out passage is a blank.
     timeout: 60_000,
   });
+  return counted(client);
+}
+
+/** `client` with every call's tokens added to `tokens`, so each step can say what it spent. */
+export function counted(client: TypeSafeClient): TypeSafeClient {
+  const one = client.systemOne.bind(client);
+  client.systemOne = (async (...args: Parameters<typeof one>) => {
+    const res = await one(...args);
+    tokens.in += res.usage?.input_tokens ?? 0;
+    tokens.out += res.usage?.output_tokens ?? 0;
+    return res;
+  }) as typeof client.systemOne;
+  return client;
 }
 
 export const DEFAULT_MODEL = process.env.JEVGREP_MODEL ?? "~typesafe/jev-latest";
@@ -61,12 +74,25 @@ export async function timed<T>(kind: keyof typeof clock, fn: () => Promise<T>): 
   }
 }
 
-export type Snapshot = { at: number; api: number; extract: number; wait: number };
-export const snapshot = (): Snapshot => ({ at: Date.now(), ...clock });
+/** Tokens jev has read and written this run. */
+export const tokens = { in: 0, out: 0 };
+
+/** jev's price per million input tokens; its output tokens are free. */
+export const DOLLARS_PER_MILLION_IN = 0.042;
+
+export type Snapshot = { at: number; api: number; extract: number; wait: number; in: number; out: number };
+export const snapshot = (): Snapshot => ({ at: Date.now(), ...clock, ...tokens });
+
+/** "12,345 tokens in, 60 out, $0.00052" for the tokens since the snapshot, or "" when there were none. */
+export function spent(s: Pick<Snapshot, "in" | "out">): string {
+  const [i, o] = [tokens.in - s.in, tokens.out - s.out];
+  if (i === 0 && o === 0) return "";
+  return `${i.toLocaleString("en-US")} tokens in, ${o.toLocaleString("en-US")} out, $${((i / 1e6) * DOLLARS_PER_MILLION_IN).toFixed(5)}`;
+}
 
 export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
-/** "1.4s (jev 1.1s, read 0.2s, other 0.1s)" for everything since the snapshot. */
+/** "1.4s (jev 1.1s, read 0.2s, other 0.1s; 12,345 tokens in, 60 out, $0.00052)" for everything since the snapshot. */
 export function split(s: Snapshot): string {
   const total = Date.now() - s.at;
   const api = clock.api - s.api;
@@ -75,7 +101,8 @@ export function split(s: Snapshot): string {
   const parts = [`jev ${secs(api)}`, `read ${secs(extract)}`];
   if (wait > 0) parts.push(`stdin ${secs(wait)}`);
   parts.push(`other ${secs(Math.max(0, total - api - extract - wait))}`);
-  return `${secs(total)} (${parts.join(", ")})`;
+  const cost = spent(s);
+  return `${secs(total)} (${parts.join(", ")}${cost ? `; ${cost}` : ""})`;
 }
 
 /** One list of candidates for a ranking call, named as the model sees it in `state`. */
