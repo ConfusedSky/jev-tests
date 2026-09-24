@@ -3,7 +3,8 @@
 Idea: rankings are most of a question's tokens (~37k on Fallout even
 coarse to fine). Store each book's rankings; for a new question, find a
 cached question similar enough that its ranking would serve, and skip
-ranking. Not built yet; this is what the experiments found.
+ranking. Built as `cache.ts` and `--cache` (see the README's "The ranking
+cache"); what follows is what the experiments found.
 
 Scripts and data: [`experiments/ranking-cache/`](../experiments/ranking-cache/)
 and [`experiments/ranking/simcache.ts`](../experiments/ranking/simcache.ts).
@@ -200,7 +201,16 @@ OR 25/25 (41%, A≥.56 or B≥.70), 0.8·A + 0.2·B 26/26 (43%, ≥.548).
 - **Still missed by every rule**: a member vs its group (Gunslinger/Lockpick ↔
   perks, power fist ← melee weapons, heavy pistol ← ranged weapons).
 
-## Design notes for building it
+## As built
+
+End to end on Fallout: "How is radiation treated?" ranked afresh (54,681
+tokens) and was stored; "How do I cure radiation sickness?" walked its
+ranking (question 0.53, subject 0.85) for 14,022 tokens and answered from
+RadAway p.171. Qwen3-4B Q4 beside another project on the 8 GB GPU loaded
+60% on the CPU: 171 ms median per lookup (36 ms with the GPU free);
+text-embedding-3-small through OpenRouter 293 ms.
+
+## Design notes
 
 - Per book, on disk; entries hold the question, its rich text and subject,
   each embedded once when stored, plus the ranking.

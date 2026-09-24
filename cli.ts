@@ -1,7 +1,8 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
+import { CACHE_MODELS, embedder, rankingCache as makeRankingCache, unready, type CacheModel } from "./cache";
 import { lone, pageParagraphs, type Para, type Row } from "./layout";
-import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
+import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, snapshot, split, timed, type Snapshot } from "./shared";
 import { terms } from "./search";
 
@@ -43,6 +44,9 @@ export const num =
     Object.assign(o, { [key]: v });
   };
 
+/** The cache of rankings for one question, kept with the text cache. */
+const rankingCacheFor = (m: CacheModel, question: string, subject: string[]) => makeRankingCache(m, embedder(m), `${cacheDir()}/rankings`, question, subject);
+
 /** Options every PDF-reading tool shares; jevfind adds its file-level floors on top. */
 export type ReadOpts = SearchOpts & {
   model: string;
@@ -61,6 +65,8 @@ export type ReadOpts = SearchOpts & {
   tsv: boolean;
   /** What jev read off the question, kept for a table to build its searches from. */
   reading?: Reading;
+  /** The embedding model whose cache of rankings is looked in first (see cache.ts), or "off". */
+  cache: string;
 };
 
 export const readDefaults = (): ReadOpts => ({
@@ -81,6 +87,7 @@ export const readDefaults = (): ReadOpts => ({
   hits: 1,
   search: true,
   tsv: false,
+  cache: "qwen3-4b",
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -100,6 +107,11 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--no-toc": (o) => (o.noToc = true),
   "--no-search": (o) => (o.search = false),
   "--tsv": (o) => (o.tsv = true),
+  "--cache": (o, next, fail) => {
+    const m = next();
+    if (m !== "off" && !CACHE_MODELS[m]) fail(`must be off or one of ${Object.keys(CACHE_MODELS).join(", ")}`);
+    o.cache = m;
+  },
   "--kind": (o, next, fail) => {
     const k = next();
     if (!KINDS.some((x) => x === k)) fail(`must be one of ${KINDS.join(", ")}`);
@@ -125,14 +137,34 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --no-search      rank outline titles only, without searching the text
       --tsv            piped, print a table's rows tab-separated under their heads, not as JSON,
                        and the link on stderr
-      --kind K         force count, number, truth, passage or table instead of asking jev`;
+      --kind K         force count, number, truth, passage or table instead of asking jev
+      --cache MODEL    reuse the ranking of an earlier, similar question, matched by
+                       qwen3-4b (default, Ollama), qwen3-0.6b (Ollama) or 3-small
+                       (OpenRouter); off ranks every book afresh`;
 
 /**
  * Wires the answer layer into a search: a count, number or statement has a
  * value to be confident about, and a passage has the stretch of the page
  * that answers.
  */
+/**
+ * Stops the run, before anything is spent, when the ranking cache cannot
+ * run: without it every book is ranked afresh, which costs real money, so
+ * that is asked for with --cache off rather than done quietly.
+ */
+let cacheChecked: Promise<void> | undefined;
+export function checkCache(model: string): Promise<void> {
+  const m = CACHE_MODELS[model];
+  if (!m) return Promise.resolve();
+  return (cacheChecked ??= unready(m).then((why) => {
+    if (!why) return;
+    console.error(`jev: ${why}`);
+    process.exit(2);
+  }));
+}
+
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, preset?: Reading): Promise<ReadOpts> {
+  await checkCache(o.cache);
   // Kind and quantities come off the wording alone, so one call reads both.
   const asked = snapshot();
   const read = preset ?? (await readQuestion(client, o.question));
@@ -209,7 +241,9 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, p
             ),
           );
   const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read };
+  const m = CACHE_MODELS[o.cache];
+  const rankingCache = m && rankingCacheFor(m, o.question, read.subject);
+  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
 }
 
 const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>

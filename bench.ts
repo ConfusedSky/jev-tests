@@ -11,6 +11,7 @@
  *   bun bench.ts            run every case, print the table, write bench/latest.json
  *   bun bench.ts heart      only cases whose book or question matches
  *   bun bench.ts --no-save  compare with the last run without replacing it
+ *   bun bench.ts --cache qwen3-4b  walk cached rankings (off by default: the bench measures ranking)
  *   bun bench.ts --no-search  titles only, to see what the text search adds
  */
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
@@ -245,7 +246,12 @@ function score(c: Case, got: string | undefined, page: number | undefined): numb
   return got === c.truth ? 1 : 0;
 }
 
-const args = Bun.argv.slice(2);
+// The bench measures ranking, so it ranks afresh unless --cache MODEL is
+// given: with the cache, a run's scores and tokens would hang on the last's.
+const argv = Bun.argv.slice(2);
+const cacheAt = argv.indexOf("--cache");
+const cache = cacheAt >= 0 ? argv[cacheAt + 1] ?? "off" : "off";
+const args = cacheAt >= 0 ? argv.filter((_, i) => i !== cacheAt && i !== cacheAt + 1) : argv;
 const save = !args.includes("--no-save") && !args.includes("--no-search");
 const search = !args.includes("--no-search");
 const only = args.filter((a) => !a.startsWith("--"));
@@ -266,7 +272,7 @@ for (const c of picked) {
   const spentBefore = tokens.in;
   let r: Outcome | undefined;
   try {
-    const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, ...c.opts }, ui);
+    const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, cache, ...c.opts }, ui);
     r = opts.kind === "table" ? await composeTable(client, pdf, opts, ui) : await searchPdf(client, pdf, opts, ui);
   } catch (e) {
     console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);

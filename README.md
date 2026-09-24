@@ -104,6 +104,31 @@ fewer tokens over the bench with the same scores, the section that answers
 still near the top. A shorter outline, or one the contents already
 confine, is ranked whole.
 
+### The ranking cache
+
+A ranking a walk answered from is kept per book in `~/.cache/jev/rankings/`,
+and a later question close enough to it walks it instead of ranking again:
+
+```
+ranked from cache in 3.8s (…): "How is radiation treated?" (question 0.53, subject 0.85)
+total 6.3s (…; 14,022 tokens in, …)          ← 54,681 when it ranked afresh
+```
+
+Closeness is an embedding model's, chosen with `--cache`: `qwen3-4b` (the
+default, through a local Ollama), `qwen3-0.6b` (Ollama) or `3-small`
+(OpenRouter). A cached question is close enough when its question and
+its three best sections score at least a model's bar against the new
+question, or its subject against the new subject (0.53 or 0.80 for
+qwen3-4b); docs/ranking-cache.md has how the models and bars were chosen.
+Each model keeps its own embeddings beside the rankings, which are shared.
+A ranking the contents confined, or one whose walk found no answer, is not
+kept.
+
+Without the cache every book is ranked afresh, which costs money, so a
+cache that cannot run stops the tool before anything is spent: start
+Ollama (`ollama serve`; `ollama pull qwen3-embedding:4b` once), or pass
+`--cache off`. The bench ranks afresh unless given `--cache MODEL`.
+
 `-n, --hits N` keeps walking until N passages have passed the threshold and
 prints them all, best first within a section. Passage questions only: a
 count, number or statement has one answer.
