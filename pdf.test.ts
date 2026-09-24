@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { terms } from "./search";
-import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, quadsOn, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -553,6 +553,13 @@ describe("coarse to fine", () => {
 
   test("the coarse pass is the top two levels", () => {
     expect(coarse(pool).map((x) => x.path)).toEqual(["Equipment", "Equipment > Small Guns", "Combat"]);
+  });
+
+  test("the sections picked by page are those holding any of the pages, at any depth", () => {
+    const at = (path: string, start: number, end: number) => ({ path, start, end });
+    const sections = [at("Equipment", 90, 180), at("Equipment > Chems", 160, 175), at("Equipment > Chems > RadAway", 171, 171), at("Combat", 20, 60)];
+    expect(sectionsHolding(sections, [171]).map((x) => x.path)).toEqual(["Equipment", "Equipment > Chems", "Equipment > Chems > RadAway"]);
+    expect(sectionsHolding(sections, [5])).toEqual([]);
   });
 
   test("the fine pass is what lies deeper under the best of them, and nothing under the rest", () => {
