@@ -718,7 +718,7 @@ export async function readPassage(
         last.text += ` ${u.text}`;
         last.style += ` ${u.style}`;
         for (const l of lines) if (!last.lines.includes(l)) last.lines.push(l);
-      } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines });
+      } else passage.push({ para: u.para, heading: paras[u.para]!.heading, text: u.text, style: u.style, lines, table: paras[u.para]!.table });
     }
   }
   return {
@@ -726,7 +726,7 @@ export async function readPassage(
     p: chosen.reduce((a, b) => a + b, 0) / chosen.length,
     // A window of several pages links to the page the passage starts on.
     pages: [...new Set(passage.flatMap((p) => p.lines.map((l) => l.page)))],
-    passage: passage.map(({ heading, text, style, lines }) => ({ heading, text, style, lines })),
+    passage: passage.map(({ heading, text, style, lines, table }) => ({ heading, text, style, lines, ...(table && { table }) })),
   };
 }
 

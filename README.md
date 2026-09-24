@@ -504,7 +504,17 @@ line of its own, and a repeated or empty head is numbered:
 
 A number question reads its page this way, so a figure sits beside its
 column head rather than loose on a line; a passage that lands on a table
-prints its rows as records, each row one sentence of the passage. The gate
+reads its rows as records, each row one sentence of the passage, and prints
+them in a terminal as a grid under the heads (a head and its cell a line
+when too wide for the window; JSON a row when piped):
+
+```
+  Small Gun      Damage  Weight  Cost
+  .44 Pistol     6       4       99
+  Combat Rifle   5       11      117
+```
+
+The gate
 still reads the `pdftotext` text. A table drawn without rules or shading is
 not found and reads as text. A letter in a column ("RANGE": "M") is not a
 figure and a number question cannot read it yet.
