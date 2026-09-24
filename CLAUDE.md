@@ -121,9 +121,10 @@ What the tools do and how is in README.md and docs/. Notes for working on it:
   docs/dead-ends.md) with the scripts in experiments/, so it is not
   re-derived.
 - Ollama with `qwen3-embedding:4b` must be running for the default ranking
-  cache and page embeddings; pass `--cache off` without it. The GPU (8 GB)
-  may be shared with another project; the 4B then runs partly on the CPU
-  (~170 ms a lookup). Don't stop an Ollama you didn't start.
+  cache and page embeddings; pass `--cache off` without it. When the GPU
+  lacks room for the model (about 4.5 GB), Ollama runs it partly on the CPU,
+  slower but still well under a jev call. Don't stop an Ollama you didn't
+  start.
 
 ### Tests
 

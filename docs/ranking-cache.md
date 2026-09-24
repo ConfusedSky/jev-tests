@@ -107,8 +107,8 @@ Findings:
   local Q4 26/26 at 43%; local is ~7× faster and free.
 - **Qwen3-4B at 16-bit does not fit the 8 GB RTX 4060** (out of memory at
   7.5 GB); the Q4 Ollama build (`qwen3-embedding:4b`) fits in 4.3 GB and
-  loses nothing. A long-running `semif` server once held 7.8 GB of the GPU
-  and pushed runs to the CPU.
+  loses nothing. Anything else holding GPU memory (the `semif` backend's
+  model takes 7.8 GB) pushes the model to the CPU.
 - **Bars carry across books**: bar picked on Fallout at ≥90% precision,
   applied to CPR: 3-large 7/7, Qwen3-0.6B 9/10, 3-small 9/11, Qwen3-4B 8/9
   (Ollama Q4) and 10/16 (16-bit on CPU), jev 2/2.
@@ -205,7 +205,7 @@ OR 25/25 (41%, A≥.56 or B≥.70), 0.8·A + 0.2·B 26/26 (43%, ≥.548).
 End to end on Fallout: "How is radiation treated?" ranked afresh (54,681
 tokens) and was stored; "How do I cure radiation sickness?" walked its
 ranking (question 0.53, subject 0.85) for 14,022 tokens and answered from
-RadAway p.171. Qwen3-4B Q4 beside another project on the 8 GB GPU loaded
+RadAway p.171. Qwen3-4B Q4 with only ~2.8 GB of an 8 GB GPU free loaded
 60% on the CPU: 171 ms median per lookup (36 ms with the GPU free);
 text-embedding-3-small through OpenRouter 293 ms.
 
