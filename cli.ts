@@ -2,7 +2,7 @@ import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
 import { lone, pageParagraphs, type Para, type Row } from "./layout";
 import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
-import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
+import { DEFAULT_MODEL, snapshot, split, timed, type Snapshot } from "./shared";
 import { terms } from "./search";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -134,9 +134,11 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
  */
 export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, preset?: Reading): Promise<ReadOpts> {
   // Kind and quantities come off the wording alone, so one call reads both.
+  const asked = snapshot();
   const read = preset ?? (await readQuestion(client, o.question));
   const kind = o.kind ?? read.kind;
-  ui.log(o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`);
+  // Reading the question is a call of its own, so it says what it spent.
+  ui.log(`${o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`}  in ${split(asked)}`);
   // A count, number or statement has one answer; only a passage question has
   // several places worth reading.
   if (o.hits > 1 && kind !== "passage") {

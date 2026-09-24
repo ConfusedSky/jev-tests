@@ -271,10 +271,15 @@ async function passageSearch(client: TypeSafeClient, pdf: string, o: ReadOpts, u
 }
 
 export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent = ""): Promise<Outcome> {
-  // Each step says what it took and spent. Steps run in parallel (a
-  // column's searches, its lookups) share one count of tokens, so each
-  // such step is timed as a whole.
+  // Each step says what it took and spent. One with lines of its own names
+  // itself first and sums up after them, so what is indented under it is
+  // part of its sum. Several columns' lookups run side by side on one count
+  // of tokens, so that step is timed whole.
   let step = snapshot();
+  const begin = (what: string) => {
+    ui.log(`${indent}${what}…`);
+    step = snapshot();
+  };
   const took = () => {
     const t = split(step);
     step = snapshot();
@@ -289,13 +294,16 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     return searchPdf(client, pdf, o, ui, indent);
   }
   ui.log(`${indent}table of ${things}: ${columns.join(", ")}${add ? `, ${add} beside each ${annotated.map((j) => columns[j]).join(", ")} item` : ""}  in ${took()}`);
-  const main = await passageSearch(client, pdf, o, ui, indent, `Show me the table of all the ${things}`, [things]);
+  begin(`rows: finding the table of ${things}`);
+  const main = await passageSearch(client, pdf, o, ui, `${indent}  `, `Show me the table of all the ${things}`, [things]);
   const first = main.hit && tablesIn(main.hit);
   if (!main.hit || !first?.length) {
     ui.log(`${indent}no table of ${things} found  in ${took()}`);
     return { hits: [], tried: main.tried, rejected: main.rejected, dropped: main.hits.map((hit) => ({ hit, answer: hit.answer! })) };
   }
+  const picking = snapshot();
   const ours = first.length === 1 ? first[0]! : await pickTable(client, o.question, things, first);
+  if (first.length > 1) ui.log(`${indent}  of ${count(first.length, "table")}, the one with a row for each: ${ours.heads.join(", ")}  in ${split(picking)}`);
   ui.log(`${indent}rows: ${ours.rows.length} ${things} from p.${main.hit.page}  in ${took()}`);
 
   // Each column comes from the first table that holds it, ours first.
@@ -348,30 +356,41 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   }
 
   const missing = unplaced().filter((j) => !byEntry.has(j));
+  if (missing.length) begin(`columns: searching for ${missing.map((j) => columns[j]).join(", ")}`);
   const tried = [...main.tried];
   const seen = [...first];
-  await Promise.all(
-    missing.map(async (j) => {
-      const q = `What is the ${columns[j]} of each of the ${things}?`;
-      // A column's first passage is often the rows' own table again, which
-      // lacks it; the drum sizes stand two pages on, in the clip chart.
-      const r = await passageSearch(client, pdf, o, ui, `${indent}  `, q, [columns[j]!], COLUMN_HITS);
-      tried.push(...r.tried);
-      // A table two searches both found is offered once.
-      const same = (a: Found, b: Found) => a.heads.join("\t") === b.heads.join("\t") && a.rows[0]?.cells[0] === b.rows[0]?.cells[0];
-      const found = r.hits.flatMap(tablesIn).filter((t) => !first.some((f) => f.heads.join("\t") === t.heads.join("\t")) && !seen.some((f) => same(f, t)));
-      seen.push(...found);
-      await place(found, q, [j]);
-    }),
-  );
+  // One column at a time, so each search's lines sum only its own calls.
+  for (const j of missing) {
+    const q = `What is the ${columns[j]} of each of the ${things}?`;
+    const searching = snapshot();
+    ui.log(`${indent}  ${columns[j]}: searching…`);
+    // A column's first passage is often the rows' own table again, which
+    // lacks it; the drum sizes stand two pages on, in the clip chart.
+    const r = await passageSearch(client, pdf, o, ui, `${indent}    `, q, [columns[j]!], COLUMN_HITS);
+    tried.push(...r.tried);
+    // A table two searches both found is offered once.
+    const same = (a: Found, b: Found) => a.heads.join("\t") === b.heads.join("\t") && a.rows[0]?.cells[0] === b.rows[0]?.cells[0];
+    const found = r.hits.flatMap(tablesIn).filter((t) => !first.some((f) => f.heads.join("\t") === t.heads.join("\t")) && !seen.some((f) => same(f, t)));
+    seen.push(...found);
+    const picking = snapshot();
+    await place(found, q, [j]);
+    ui.log(`${indent}    column: ${sources[j] ? `"${sources[j]!.table.heads[sources[j]!.col]}" p.${sources[j]!.table.hit.page}` : `none of ${count(found.length, "table")} holds it`}  in ${split(picking)}`);
+    ui.log(`${indent}  ${columns[j]}: searched  in ${split(searching)}`);
+  }
   // A column's own search may land elsewhere while another's found its
   // table: the drum magazine column stands beside the extended one.
   const still = unplaced().filter((j) => !byEntry.has(j));
   const others = seen.filter((t) => !first.includes(t));
-  if (still.length && others.length) await place(others, o.question, still);
-  if (missing.length) ui.log(`${indent}searched for ${count(missing.length, "column")}  in ${took()}`);
+  if (still.length && others.length) {
+    const pooling = snapshot();
+    await place(others, o.question, still);
+    ui.log(`${indent}  every table found, asked again for ${still.map((j) => columns[j]).join(", ")}  in ${split(pooling)}`);
+  }
+  if (missing.length) ui.log(`${indent}columns: searched for ${count(missing.length, "column")}  in ${took()}`);
+
+  begin(`cells: filling ${names.length * columns.length}`);
   for (const [j, s] of sources.entries())
-    ui.log(`${indent}  ${columns[j]}: ${s ? `"${s.table.heads[s.col]}" p.${s.table.hit.page}` : byEntry.has(j) ? "each entry's label" : "not in a table"}`);
+    ui.log(`${indent}  ${columns[j]}: ${s ? `"${s.table.heads[s.col]}" p.${s.table.hit.page}` : byEntry.has(j) ? "each entry's label" : "not in a table; from the rows' own cells"}`);
 
   const matches = new Map<Found, (number | undefined)[]>();
   for (const s of sources) if (s && s.table !== ours && !matches.has(s.table)) matches.set(s.table, await matchRows(client, o.question, names, s.table));
@@ -399,20 +418,21 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     const tables = tablesFrom((await nearby()).paras, main.hit)
       .filter((t) => t.heads.join("\t") !== ours.heads.join("\t"))
       .sort((a, b) => Math.abs(a.hit.page - from) - Math.abs(b.hit.page - from));
+    begin(`${add}: looking up beside each item of ${annotated.map((j) => columns[j]).join(", ")}`);
     // Each column is looked up on its own: a barrel's "Short" is no sight's
     // "Short Scope", and the same text in two columns may be two things.
     await Promise.all(
       annotated.map(async (j) => {
         const items = [...new Set(names.flatMap((_, i) => itemsOf(read.get(`${i} ${j}`)?.text ?? "").filter((it) => !placeholder(it))))];
         const values = await annotate(client, o.question, add, columns[j]!, items, tables);
-        ui.log(`${indent}${columns[j]} ${add}: ${values.size} of ${items.length} items found`);
+        ui.log(`${indent}  ${columns[j]}: ${values.size} of ${items.length} items found`);
         for (const [i] of names.entries()) {
           const piece = read.get(`${i} ${j}`);
           if (piece) read.set(`${i} ${j}`, withValues(piece, values));
         }
       }),
     );
-    ui.log(`${indent}${add} looked up for ${count(annotated.length, "column")}  in ${took()}`);
+    ui.log(`${indent}${add}: looked up for ${count(annotated.length, "column")}  in ${took()}`);
   }
 
   const heads = [ours.heads[0]!, ...columns];

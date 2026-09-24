@@ -451,14 +451,14 @@ export async function searchPdf(
     // its children are; the answer then links to the first of them.
     const under = sections.filter((s) => s.path === toc?.parent || s.path.startsWith(`${toc?.parent} > `));
     if (toc?.answer && under.length > 0) {
-      ui.log(`${indent}  toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
+      ui.log(`${indent}toc   ${toc.answer.text} (p=${toc.answer.p.toFixed(2)})  ${toc.parent}  in ${split(outlineSnap)}`);
       took({ pdf, section: toc.parent, page: Math.min(...under.map((s) => s.start)), p: toc.answer.p, text: "", answer: toc.answer });
       return done();
     }
     if (toc) {
       pool = confine(sections, toc.parent);
       floor = -Infinity;
-      ui.log(`${indent}  toc   reading ${toc.parent} (${pool.length} sections)  in ${split(outlineSnap)}`);
+      ui.log(`${indent}toc   reading ${toc.parent} (${pool.length} sections)  in ${split(outlineSnap)}`);
     }
   }
 
@@ -526,6 +526,10 @@ export async function searchPdf(
       ui.log(`${indent}  --    ${split(sectionSnap)}  ${name}  p.${s.start}-${s.end}  ${all.length ? "already read" : "no extractable text"}`);
       return undefined;
     }
+    // The section names itself before its windows are read, so the lines
+    // under it are the ones its closing sum covers.
+    ui.clear();
+    ui.log(`${indent}section ${name}  p.${s.start}-${s.end}…`);
     const wholeSection = Boolean(o.countAcross && ws.length > 1);
     const label = (w: Window, i: number) => `${name} p.${w.page}${ws.length > 1 ? ` (window ${i + 1}/${ws.length})` : ""}`;
     for (const w of ws) for (let p = w.page; p <= w.end; p++) readPages.add(p);
@@ -533,13 +537,13 @@ export async function searchPdf(
       const out = await settle(c, name, ws);
       if (out === "spent") return "spent";
       if (out && took(out)) {
-        ui.log(`${indent}section ${split(sectionSnap)}`);
+        ui.log(`${indent}section ${split(sectionSnap)}  ${name}`);
         return "stop";
       }
       // A section-wide count already read every window, so the rest are spent.
       if (wholeSection) break;
     }
-    if (ws.length > 1) ui.log(`${indent}  section ${split(sectionSnap)}  ${name}`);
+    ui.log(`${indent}section ${split(sectionSnap)}  ${name}`);
     return undefined;
   }
 
@@ -552,9 +556,10 @@ export async function searchPdf(
     const pages = await bookText(pdf);
     const todo = [...new Set(ranked.filter((r) => r.list === "excerpts").map((r) => ex[r.index]!.page))].filter((p) => !readPages.has(p));
     const groups = batches(todo.map((page) => ({ page, end: page, text: pages[page - 1]! })), o.chars);
-    const t = Date.now();
+    const gateSnap = snapshot();
     const res = await timed("api", () => Promise.all(groups.map((g) => askPages(client, o.question, pdf.split("/").pop()!, g, gate))));
-    ui.log(`${indent}  gated ${todo.length} excerpt pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"}), ${secs(Date.now() - t)} jev`);
+    // A step of its own between sections; each excerpt it passes is read as one after it.
+    ui.log(`${indent}excerpts: gated ${todo.length} pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"})  in ${split(gateSnap)}`);
     return new Map(groups.flatMap((g, i) => g.map((w, j) => [w.page, { w, p: Math.max(...res[i]![j]!), nouls: res[i]![j]! }] as const)));
   };
 
@@ -582,9 +587,14 @@ export async function searchPdf(
       readPages.add(page);
       tried.push({ name, page, p });
       const yes = p >= o.threshold;
-      ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${label}`);
-      if (yes) {
+      // The gate's call is the line above; an excerpt that passed is read
+      // under a header of its own and sums what reading it cost.
+      if (!yes) ui.log(`${indent}excerpt  no   ${p.toFixed(2)}  ${label}`);
+      else {
+        const readSnap = snapshot();
+        ui.log(`${indent}excerpt  yes  ${p.toFixed(2)}  ${label}…`);
         const settled = await settle({ w, p, nouls, label }, name);
+        ui.log(`${indent}excerpt ${split(readSnap)}  ${label}`);
         out = settled === "spent" ? "spent" : settled && took(settled) ? "stop" : undefined;
       }
     }

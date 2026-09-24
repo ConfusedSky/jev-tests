@@ -126,7 +126,8 @@ for (const r of ranked) {
     below = true;
   }
   const fileSnap = snapshot();
-  ui.log(`${r.score.toFixed(2)}  ${r.name}${r.by === "name" ? "" : `  (by ${r.by})`}`);
+  // A file names itself first; what it read stands under it and its sum closes it.
+  ui.log(`${r.score.toFixed(2)}  ${r.name}${r.by === "name" ? "" : `  (by ${r.by})`}…`);
   if (!r.name.toLowerCase().endsWith(".pdf")) {
     ui.log(`  --  not a PDF, skipped`);
     continue;
@@ -144,7 +145,7 @@ for (const r of ranked) {
   tried.push(...res.tried);
   rejected.push(...res.rejected);
   dropped.push(...res.dropped);
-  ui.log(`  file ${split(fileSnap)}  ${res.tried.length} windows read`);
+  ui.log(`file ${split(fileSnap)}  ${res.tried.length} windows read`);
   hits.push(...res.hits);
   if (hits.length >= opts.hits || rejected.length >= opts.maxAnswers) break;
 }
