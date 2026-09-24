@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
-import { pageParagraphs, type Para, type Row } from "./layout";
+import { lone, pageParagraphs, type Para, type Row } from "./layout";
 import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 import { terms } from "./search";
@@ -164,7 +164,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui): 
           let after = end + 1;
           const pages = await pageCount(pdf);
           const more = () => (after > pages ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, after++)));
-          return judge(await readPassage(client, o.question, section, paras, more));
+          return judge(await readPassage(client, o.question, section, paras, more, read.quantities));
         }
       : kind === "truth"
         ? // The gate asked the statement's three nouls of the page; no second call.
@@ -259,7 +259,6 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
 export function renderRows(rows: Row[], cols: number): string[] {
   const bold = (s: string) => `\u001b[1m${s}\u001b[0m`;
   const lines = (text: string, cols: number) => wrap(text, cols).map(([a, b]) => text.slice(a, b));
-  const lone = (r: Row) => r.cells.filter(Boolean).length === 1;
   const only = (r: Row) => lines(r.cells.find(Boolean)!, cols);
   const cell = (r: Row, i: number) => r.cells[i] ?? "";
   const keep = rows[0]!.heads.map((_, i) => i).filter((i) => rows.some((r) => !lone(r) && r.cells[i]));
