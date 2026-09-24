@@ -15,9 +15,11 @@ import { columnsFor, normalize, singular, STOPWORDS, wordsOf, type Answer, type 
 import { answerLayer, type ReadOpts } from "./cli";
 import { lone, pageParagraphs, rowText, type Box, type Para } from "./layout";
 import { pageCount, searchPdf, type Hit, type Outcome, type Ui } from "./pdf";
-import { timed } from "./shared";
+import { snapshot, split, timed } from "./shared";
 
 export const NA = "N/A";
+
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /** Passages a missing column's search collects before its tables are asked which holds it. */
 const COLUMN_HITS = 3;
@@ -269,6 +271,15 @@ async function passageSearch(client: TypeSafeClient, pdf: string, o: ReadOpts, u
 }
 
 export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent = ""): Promise<Outcome> {
+  // Each step says what it took and spent. Steps run in parallel (a
+  // column's searches, its lookups) share one count of tokens, so each
+  // such step is timed as a whole.
+  let step = snapshot();
+  const took = () => {
+    const t = split(step);
+    step = snapshot();
+    return t;
+  };
   const { things, columns, add, annotated } = await readRequest(client, o.question);
   // Naming no columns, "show me the exotic weapons table" wants a table the
   // book prints, and jev reads it as one to be made now and then; the
@@ -277,15 +288,15 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     ui.log(`${indent}${columns.length ? "no rows" : "no columns"} named; read as a passage`);
     return searchPdf(client, pdf, o, ui, indent);
   }
-  ui.log(`${indent}table of ${things}: ${columns.join(", ")}`);
+  ui.log(`${indent}table of ${things}: ${columns.join(", ")}${add ? `, ${add} beside each ${annotated.map((j) => columns[j]).join(", ")} item` : ""}  in ${took()}`);
   const main = await passageSearch(client, pdf, o, ui, indent, `Show me the table of all the ${things}`, [things]);
   const first = main.hit && tablesIn(main.hit);
   if (!main.hit || !first?.length) {
-    ui.log(`${indent}no table of ${things} found`);
+    ui.log(`${indent}no table of ${things} found  in ${took()}`);
     return { hits: [], tried: main.tried, rejected: main.rejected, dropped: main.hits.map((hit) => ({ hit, answer: hit.answer! })) };
   }
   const ours = first.length === 1 ? first[0]! : await pickTable(client, o.question, things, first);
-  ui.log(`${indent}rows: ${ours.rows.length} ${things} from p.${main.hit.page}`);
+  ui.log(`${indent}rows: ${ours.rows.length} ${things} from p.${main.hit.page}  in ${took()}`);
 
   // Each column comes from the first table that holds it, ours first.
   type Source = { table: Found; col: number };
@@ -300,6 +311,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     });
   };
   await place(first, o.question, columns.map((_, j) => j));
+  ui.log(`${indent}columns in the rows' table: ${sources.filter(Boolean).length} of ${columns.length}  in ${took()}`);
   const names = ours.rows.map((r) => r.cells[0] ?? "");
   const unplaced = () => columns.flatMap((_, j) => (sources[j] ? [] : [j]));
 
@@ -332,7 +344,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
         if (piece) read.set(`${i} ${j}`, piece);
       }
     });
-    ui.log(`${indent}entries: ${entries.size} of ${names.length} ${things} on p.${from}-${to}`);
+    ui.log(`${indent}entries: ${entries.size} of ${names.length} ${things} on p.${from}-${to}, ${count(byEntry.size, "column")} from them  in ${took()}`);
   }
 
   const missing = unplaced().filter((j) => !byEntry.has(j));
@@ -357,6 +369,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   const still = unplaced().filter((j) => !byEntry.has(j));
   const others = seen.filter((t) => !first.includes(t));
   if (still.length && others.length) await place(others, o.question, still);
+  if (missing.length) ui.log(`${indent}searched for ${count(missing.length, "column")}  in ${took()}`);
   for (const [j, s] of sources.entries())
     ui.log(`${indent}  ${columns[j]}: ${s ? `"${s.table.heads[s.col]}" p.${s.table.hit.page}` : byEntry.has(j) ? "each entry's label" : "not in a table"}`);
 
@@ -378,6 +391,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     }
   const gaps = names.flatMap((_, i) => columns.flatMap((column, j) => (read.has(`${i} ${j}`) ? [] : [{ row: i, j, column }])));
   for (const [k, v] of await deriveCells(client, o.question, ours, gaps)) read.set(k, v);
+  ui.log(`${indent}cells: ${read.size} of ${names.length * columns.length} filled, ${count(matches.size, "other table")} matched by row, ${count(gaps.length, "gap")} looked for in the rows' own cells  in ${took()}`);
   if (read.size === 0) ui.log(`${indent}no column found for any ${things}`);
 
   if (add && annotated.length) {
@@ -398,6 +412,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
         }
       }),
     );
+    ui.log(`${indent}${add} looked up for ${count(annotated.length, "column")}  in ${took()}`);
   }
 
   const heads = [ours.heads[0]!, ...columns];

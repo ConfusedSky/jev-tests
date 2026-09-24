@@ -459,6 +459,13 @@ total 8.2s (jev 3.8s, read 2.9s, other 1.6s; 189,609 tokens in, 24,445 out, $0.0
 jev's output tokens are free, so the cost is the input's alone; they are
 counted all the same. A step that spent no call says nothing of tokens.
 
+A table to order logs each of its steps the same way: reading the request,
+finding the rows, the columns their table holds, the entries, the column
+searches, filling the cells and looking up what goes beside each item.
+The column searches, and the lookups of several columns, run side by side,
+so each is one line for all of them, and its jev and read times can add up
+to more than its elapsed time.
+
 ## Where the time goes
 
 Every span splits into `jev` (inference), `read` (mutool/pdftotext), `stdin`
