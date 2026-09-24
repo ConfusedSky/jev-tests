@@ -3,8 +3,7 @@
 Idea: rankings are most of a question's tokens (~37k on Fallout even
 coarse to fine). Store each book's rankings; for a new question, find a
 cached question similar enough that its ranking would serve, and skip
-ranking. Built as `cache.ts` and `--cache` (see the README's "The ranking
-cache"); what follows is what the experiments found.
+ranking. Built as `cache.ts` and `--cache` (see [searching.md](searching.md#the-ranking-cache)); what follows is what the experiments found.
 
 Scripts and data: [`experiments/ranking-cache/`](../experiments/ranking-cache/)
 and [`experiments/ranking/simcache.ts`](../experiments/ranking/simcache.ts).
