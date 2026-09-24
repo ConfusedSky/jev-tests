@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { terms } from "./search";
-import { batches, bookText, cacheDir, confine, GATE, highlighted, outline, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, bookText, cacheDir, confine, GATE, highlighted, outline, quadsOn, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -533,5 +533,16 @@ describe("per page", () => {
     expect(whole.hit).toBeUndefined();
     const paged = await searchPdf(stubClient(only), toc, { ...opts, max: 1, perPage: true, verify: onPage }, ui);
     expect(paged.hit?.page).toBe(3);
+  });
+});
+
+describe("quadsOn", () => {
+  const box = (page: number, x0: number) => ({ page, x0, y0: 10, x1: x0 + 20, y1: 20, start: 0, end: 1 });
+
+  test("marks each box on the page once, however many rows used it, so a shared cell is no darker", () => {
+    expect(quadsOn([box(102, 0), box(102, 0), box(102, 50), box(103, 0)], 102)).toEqual([
+      [0, 10, 20, 10, 0, 20, 20, 20],
+      [50, 10, 70, 10, 50, 20, 70, 20],
+    ]);
   });
 });
