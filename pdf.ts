@@ -2,6 +2,7 @@ import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
+import type { RankingCache } from "./cache";
 import { excerpts, type Term } from "./search";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
@@ -310,6 +311,8 @@ export type SearchOpts = {
   countAcross?: (section: string, windows: Window[], pdf: string) => Promise<Judged>;
   /** What the text search looks for; unset, only the titles are ranked. */
   terms?: Term[];
+  /** Rankings of earlier, similar questions to walk instead of ranking again. */
+  rankingCache?: RankingCache;
 };
 
 /**
@@ -485,11 +488,15 @@ export async function searchPdf(
   // a page dense with the subject is as likely a fragment of the list as
   // the list, and ten theme kits on one page counted as ten at p=0.82.
   const confined = pool !== sections;
-  const ex =
-    o.terms && !o.countAcross
+  // A cached ranking covers the whole outline, so the contents confining
+  // the walk to part of it neither uses nor keeps one.
+  const rankSnap = snapshot();
+  const cached = confined ? undefined : await o.rankingCache?.lookup(pdf);
+  const ex = cached
+    ? cached.entry.ex
+    : o.terms && !o.countAcross
       ? ((await excerpts([await file], o.terms, { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })).get(await file) ?? [])
       : [];
-  const rankSnap = snapshot();
   /** The top two levels and the excerpts first, then the sections under the best of those levels. */
   const rankTiered = async (): Promise<Ranked[]> => {
     const first = await rank(client, o.question, lists(coarse(pool), true), o.batch);
@@ -503,18 +510,36 @@ export async function searchPdf(
     { key: "candidates", noun: "section", items: of.map((s) => ({ label: s.path, value: s.path })) },
     { key: "excerpts", noun: "page excerpt", items: withEx ? ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) : [] },
   ];
-  const all = pool.length + ex.length === 0 ? [] : !confined && pool.length > TIER_MIN ? await rankTiered() : await rank(client, o.question, lists(pool, true), o.batch);
+  const all = cached
+    ? cached.entry.all
+    : pool.length + ex.length === 0
+      ? []
+      : !confined && pool.length > TIER_MIN
+        ? await rankTiered()
+        : await rank(client, o.question, lists(pool, true), o.batch);
   // --max bounds the sections read; the excerpts are bounded by their own
   // limit, or a spread of twenty pages would push a section out of reach.
   let sectionsLeft = o.max;
   const ranked = all.filter((r) => r.list === "excerpts" || sectionsLeft-- > 0);
   const above = all.filter((r) => r.list === "candidates" && r.score >= floor).length;
-  if (all.length > 0)
+  if (cached)
+    ui.log(
+      `${indent}ranked from cache in ${split(rankSnap)}: "${cached.entry.question}" ` +
+        `(question ${cached.whole.toFixed(2)}, subject ${cached.subject < 0 ? "–" : cached.subject.toFixed(2)})`,
+    );
+  else if (all.length > 0)
     ui.log(
       `${indent}ranked ${pool.length} sections and ${ex.length} excerpts in ${split(rankSnap)}, ` +
         (confined ? "confined by the contents" : `${above} above title floor ${floor}`) +
         (pool.length > above ? ` (${pool.length - above} below)` : ""),
     );
+
+  // A ranking is kept only once its walk has taken an answer: a ranking that
+  // missed its answer would be handed on to every question like it.
+  const finish = async (): Promise<Outcome> => {
+    if (!cached && !confined && all.length > 0 && hits.length > 0) await o.rankingCache?.store(pdf, { all, ex });
+    return done();
+  };
 
   const byPath = new Map([...sections, ...pool].map((s) => [s.path, s]));
   /** The narrowest bookmarked section a page falls in, for naming an excerpt's page. */
@@ -616,7 +641,7 @@ export async function searchPdf(
         out = settled === "spent" ? "spent" : settled && took(settled) ? "stop" : undefined;
       }
     }
-    if (out === "spent" || out === "stop") return done();
+    if (out === "spent" || out === "stop") return finish();
   }
   // With no outline the rest of the book is read in page order, --max
   // windows of it: a shelf search opened two 400-page books on a page each
@@ -629,5 +654,5 @@ export async function searchPdf(
     else ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order, read in ${split(scanSnap)}`);
     await scan(ws);
   }
-  return done();
+  return finish();
 }
