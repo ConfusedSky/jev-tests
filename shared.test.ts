@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { rank, rankTitles } from "./shared";
+import type { TypeSafeClient } from "@typesafe-ai/sdk";
+import { counted, DOLLARS_PER_MILLION_IN, rank, rankTitles, snapshot, spent, split } from "./shared";
 
 /** Records each call's state and scores an item by its label's digit. */
 function client(calls: unknown[]) {
@@ -46,5 +47,23 @@ describe("rank", () => {
     const calls: unknown[] = [];
     await rankTitles(client(calls), "q", ["x1"], 40, "file named");
     expect(calls).toEqual([{ question: "q", candidates: ["x1"] }]);
+  });
+});
+
+describe("tokens", () => {
+  test("a counted client adds each call's tokens, and a step says what it spent at jev's input price", async () => {
+    const client = counted({
+      systemOne: async () => ({ answers: {}, usage: { input_tokens: 1_000_000, output_tokens: 40 } }),
+    } as unknown as TypeSafeClient);
+    const before = snapshot();
+    await client.systemOne({ state: {}, questions: {} } as never);
+    await client.systemOne({ state: {}, questions: {} } as never);
+    expect(spent(before)).toBe(`2,000,000 tokens in, 80 out, $${(2 * DOLLARS_PER_MILLION_IN).toFixed(5)}`);
+    expect(split(before)).toContain("; 2,000,000 tokens in, 80 out, $0.08400)");
+  });
+
+  test("a step that asked jev nothing says nothing of tokens", () => {
+    expect(spent(snapshot())).toBe("");
+    expect(split(snapshot())).not.toContain("tokens");
   });
 });

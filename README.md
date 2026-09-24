@@ -447,7 +447,17 @@ the left margin, sections at two spaces, windows at four.
 | `yes 0.96` / `no 0.24` | window holds the answer, or not |
 | `take` / `keep` | the extracted answer cleared the floor, or did not |
 | `--` | skipped without spending a call: not a PDF, no outline, no text |
-| `section` / `file` / `total` | elapsed time for that scope |
+| `section` / `file` / `total` | elapsed time for that scope, and what jev read and wrote in it |
+
+A step that called jev ends its timing with the tokens it spent and their
+cost at jev's input price, `DOLLARS_PER_MILLION_IN` in `shared.ts`:
+
+```
+total 8.2s (jev 3.8s, read 2.9s, other 1.6s; 189,609 tokens in, 24,445 out, $0.00796)
+```
+
+jev's output tokens are free, so the cost is the input's alone; they are
+counted all the same. A step that spent no call says nothing of tokens.
 
 ## Where the time goes
 
