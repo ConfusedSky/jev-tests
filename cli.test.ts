@@ -70,17 +70,20 @@ describe("readFlags", () => {
 
 describe("renderPassage", () => {
   const heads = ["Small Gun", "Damage", "Notes", "Cost"];
-  const row = (cells: string[]): Para => ({ heading: false, text: JSON.stringify(cells), style: "", lines: [], table: { heads, cells } });
-  const paras = [
-    { heading: false, text: "Guns for sale.", style: "              ", lines: [] },
-    row([".44 Pistol", "6", "", "99"]),
-    row(["Combat Rifle", "5", "", "117"]),
-    row(["Alt. Fire: None", "", "", ""]),
-  ];
+  /** A row as layout.ts sets it: its filled cells as JSON keyed by the heads, or a lone cell bare. */
+  const row = (cells: string[]): Para => {
+    const filled = cells.map((c, i) => [heads[i]!, c] as const).filter(([, c]) => c);
+    const text = filled.length === 1 ? filled[0]![1] : JSON.stringify(Object.fromEntries(filled));
+    return { heading: false, text, style: " ".repeat(text.length), lines: [], table: { heads, cells } };
+  };
+  const prose = (text: string): Para => ({ heading: false, text, style: " ".repeat(text.length), lines: [] });
+  const paras = [prose("Guns for sale."), row([".44 Pistol", "6", "", "99"]), row(["Combat Rifle", "5", "", "117"]), row(["Alt. Fire: None", "", "", ""])];
   const plain = (s: string) => s.replace(/\u001b\[[\d;]*m/g, "");
 
-  test("a table's rows print as a grid under their heads, an empty column left out, a lone cell spanning", () => {
-    expect(plain(renderPassage(paras, 80, true))).toBe(
+  test("a table's rows print as a grid under their bold heads, an empty column left out, a lone cell spanning", () => {
+    const out = renderPassage(paras, 80, true);
+    expect(out).toContain("  \u001b[1mSmall Gun     Damage  Cost\u001b[0m\n");
+    expect(plain(out)).toBe(
       [
         "  Guns for sale.",
         "",
@@ -92,13 +95,20 @@ describe("renderPassage", () => {
     );
   });
 
-  test("too wide for the window, a row prints a head and its cell a line", () => {
+  test("rows that are all one cell print without a head line", () => {
+    expect(renderPassage([row(["Alt. Fire: None", "", "", ""])], 80, true)).toBe("  Alt. Fire: None");
+  });
+
+  test("too wide for the window, a row prints a bold head and its cell a line, a long cell wrapping under itself", () => {
     const wide = [row([".44 Pistol", "6", "Loud, heavy and hard to find in the wastes", "99"]), row(["Combat Rifle", "5", "", "117"])];
-    expect(plain(renderPassage(wide, 40, true))).toBe(
+    const out = renderPassage(wide, 40, true);
+    expect(out).toContain("  \u001b[1mSmall Gun\u001b[0m  .44 Pistol");
+    expect(plain(out)).toBe(
       [
         "  Small Gun  .44 Pistol",
         "  Damage     6",
-        "  Notes      Loud, heavy and hard to find in the wastes",
+        "  Notes      Loud, heavy and hard to",
+        "             find in the wastes",
         "  Cost       99",
         "",
         "  Small Gun  Combat Rifle",
@@ -108,9 +118,12 @@ describe("renderPassage", () => {
     );
   });
 
-  test("a table takes the whole window, past the measure prose wraps at", () => {
-    const wide = [row([".44 Pistol", "6", "x".repeat(100), "99"])];
-    expect(plain(renderPassage(wide, 140, true)).split("\n")).toHaveLength(2);
+  test("a table takes the whole window while prose wraps at 100", () => {
+    const words = "word ".repeat(30).trim();
+    const out = plain(renderPassage([prose(words), row([".44 Pistol", "6", "x".repeat(100), "99"])], 140, true)).split("\n\n");
+    expect(out[0]!.split("\n").every((l) => l.length <= 100)).toBe(true);
+    expect(out[0]!.split("\n")).toHaveLength(2);
+    expect(out[1]!.split("\n")).toHaveLength(2);
   });
 
   test("piped, a row stays its one line of text", () => {
