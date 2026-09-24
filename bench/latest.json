@@ -1,6 +1,6 @@
 {
-  "at": "2026-09-24T00:56:13.886Z",
-  "commit": "0bc73ae",
+  "at": "2026-09-24T13:50:27.299Z",
+  "commit": "3a3e51d",
   "model": "~typesafe/jev-latest",
   "results": [
     {
@@ -11,17 +11,17 @@
       "p": 1,
       "page": 31,
       "score": 1,
-      "ms": 652
+      "ms": 457
     },
     {
       "book": "heart",
       "question": "How many callings are there in heart?",
       "truth": 5,
       "got": "5",
-      "p": 0.99,
+      "p": 1,
       "page": 21,
       "score": 1,
-      "ms": 508
+      "ms": 341
     },
     {
       "book": "heart",
@@ -31,7 +31,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 2796
+      "ms": 1176
     },
     {
       "book": "heart",
@@ -41,7 +41,7 @@
       "p": 1,
       "page": 12,
       "score": 1,
-      "ms": 1621
+      "ms": 1492
     },
     {
       "book": "heart",
@@ -51,37 +51,37 @@
       "p": 1,
       "page": 31,
       "score": 1,
-      "ms": 286
+      "ms": 162
     },
     {
       "book": "heart",
       "question": "Is knight a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.73,
-      "page": 67,
+      "p": 0.96,
+      "page": 16,
       "score": 1,
-      "ms": 989
+      "ms": 1775
     },
     {
       "book": "heart",
       "question": "Is witch hunter a class in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.92,
+      "p": 0.93,
       "page": 16,
       "score": 1,
-      "ms": 2608
+      "ms": 1816
     },
     {
       "book": "heart",
       "question": "Is heretic a calling in heart?",
       "truth": "false",
       "got": "false",
-      "p": 0.79,
-      "page": 21,
+      "p": 0.81,
+      "page": 25,
       "score": 1,
-      "ms": 983
+      "ms": 703
     },
     {
       "book": "heart",
@@ -91,27 +91,27 @@
       "p": 0.959,
       "page": 12,
       "score": 1,
-      "ms": 2334
+      "ms": 1393
     },
     {
       "book": "heart",
       "question": "what are the equipment tags",
       "truth": "passage",
       "got": "TAGS\nItems may have tags attached to them that mechanically affect how they’re used. Most tags only take effect when a player uses the item, though tags like Piercing can be used by both player- and non-player characters.\nBLOCK: +1 Blood protection.\nBLOODBOUND: Mark D4 stress to Blood to roll with mastery when using this equipment for the rest of the situation.\nBRUTAL: When you roll for stress against an adversary when using this item, roll two dice and pick the highest. Multiple instances of this tag stack: if you managed to get it three times, you’d roll four dice and pick the highest when calculating stress.\nCONDUIT: Mark D4 stress to Mind to roll with mastery when using this equipment for the rest of the situation.\nDANGEROUS: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Blood.\nDEBILITATING: Once per situation, when you inflict stress with this item to one or more targets, the next attack made against them is rolled with mastery.\nDEGENERATING: If you take damage from a weapon with this tag, roll Endure+[Domain] at the end of the situation. On a failure, mark D6 stress; on a partial success, mark D4 stress; on a success, mark none.\nDISTRESSING: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Mind.\nDOUBLE-BARRELED: As Reload, but you can use the\nEXPENSIVE: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Supplies.\nEXTREME RANGE: This item can be used at extreme range.\nLIMITED X: You can use this X times before it gives out.\nLOUD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Fortune.\nOBSCURING: The bearer and any nearby allies reduce the damage of incoming and outgoing ranged weapons by 1 step.\nONE-SHOT: This equipment takes a very long time to prepare, so you can only use it once per situation.\nPIERCING: You cannot reduce stress inflicted by this equipment by using Blood Protection, and adversaries do not benefit from their protection value.\nPOINT-BLANK: As Ranged, but\nat very close range it increases its stress dice by one step. If the shot travels far enough to spread out and dissipate, it lowers its stress dice by one step.\nPOTENT: When you roll for stress removed from yourself or an ally with this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nRANGED: This equipment can be used at range.\nRELOAD: This equipment must\nbe reloaded between giving enemies a chance to close in or flee.\nSMOKE: As Obscuring, but only when the item is used, and only around the area it was used.\nSPREAD: Anyone standing near the target on a successful use must roll Evade+Domain (or another applicable skill) to avoid marking stress as well. On a partial success, downgrade the stress dice by one size. NPCs caught in a blast simply take the stress.\nTIRING: When you fail an\naction using this equipment, the size of its stress dice decreases by 1 for remainder of the situation.\nTRUSTY: When you roll for stress marked against a delve while using this item, roll two dice and pick the highest. Multiple instances of this tag stack as per the Brutal tag.\nUNRELIABLE: When you fail an\naction using this equipment, it cannot be used for remainder of the situation if in a landmark or for the remainder of the journey if on a delve.\nWYRD: When you inflict stress with this item and roll the maximum amount, mark D6 stress to Echo.",
-      "p": 0.9039999999999999,
+      "p": 0.9020000000000001,
       "page": 102,
       "score": 1,
-      "ms": 1830
+      "ms": 1410
     },
     {
       "book": "fallout",
       "question": "How many perks are there?",
       "truth": 94,
-      "got": "94",
+      "got": "93",
       "p": 0.8,
       "page": 61,
-      "score": 1,
-      "ms": 4735
+      "score": 0.9893617021276596,
+      "ms": 2973
     },
     {
       "book": "fallout",
@@ -121,7 +121,7 @@
       "p": 1,
       "page": 46,
       "score": 1,
-      "ms": 3599
+      "ms": 2707
     },
     {
       "book": "fallout",
@@ -131,7 +131,7 @@
       "p": 0.98,
       "page": 53,
       "score": 0.8333333333333334,
-      "ms": 776,
+      "ms": 641,
       "known": "the contents list five; Brotherhood Initiate has no bookmark"
     },
     {
@@ -139,30 +139,30 @@
       "question": "Is Gunslinger a perk?",
       "truth": "true",
       "got": "true",
-      "p": 0.88,
-      "page": 426,
+      "p": 0.92,
+      "page": 67,
       "score": 1,
-      "ms": 1760
+      "ms": 1921
     },
     {
       "book": "fallout",
       "question": "Is Lockpick a perk?",
       "truth": "false",
       "got": "false",
-      "p": 0.84,
-      "page": 47,
+      "p": 0.92,
+      "page": 426,
       "score": 1,
-      "ms": 1902
+      "ms": 2112
     },
     {
       "book": "fallout",
       "question": "How is radiation treated?",
       "truth": "passage",
       "got": "RADAWAY\nAn intravenous drug which purges radiation from the user’s body, absorbing radiation as it circulates through the user’s bloodstream. It’s also a potent diuretic, expelling the radiation with the user’s urine, so it’s advisable to drink a lot of (clean) water shortly after taking a dose.\nSometimes encountered in a diluted form, reducing its effectiveness as the user is only taking a partial dose. Diluted RadAway is only about half as effective, but it’s easier to find.\n• Use: RadAway can be used in one of two ways: it can be applied using the Take Chem minor action, healing 4 Radiation damage immediately, or it can be applied as part of a First Aid action, healing 4 Radiation damage in addition to any other healing done (remove Radiation damage before applying other healing effects). Diluted RadAway works in the same way, but only heals 2 Radiation damage.\nFirst Aid\nHealing salves, RadAway, and Stimpaks can all be applied during a First Aid action, boosting the effect of that action in a specific way.",
-      "p": 0.7922222222222222,
+      "p": 0.7977777777777778,
       "page": 171,
       "score": 1,
-      "ms": 4282
+      "ms": 3751
     },
     {
       "book": "fallout",
@@ -172,37 +172,37 @@
       "p": 0.98,
       "page": 97,
       "score": 1,
-      "ms": 2914
+      "ms": 3346
     },
     {
       "book": "fallout",
       "question": "What is the cost, weight and damage rating of a hunting rifle?",
       "truth": "cost 55, weight 10, damage rating 6",
       "got": "cost 55, weight 10, damage rating 6",
-      "p": 0.93,
+      "p": 0.9299999999999999,
       "page": 97,
       "score": 1,
-      "ms": 2664
+      "ms": 2311
     },
     {
       "book": "litm",
       "question": "How many theme types are there?",
       "truth": 20,
       "got": "20",
-      "p": 0.8,
+      "p": 0.85,
       "page": 75,
       "score": 1,
-      "ms": 4357
+      "ms": 1015
     },
     {
       "book": "litm",
       "question": "How many theme kits are there?",
       "truth": 153,
       "got": "152",
-      "p": 0.8428571428571429,
+      "p": 0.8450704225352113,
       "page": 76,
       "score": 0.9934640522875817,
-      "ms": 1718,
+      "ms": 1352,
       "known": "the second page sits at the answer floor and is counted one run, refused the next"
     },
     {
@@ -213,7 +213,7 @@
       "p": 1,
       "page": 78,
       "score": 0.33333333333333337,
-      "ms": 492,
+      "ms": 932,
       "known": "the contents list the ten trope groups"
     },
     {
@@ -221,10 +221,10 @@
       "question": "How does hero creation work in Legend in the Mist?",
       "truth": "passage",
       "got": "HERO CREATION\nYou can create any hero you can dream of, by describing them with tags.\nThe Simplest Way: Just Write It Down\n• Think of their four themes and write them as power tags.\n• Add two more power tags and one weakness tag to each theme.\n• Write a Quest for each theme, and choose a theme type.\n• Create one backpack tag.\nThe Quickest Way: Pick A Trope\nA trope is like a recipe for a Hero. The tropes begin on page 78.\n• Pick a trope, and write down its three listed themes.\n• Choose a fourth theme from the list.\n• Each theme points you at a theme kit, a premade list of tags, from which you choose the theme’s additional tags (two power tags and one weakness) and record your Quest.\n• Choose one backpack tag.\nThe Detailed Way: Answer Themebook Questions\nA themebook is a questionnaire that walks you through the creation of a theme, and helps you think of the concept behind each choice. The themebooks begin on page 88.\n• Choose four theme types (you can repeat a type).\n• Answer the questions in each theme’s themebook, to create tags. You must answer the first question (in bold) in each themebook, and then two more of your choice (you can repeat a question), to create power tags. Also answer one weakness tag question of your choice.\n• Use the suggestions in the themebook and on the next page to come up with a Quest.\n• Peruse the General Store (page 128) to pick out one backpack tag.\nYou can also mix and match these methods, such as by choosing a trope but answer themebook questions instead of using theme kits, or creating some themes from themebooks and some from theme kits.\nHow To Choose Themes\nEvery Hero has a past, some have a trade or skill, and most have unique traits and possessions, but not every one of these details should become a theme. Choosing themes is choosing what to highlight about your Hero, what is most important in the beginning of their story. Remember that, later, these themes might change, shifting the story’s focus to new aspects of your Hero.\nHero Creation Checklist\nWhile you’re creating your Hero, remember the following:\n• Your power tags should be useful.\nAsk yourself: “What kind of actions would this tag support?”\n• Your weakness tags should be limiting.\nAsk yourself: “What kind of actions would this tag hinder?” or “How or when would it cause problems for my Hero?”\n• Your tags, especially the title of each theme, should match the Might of their theme.\nGreatness theme tags should be grandiose like queen of the realm or spell of annihilation; Adventure theme tags should describe something above the ordinary, such as remarkable swordfighter or blessing of the gods; while Origin theme tags should be ordinary like humble gravedigger or local gossip.\n• Your Quests should be clear.\nMost Quests fall into one or more of these categories:\n• Your Wish: Something you long for or aspire to\n• Your Truth: A statement you believe in and want to uphold\n• Your Home: Something you endeavor regularly to preserve\n• Your Question: Something you yearn to know above all\nAsk yourself: “What could be a Milestone for this Quest?” and “What kind of actions would be considered Abandoning this Quest?” Further advice appears under Types of Quests (page 184).\n• You and the Narrator must have an understanding about your tags and Quests.\nWhat they represent and when and how they can be used. Agree in advance on what each means. Talk about which tags are directly helpful to an action and which are only relevant in an indirect or roundabout way. This will be important during play.\n• Note which tags are broad and which are specific.\nTags like clever or wizard or rich are broad, meaning they can be used in a wide variety of situations and actions. Because of this, they usually require an extra action to use (see Indirect Tags and Prep Actions, page 149). Specific tags like whirlwind slash or sleeping spell can be used directly, but only in appropriate situations, so they are more focused and reliable. Try to have a balance of broad, specific, and somewhere-in-between tags. The Narrator may limit the number of broad tags you have. They may also deem some tags, such as lucky, as too broad to have in the game, or alternatively as inherently indirect, so that they always require an extra action to use.\n…\nThe Classic RPG Build If you’re coming from classic RPGs and would like to start with something familiar, use the following four themes for your character: • People for your ancestry or race (Uncanny Being if your ancestry is considered supernatural) • Trait for your primary or best attribute • Skill or Trade for your class (Prodigious Ability if creating a PC level 5 or higher) • Circumstance for your background",
-      "p": 0.8267857142857146,
+      "p": 0.81875,
       "page": 73,
       "score": 1,
-      "ms": 5243
+      "ms": 3793
     },
     {
       "book": "cpr",
@@ -234,7 +234,7 @@
       "p": 0.75,
       "page": 132,
       "score": 0.9242424242424242,
-      "ms": 2771,
+      "ms": 2027,
       "known": "counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead"
     },
     {
@@ -242,50 +242,91 @@
       "question": "Show me the exotic weapons table",
       "truth": "passage",
       "got": "FITTED FOR THE FUTURE\nExotic Weapons\nExotic Weapons are weapons that are overly specialized or too unique to be easily described. They are typically variants of existing weapon types. All Exotic Weapons are Average Weapon Quality and are incompatible with all Weapon Attachments and Non-Basic Ammunition unless otherwise stated. The table below offers a brief glimpse of Exotic Weapons.\n…\n{\"Weapon\":\"Air Pistol\",\"Description and Data\":\"Very Heavy Pistol that fires paint (and acid!) balls.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Battleglove\",\"Description and Data\":\"Heavy gauntlet. Contains three Cyberarm/Cyberlimb option slots.\",\"Cost\":\"1,000eb (V. Expensive)\"}\n{\"Weapon\":\"Constitution Arms Hurricane Assault Weapon\",\"Description and Data\":\"Shotgun w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Dartgun\",\"Description and Data\":\"Very Heavy Pistol that fires Non-Basic Arrows.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Flamethrower\",\"Description and Data\":\"Shotgun that fires incendiary shells. Fired with the Heavy Weapons Skill.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Kendachi Mono-Three\",\"Description and Data\":\"Two-Handed Very Heavy Melee Weapon. Ignores armor lower than SP11\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Malorian Arms 3516\",\"Description and Data\":\"Excellent Quality Very Heavy Pistol famously wielded by Johnny Silverhand. Does 5d6 damage.\",\"Cost\":\"10,000eb (Super Luxury)\"}\n{\"Weapon\":\"Microwaver\",\"Description and Data\":\"Very Heavy Pistol that can shut down cyberware and carried electronics.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Militech \\\"Cowboy\\\" U-56 Grenade Launcher\",\"Description and Data\":\"Grenade Launcher w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Rhinemetall EMG-86 Railgun\",\"Description and Data\":\"Assault Rifle that ignore armor lower than SP 11. Fired with the Heavy Weapons Skill. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Shrieker\",\"Description and Data\":\"Very Heavy Pistol that causes the Damaged Ear Critical Injury.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Stun Baton\",\"Description and Data\":\"A \\\"less lethal\\\" Medium Melee Weapon.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Stun Gun\",\"Description and Data\":\"A \\\"less lethal\\\" Heavy Pistol.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Tsunami Arms Helix\",\"Description and Data\":\"Assault Rifle that only fires in Autofire mode (with a higher Autofire multiplier than a standard Assault Rifle). Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}",
-      "p": 0.8744999999999999,
+      "p": 0.8789999999999998,
       "page": 96,
       "score": 1,
-      "ms": 2214
+      "ms": 2003
     },
     {
       "book": "cpr",
       "question": "How much do each type of magazine cost in cyberpunk red?",
       "truth": "passage",
-      "got": "{\"Attachment\":\"Drum Magazine\",\"Cost\":\"500eb (Expensive)\"}\n{\"Attachment\":\"Extended Magazine\",\"Cost\":\"100eb (Premium)\"}\n…\n▶ Drum Magazine\nCost: 500eb (Expensive) • Eligible: All Non-Exotic Ranged Weapons except Bows/Crossbows.\n…\n▶ Extended Magazine\nCost: 100eb (Premium) • Eligible: All Non-Exotic Ranged Weapons except Bows/Crossbows.",
-      "p": 0.8566666666666666,
+      "got": "{\"Attachment\":\"Drum Magazine\",\"Cost\":\"500eb (Expensive)\"}\n{\"Attachment\":\"Extended Magazine\",\"Cost\":\"100eb (Premium)\"}\n…\n▶ Drum Magazine\nCost: 500eb (Expensive) • Eligible: All Non-Exotic Ranged Weapons except Bows/Crossbows.",
+      "p": 0.8425,
       "page": 344,
       "score": 1,
-      "ms": 2625
+      "ms": 2531,
+      "known": "p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page"
     },
     {
       "book": "cpr",
       "question": "What is the damage of all the standard ranged weapons?",
       "truth": "passage",
       "got": "{\"Weapon Type\":\"Medium Pistol\",\"Single Shot Damage\":\"2d6\"}\n{\"Weapon Type\":\"Heavy Pistol\",\"Single Shot Damage\":\"3d6\"}\n{\"Weapon Type\":\"Very Heavy Pistol\",\"Single Shot Damage\":\"4d6\"}\n{\"Weapon Type\":\"SMG\",\"Single Shot Damage\":\"2d6\"}\n{\"Weapon Type\":\"Heavy SMG\",\"Single Shot Damage\":\"3d6\"}\n{\"Weapon Type\":\"Shotgun\",\"Single Shot Damage\":\"5d6\"}\n{\"Weapon Type\":\"Assault Rifle\",\"Single Shot Damage\":\"5d6\"}\n{\"Weapon Type\":\"Sniper Rifle\",\"Single Shot Damage\":\"5d6\"}\n{\"Weapon Type\":\"Bows & Crossbows\",\"Single Shot Damage\":\"4d6\"}\n{\"Weapon Type\":\"Grenade Launcher\",\"Single Shot Damage\":\"6d6\"}\n{\"Weapon Type\":\"Rocket Launcher\",\"Single Shot Damage\":\"8d6\"}",
-      "p": 0.8536363636363635,
+      "p": 0.8463636363636362,
       "page": 342,
       "score": 1,
-      "ms": 2627
+      "ms": 3194
     },
     {
       "book": "fallout",
       "question": "What is the cost and weight of every small gun?",
       "truth": "passage",
       "got": "{\"SMALL GUN\":\".44 Pistol\",\"WEIGHT\":\"4\",\"COST\":\"99\"}\n{\"SMALL GUN\":\"10mm Pistol\",\"WEIGHT\":\"4\",\"COST\":\"50\"}\n{\"SMALL GUN\":\"Flare Gun\",\"WEIGHT\":\"2\",\"COST\":\"50\"}\n{\"SMALL GUN\":\"Assault Rifle\",\"WEIGHT\":\"13\",\"COST\":\"144\"}\n{\"SMALL GUN\":\"Combat Rifle\",\"WEIGHT\":\"11\",\"COST\":\"117\"}\n{\"SMALL GUN\":\"Gauss Rifle\",\"WEIGHT\":\"16\",\"COST\":\"228\"}\n{\"SMALL GUN\":\"Hunting Rifle\",\"WEIGHT\":\"10\",\"COST\":\"55\"}\n{\"SMALL GUN\":\"Submachine Gun\",\"WEIGHT\":\"12\",\"COST\":\"109\"}\n{\"SMALL GUN\":\"Combat Shotgun\",\"WEIGHT\":\"11\",\"COST\":\"87\"}\n{\"SMALL GUN\":\"Double-Barrel Shotgun\",\"WEIGHT\":\"9\",\"COST\":\"39\"}\n{\"SMALL GUN\":\"Pipe Bolt-Action\",\"WEIGHT\":\"3\",\"COST\":\"30\"}\n{\"SMALL GUN\":\"Pipe Gun\",\"WEIGHT\":\"2\",\"COST\":\"30\"}\n{\"SMALL GUN\":\"Pipe Revolver\",\"WEIGHT\":\"4\",\"COST\":\"25\"}\n{\"SMALL GUN\":\"Railway Rifle\",\"WEIGHT\":\"14\",\"COST\":\"290\"}\n{\"SMALL GUN\":\"Syringer\",\"WEIGHT\":\"6\",\"COST\":\"132\"}",
-      "p": 0.9100000000000001,
+      "p": 0.9199999999999999,
       "page": 97,
       "score": 1,
-      "ms": 3351
+      "ms": 4260
     },
     {
       "book": "fallout",
       "question": "What is the damage of every small gun?",
       "truth": "passage",
       "got": "{\"SMALL GUN\":\".44 Pistol\",\"DAMAGE RATING\":\"6 CD\"}\n{\"SMALL GUN\":\"10mm Pistol\",\"DAMAGE RATING\":\"4 CD\"}\n{\"SMALL GUN\":\"Flare Gun\",\"DAMAGE RATING\":\"3 CD\"}\n{\"SMALL GUN\":\"Assault Rifle\",\"DAMAGE RATING\":\"5 CD\"}\n{\"SMALL GUN\":\"Combat Rifle\",\"DAMAGE RATING\":\"5 CD\"}\n{\"SMALL GUN\":\"Gauss Rifle\",\"DAMAGE RATING\":\"10 CD\"}\n{\"SMALL GUN\":\"Hunting Rifle\",\"DAMAGE RATING\":\"6 CD\"}\n{\"SMALL GUN\":\"Submachine Gun\",\"DAMAGE RATING\":\"3 CD\"}\n{\"SMALL GUN\":\"Combat Shotgun\",\"DAMAGE RATING\":\"5 CD\"}\n{\"SMALL GUN\":\"Double-Barrel Shotgun\",\"DAMAGE RATING\":\"5 CD\"}\n{\"SMALL GUN\":\"Pipe Bolt-Action\",\"DAMAGE RATING\":\"5 CD\"}\n{\"SMALL GUN\":\"Pipe Gun\",\"DAMAGE RATING\":\"3 CD\"}\n{\"SMALL GUN\":\"Pipe Revolver\",\"DAMAGE RATING\":\"4 CD\"}\n{\"SMALL GUN\":\"Railway Rifle\",\"DAMAGE RATING\":\"10 CD\"}\n{\"SMALL GUN\":\"Syringer\",\"DAMAGE RATING\":\"3 CD\"}",
-      "p": 0.744,
+      "p": 0.7413333333333333,
       "page": 97,
       "score": 1,
-      "ms": 3658
+      "ms": 4397
+    },
+    {
+      "book": "cpr",
+      "question": "Show me the exotic weapons table (as a table request)",
+      "truth": "passage",
+      "got": "FITTED FOR THE FUTURE\nExotic Weapons\nExotic Weapons are weapons that are overly specialized or too unique to be easily described. They are typically variants of existing weapon types. All Exotic Weapons are Average Weapon Quality and are incompatible with all Weapon Attachments and Non-Basic Ammunition unless otherwise stated.\n…\n{\"Weapon\":\"Air Pistol\",\"Description and Data\":\"Very Heavy Pistol that fires paint (and acid!) balls.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Battleglove\",\"Description and Data\":\"Heavy gauntlet. Contains three Cyberarm/Cyberlimb option slots.\",\"Cost\":\"1,000eb (V. Expensive)\"}\n{\"Weapon\":\"Constitution Arms Hurricane Assault Weapon\",\"Description and Data\":\"Shotgun w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Dartgun\",\"Description and Data\":\"Very Heavy Pistol that fires Non-Basic Arrows.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Flamethrower\",\"Description and Data\":\"Shotgun that fires incendiary shells. Fired with the Heavy Weapons Skill.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Kendachi Mono-Three\",\"Description and Data\":\"Two-Handed Very Heavy Melee Weapon. Ignores armor lower than SP11\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Malorian Arms 3516\",\"Description and Data\":\"Excellent Quality Very Heavy Pistol famously wielded by Johnny Silverhand. Does 5d6 damage.\",\"Cost\":\"10,000eb (Super Luxury)\"}\n{\"Weapon\":\"Microwaver\",\"Description and Data\":\"Very Heavy Pistol that can shut down cyberware and carried electronics.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Militech \\\"Cowboy\\\" U-56 Grenade Launcher\",\"Description and Data\":\"Grenade Launcher w/ 2 ROF. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Rhinemetall EMG-86 Railgun\",\"Description and Data\":\"Assault Rifle that ignore armor lower than SP 11. Fired with the Heavy Weapons Skill. Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}\n{\"Weapon\":\"Shrieker\",\"Description and Data\":\"Very Heavy Pistol that causes the Damaged Ear Critical Injury.\",\"Cost\":\"500eb (Expensive)\"}\n{\"Weapon\":\"Stun Baton\",\"Description and Data\":\"A \\\"less lethal\\\" Medium Melee Weapon.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Stun Gun\",\"Description and Data\":\"A \\\"less lethal\\\" Heavy Pistol.\",\"Cost\":\"100eb (Premium)\"}\n{\"Weapon\":\"Tsunami Arms Helix\",\"Description and Data\":\"Assault Rifle that only fires in Autofire mode (with a higher Autofire multiplier than a standard Assault Rifle). Requires BODY 11+ to fire.\",\"Cost\":\"5,000eb (Luxury)\"}",
+      "p": 0.8905263157894734,
+      "page": 96,
+      "score": 1,
+      "ms": 2233
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, and Ammo Type",
+      "truth": "passage",
+      "got": "{\"SMALL GUN\":\".44 Pistol\",\"Damage\":\"6 CD\",\"Fire Rate\":\"1\",\"Cost\":\"99\",\"Ammo Type\":\".44 Magnum\"}\n{\"SMALL GUN\":\"10mm Pistol\",\"Damage\":\"4 CD\",\"Fire Rate\":\"2\",\"Cost\":\"50\",\"Ammo Type\":\"10mm\"}\n{\"SMALL GUN\":\"Flare Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"0\",\"Cost\":\"50\",\"Ammo Type\":\"Flare\"}\n{\"SMALL GUN\":\"Assault Rifle\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"144\",\"Ammo Type\":\"5.56mm Rifle\"}\n{\"SMALL GUN\":\"Combat Rifle\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"117\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Gauss Rifle\",\"Damage\":\"10 CD\",\"Fire Rate\":\"1\",\"Cost\":\"228\",\"Ammo Type\":\"2mm EC\"}\n{\"SMALL GUN\":\"Hunting Rifle\",\"Damage\":\"6 CD\",\"Fire Rate\":\"0\",\"Cost\":\"55\",\"Ammo Type\":\".308\"}\n{\"SMALL GUN\":\"Submachine Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"3\",\"Cost\":\"109\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Combat Shotgun\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"87\",\"Ammo Type\":\"Shotgun Shells\"}\n{\"SMALL GUN\":\"Double-Barrel Shotgun\",\"Damage\":\"5 CD\",\"Fire Rate\":\"0\",\"Cost\":\"39\",\"Ammo Type\":\"Shotgun Shells\"}\n{\"SMALL GUN\":\"Pipe Bolt-Action\",\"Damage\":\"5 CD\",\"Fire Rate\":\"0\",\"Cost\":\"30\",\"Ammo Type\":\".308\"}\n{\"SMALL GUN\":\"Pipe Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"2\",\"Cost\":\"30\",\"Ammo Type\":\".38\"}\n{\"SMALL GUN\":\"Pipe Revolver\",\"Damage\":\"4 CD\",\"Fire Rate\":\"1\",\"Cost\":\"25\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Railway Rifle\",\"Damage\":\"10 CD\",\"Fire Rate\":\"0\",\"Cost\":\"290\",\"Ammo Type\":\"Railway Spike\"}\n{\"SMALL GUN\":\"Syringer\",\"Damage\":\"3 CD\",\"Fire Rate\":\"0\",\"Cost\":\"132\",\"Ammo Type\":\"Syringer ammo\"}",
+      "p": 0.9459090909090907,
+      "page": 97,
+      "score": 1,
+      "ms": 6376
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Stock Mods, Barrel Mods and Ammo Type",
+      "truth": "passage",
+      "got": "{\"SMALL GUN\":\".44 Pistol\",\"Damage\":\"6 CD\",\"Fire Rate\":\"1\",\"Cost\":\"99\",\"Stock Mods\":\"N/A\",\"Barrel Mods\":\"Snubnose Barrel, Bull Barrel\",\"Ammo Type\":\".44 Magnum\"}\n{\"SMALL GUN\":\"10mm Pistol\",\"Damage\":\"4 CD\",\"Fire Rate\":\"2\",\"Cost\":\"50\",\"Stock Mods\":\"N/A\",\"Barrel Mods\":\"Long Barrel, Ported Barrel\",\"Ammo Type\":\"10mm\"}\n{\"SMALL GUN\":\"Flare Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"0\",\"Cost\":\"50\",\"Stock Mods\":\"N/A\",\"Barrel Mods\":\"N/A\",\"Ammo Type\":\"Flare\"}\n{\"SMALL GUN\":\"Assault Rifle\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"144\",\"Stock Mods\":\"Full Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel, Vented Barrel\",\"Ammo Type\":\"5.56mm Rifle\"}\n{\"SMALL GUN\":\"Combat Rifle\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"117\",\"Stock Mods\":\"Full Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel, Vented Barrel\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Gauss Rifle\",\"Damage\":\"10 CD\",\"Fire Rate\":\"1\",\"Cost\":\"228\",\"Stock Mods\":\"Recoil-Compensating Stock\",\"Barrel Mods\":\"Shielded Barrel\",\"Ammo Type\":\"2mm EC\"}\n{\"SMALL GUN\":\"Hunting Rifle\",\"Damage\":\"6 CD\",\"Fire Rate\":\"0\",\"Cost\":\"55\",\"Stock Mods\":\"Full Stock, Marksman’s Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel, Vented Barrel\",\"Ammo Type\":\".308\"}\n{\"SMALL GUN\":\"Submachine Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"3\",\"Cost\":\"109\",\"Stock Mods\":\"Full Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Short\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Combat Shotgun\",\"Damage\":\"5 CD\",\"Fire Rate\":\"2\",\"Cost\":\"87\",\"Stock Mods\":\"Full Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel\",\"Ammo Type\":\"Shotgun Shells\"}\n{\"SMALL GUN\":\"Double-Barrel Shotgun\",\"Damage\":\"5 CD\",\"Fire Rate\":\"0\",\"Cost\":\"39\",\"Stock Mods\":\"Full Stock\",\"Barrel Mods\":\"Long Barrel, Sawed-off Barrel\",\"Ammo Type\":\"Shotgun Shells\"}\n{\"SMALL GUN\":\"Pipe Bolt-Action\",\"Damage\":\"5 CD\",\"Fire Rate\":\"0\",\"Cost\":\"30\",\"Stock Mods\":\"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Stub Barrel, Long Barrel, Ported Barrel, Finned Barrel\",\"Ammo Type\":\".308\"}\n{\"SMALL GUN\":\"Pipe Gun\",\"Damage\":\"3 CD\",\"Fire Rate\":\"2\",\"Cost\":\"30\",\"Stock Mods\":\"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel, Finned Barrel\",\"Ammo Type\":\".38\"}\n{\"SMALL GUN\":\"Pipe Revolver\",\"Damage\":\"4 CD\",\"Fire Rate\":\"1\",\"Cost\":\"25\",\"Stock Mods\":\"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel, Ported Barrel, Finned Barrel\",\"Ammo Type\":\".45\"}\n{\"SMALL GUN\":\"Railway Rifle\",\"Damage\":\"10 CD\",\"Fire Rate\":\"0\",\"Cost\":\"290\",\"Stock Mods\":\"Recoil-Compensating Stock\",\"Barrel Mods\":\"Long Barrel\",\"Ammo Type\":\"Railway Spike\"}\n{\"SMALL GUN\":\"Syringer\",\"Damage\":\"3 CD\",\"Fire Rate\":\"0\",\"Cost\":\"132\",\"Stock Mods\":\"Marksman’s, Recoil-Compensating\",\"Barrel Mods\":\"Stub Barrel, Long Barrel\",\"Ammo Type\":\"Syringer ammo\"}",
+      "p": 0.9440909090909092,
+      "page": 97,
+      "score": 1,
+      "ms": 6774
+    },
+    {
+      "book": "cpr",
+      "question": "Give me a table that contains each of the standard ranged weapons as a row. For each row give me single shot damage, ammo type, weapon skill, rate of fire, standard magazine size, extended magazine size and drum magazine size",
+      "truth": "passage",
+      "got": "{\"Weapon Type\":\"Medium Pistol\",\"single shot damage\":\"2d6\",\"ammo type\":\"M Pistol\",\"weapon\":\"Handgun\",\"rate of fire\":\"2\",\"standard magazine size\":\"12 (M Pistol)\",\"extended magazine size\":\"18\",\"drum magazine size\":\"36\"}\n{\"Weapon Type\":\"Heavy Pistol\",\"single shot damage\":\"3d6\",\"ammo type\":\"H Pistol\",\"weapon\":\"Handgun\",\"rate of fire\":\"2\",\"standard magazine size\":\"8 (H Pistol)\",\"extended magazine size\":\"14\",\"drum magazine size\":\"28\"}\n{\"Weapon Type\":\"Very Heavy Pistol\",\"single shot damage\":\"4d6\",\"ammo type\":\"VH Pistol\",\"weapon\":\"VH Pistol\",\"rate of fire\":\"1\",\"standard magazine size\":\"8 (VH Pistol)\",\"extended magazine size\":\"14\",\"drum magazine size\":\"28\"}\n{\"Weapon Type\":\"SMG\",\"single shot damage\":\"2d6\",\"ammo type\":\"M Pistol\",\"weapon\":\"M Pistol\",\"rate of fire\":\"1\",\"standard magazine size\":\"30 (M Pistol)\",\"extended magazine size\":\"40\",\"drum magazine size\":\"50\"}\n{\"Weapon Type\":\"Heavy SMG\",\"single shot damage\":\"3d6\",\"ammo type\":\"H Pistol\",\"weapon\":\"Handgun\",\"rate of fire\":\"1\",\"standard magazine size\":\"40 (H Pistol)\",\"extended magazine size\":\"50\",\"drum magazine size\":\"60\"}\n{\"Weapon Type\":\"Shotgun\",\"single shot damage\":\"5d6\",\"ammo type\":\"Slug\",\"weapon\":\"Shoulder Arms\",\"rate of fire\":\"1\",\"standard magazine size\":\"4 (Slug)\",\"extended magazine size\":\"8\",\"drum magazine size\":\"16\"}\n{\"Weapon Type\":\"Assault Rifle\",\"single shot damage\":\"5d6\",\"ammo type\":\"Rifle\",\"weapon\":\"Rifle\",\"rate of fire\":\"1\",\"standard magazine size\":\"25 (Rifle)\",\"extended magazine size\":\"35\",\"drum magazine size\":\"45\"}\n{\"Weapon Type\":\"Sniper Rifle\",\"single shot damage\":\"5d6\",\"ammo type\":\"Rifle\",\"weapon\":\"Rifle\",\"rate of fire\":\"1\",\"standard magazine size\":\"4 (Rifle)\",\"extended magazine size\":\"8\",\"drum magazine size\":\"12\"}\n{\"Weapon Type\":\"Bows & Crossbows\",\"single shot damage\":\"4d6\",\"ammo type\":\"Arrow\",\"weapon\":\"N/A\",\"rate of fire\":\"1\",\"standard magazine size\":\"N/A (Arrow)\",\"extended magazine size\":\"N/A\",\"drum magazine size\":\"N/A\"}\n{\"Weapon Type\":\"Grenade Launcher\",\"single shot damage\":\"6d6\",\"ammo type\":\"Grenade\",\"weapon\":\"Grenade\",\"rate of fire\":\"1\",\"standard magazine size\":\"2 (Grenade)\",\"extended magazine size\":\"4\",\"drum magazine size\":\"6\"}\n{\"Weapon Type\":\"Rocket Launcher\",\"single shot damage\":\"8d6\",\"ammo type\":\"Rocket\",\"weapon\":\"Rocket\",\"rate of fire\":\"1\",\"standard magazine size\":\"1 (Rocket)\",\"extended magazine size\":\"2\",\"drum magazine size\":\"3\"}",
+      "p": 0.9645454545454547,
+      "page": 95,
+      "score": 1,
+      "ms": 10814
     }
   ]
 }
