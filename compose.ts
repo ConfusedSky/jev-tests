@@ -11,7 +11,7 @@
  * is a passage of table rows, so it prints, pipes and highlights as one.
  */
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import { columnsFor, normalize, STOPWORDS, wordsOf, type Answer, type Reading, type Word } from "./answer";
+import { columnsFor, normalize, singular, STOPWORDS, wordsOf, type Answer, type Reading, type Word } from "./answer";
 import { answerLayer, type ReadOpts } from "./cli";
 import { lone, pageParagraphs, rowText, type Box, type Para } from "./layout";
 import { pageCount, searchPdf, type Hit, type Outcome, type Ui } from "./pdf";
@@ -29,7 +29,7 @@ const ENTRY_PAGES = 8;
 export type Piece = { text: string; from: string; lines: Box[] };
 
 /** A table a passage holds: its heads and its rows, each with the boxes of its cells. */
-export type Found = { heads: string[]; rows: { cells: string[]; lines: Box[] }[]; hit: Hit };
+export type Found = { heads: string[]; rows: { cells: string[]; lines: Box[]; group?: string }[]; hit: Hit };
 
 /**
  * The tables in a hit's passage, notes under rows left out, in the order
@@ -45,14 +45,21 @@ export function tablesIn(hit: Hit): Found[] {
 export function tablesFrom(paras: Para[], hit: Hit): Found[] {
   const out: Found[] = [];
   let cur: Found | undefined;
+  // A row of one cell over rows ("BARREL MODS") names their group.
+  let group: string | undefined;
+  let page = hit.page;
   for (const p of paras) {
+    page = p.lines[0]?.page ?? page;
     if (!p.table) {
-      if (p.text !== "…") cur = undefined;
+      if (p.text !== "…") cur = group = undefined;
       continue;
     }
-    if (lone(p.table)) continue;
-    if (!cur || cur.heads.join("\t") !== p.table.heads.join("\t")) out.push((cur = { heads: p.table.heads, rows: [], hit: { ...hit, page: p.lines[0]?.page ?? hit.page } }));
-    cur.rows.push({ cells: p.table.cells, lines: p.lines });
+    if (lone(p.table)) {
+      group = p.table.cells.find(Boolean);
+      continue;
+    }
+    if (!cur || cur.heads.join("\t") !== p.table.heads.join("\t")) out.push((cur = { heads: p.table.heads, rows: [], hit: { ...hit, page } }));
+    cur.rows.push({ cells: p.table.cells, lines: p.lines, ...(group && { group }) });
   }
   return out;
 }
@@ -140,14 +147,9 @@ export function piecesOf(cells: string[]): { text: string; cell: number }[] {
 }
 
 /**
- * What the table is of and which columns it wants, read off the request a
- * word at a time. The question's own reading will not do: its quantities are
- * figures, and "ammo type" or "weapon skill" is not one.
- */
-/**
  * Names as runs of words: a run starts at a word `start` passes and goes on
- * through words `go` passes, a joining word never starting or ending one; a
- * comma or full stop ends it. With `of`, an "of" between two such words
+ * through words `go` passes, a joining word never starting or standing inside
+ * one; a comma or full stop ends it. With `of`, an "of" between two such words
  * stays inside ("rate of fire"). Each name keeps its first and last word's index.
  */
 export function namesBy(words: Word[], start: (i: number) => boolean, go: (i: number) => boolean, of = false): { name: string; start: number; end: number }[] {
@@ -180,10 +182,19 @@ export function namesBy(words: Word[], start: (i: number) => boolean, go: (i: nu
  */
 export type Request = { things: string; columns: string[]; add?: string; annotated: number[] };
 
+/**
+ * What the table is of, which columns it wants and what to add to them, read
+ * off the request a word at a time. The question's own reading will not do:
+ * its quantities are figures, and "ammo type" or "weapon skill" is not one.
+ */
 export function readRequest(client: TypeSafeClient, question: string): Promise<Request> {
   // jevfind composes a table per file; the request reads the same in each.
+  // A reading that failed is not kept, so the next file asks again.
   let r = requests.get(question);
-  if (!r) requests.set(question, (r = readRequestOnce(client, question)));
+  if (!r) {
+    requests.set(question, (r = readRequestOnce(client, question)));
+    r.catch(() => requests.delete(question));
+  }
   return r;
 }
 const requests = new Map<string, Promise<Request>>();
@@ -374,20 +385,19 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     const tables = tablesFrom((await nearby()).paras, main.hit)
       .filter((t) => t.heads.join("\t") !== ours.heads.join("\t"))
       .sort((a, b) => Math.abs(a.hit.page - from) - Math.abs(b.hit.page - from));
-    const items = [...new Set(annotated.flatMap((j) => names.flatMap((_, i) => itemsOf(read.get(`${i} ${j}`)?.text ?? ""))))];
-    const values = await annotate(client, o.question, add, items, tables);
-    ui.log(`${indent}${add}: ${[...values.values()].filter((v) => v.text).length} of ${items.length} items found`);
-    for (const j of annotated)
-      for (const [i] of names.entries()) {
-        const piece = read.get(`${i} ${j}`);
-        if (!piece) continue;
-        const parts = itemsOf(piece.text).map((it) => ({ it, v: values.get(it) }));
-        read.set(`${i} ${j}`, {
-          text: parts.map(({ it, v }) => `${it} (${v?.text || NA})`).join(", "),
-          from: piece.from,
-          lines: [...piece.lines, ...parts.flatMap(({ v }) => v?.lines ?? [])],
-        });
-      }
+    // Each column is looked up on its own: a barrel's "Short" is no sight's
+    // "Short Scope", and the same text in two columns may be two things.
+    await Promise.all(
+      annotated.map(async (j) => {
+        const items = [...new Set(names.flatMap((_, i) => itemsOf(read.get(`${i} ${j}`)?.text ?? "").filter((it) => !placeholder(it))))];
+        const values = await annotate(client, o.question, add, columns[j]!, items, tables);
+        ui.log(`${indent}${columns[j]} ${add}: ${values.size} of ${items.length} items found`);
+        for (const [i] of names.entries()) {
+          const piece = read.get(`${i} ${j}`);
+          if (piece) read.set(`${i} ${j}`, withValues(piece, values));
+        }
+      }),
+    );
   }
 
   const heads = [ours.heads[0]!, ...columns];
@@ -421,31 +431,65 @@ export function itemsOf(cell: string): string[] {
     .filter(Boolean);
 }
 
+/** Whether a row names `item`, by its name alone or with its group's noun after it ("Long" under "BARREL MODS"). */
+export function namedAs(row: { cells: string[]; group?: string }, item: string): boolean {
+  const name = normalize(row.cells[0] ?? "");
+  const noun = normalize(row.group ?? "").replace(/\s*\bmods?\b\s*/g, " ").trim();
+  const want = normalize(item);
+  return name !== "" && (want === name || (noun !== "" && (want === `${name} ${noun}` || want === `${name} ${singular(noun)}`)));
+}
+
+/** A cell's text that stands for no value: "None", "N/A", a dash. */
+export const placeholder = (text: string) => /^(none|n a|na|)$/.test(normalize(text));
+
+/** A cell with its items' values beside them, "Reflex Sight (+14)", marked where each came from; a placeholder cell is left as it is. */
+export function withValues(piece: Piece, values: Map<string, Piece>): Piece {
+  const items = itemsOf(piece.text);
+  if (items.every(placeholder)) return piece;
+  const parts = items.map((it) => ({ it, v: values.get(it) }));
+  return {
+    text: parts.map(({ it, v }) => (placeholder(it) ? it : `${it} (${v?.text || NA})`)).join(", "),
+    from: piece.from,
+    lines: [...piece.lines, ...parts.flatMap(({ v }) => v?.lines ?? [])],
+  };
+}
+
 /**
- * For each item, its `add` from the nearest of `tables` (nearest first)
- * that names it and holds an `add` column: the same mod costs differently
- * in a weapon's own table further on. An item no table names outright is
- * matched by jev among the rows of the table most items came from.
+ * For each item of `column`, its `add` from the nearest of `tables`
+ * (nearest first) that names it and holds an `add` column: the same mod
+ * costs differently in a weapon's own table further on. Where a table's
+ * rows fall in groups ("BARREL MODS", "SIGHT MODS") only the group jev
+ * picks for the column is looked in. A table under a group may shorten
+ * its names by the group's noun ("Long" under "BARREL MODS" is "Long
+ * Barrel"); an item named neither way is N/A rather than a guess, since
+ * only its name ties it to a row ("Short" is no "Sawed-Off").
  */
-export async function annotate(client: TypeSafeClient, question: string, add: string, items: string[], tables: Found[]): Promise<Map<string, Piece>> {
+export async function annotate(client: TypeSafeClient, question: string, add: string, column: string, items: string[], tables: Found[]): Promise<Map<string, Piece>> {
   const out = new Map<string, Piece>();
   if (items.length === 0 || tables.length === 0) return out;
+  const groups = [...new Set(tables.flatMap((t) => t.rows.flatMap((r) => (r.group ? [r.group] : []))))];
   // Asked of the table's own rows, not the question's: the question has a
   // Cost column of its own, the gun's, and "the cost it asks for" is that.
-  const res = await timed("api", () =>
-    client.systemOne({
-      state: { question },
-      questions: Object.fromEntries(
-        tables.map((t, k) => [
-          `t${k}`,
-          choice(`Which column of the table headed "${t.heads.join(", ")}" gives the ${add} of each of its rows (${t.rows.slice(0, 3).map((r) => `"${r.cells[0]}"`).join(", ")})?`, {
-            ...Object.fromEntries(t.heads.flatMap((h, c) => (c > 0 && t.rows.some((r) => r.cells[c]) ? [[`c${c}`, `The column headed "${h}"`]] : []))),
-            none: `No column gives the ${add}`,
-          }),
-        ]),
-      ),
+  const asked: [string, ReturnType<typeof choice>][] = tables.map((t, k) => [
+    `t${k}`,
+    choice(`Which column of the table headed "${t.heads.join(", ")}" gives the ${add} of each of its rows (${t.rows.slice(0, 3).map((r) => `"${r.cells[0]}"`).join(", ")})?`, {
+      ...Object.fromEntries(t.heads.flatMap((h, c) => (c > 0 && t.rows.some((r) => r.cells[c]) ? [[`c${c}`, `The column headed "${h}"`]] : []))),
+      none: `No column gives the ${add}`,
     }),
-  );
+  ]);
+  if (groups.length > 1)
+    asked.push([
+      "group",
+      choice(`Which group of rows lists the ${column} (such as ${items.slice(0, 3).map((it) => `"${it}"`).join(", ")})?`, {
+        // A choice takes at most 255 options.
+        ...Object.fromEntries(groups.slice(0, 254).map((g, k) => [`g${k}`, `The rows under "${g}"`])),
+        none: "No one group",
+      }),
+    ]);
+  const res = await timed("api", () => client.systemOne({ state: { question }, questions: Object.fromEntries(asked) }));
+  const g = groups.length > 1 ? /^g(\d+)$/.exec((res.answers.group as { choice: string }).choice)?.[1] : undefined;
+  const only = g === undefined ? undefined : groups[Number(g)];
+  if (only !== undefined) tables = tables.map((t) => ({ ...t, rows: t.rows.filter((r) => r.group === only) }));
   const cols = tables.map((_, k) => {
     const c = /^c(\d+)$/.exec((res.answers[`t${k}`] as { choice: string }).choice)?.[1];
     return c === undefined ? undefined : Number(c);
@@ -455,21 +499,13 @@ export async function annotate(client: TypeSafeClient, question: string, add: st
     const row = t.rows[r]!;
     return { text: row.cells[col] ?? "", from: row.cells[0] ?? "", lines: row.cells[col] ? boxesOf(row, col) : [] };
   };
-  const home = new Map<(typeof holding)[number], number>();
   for (const it of items)
     for (const h of holding) {
-      const r = sameNames([it], h.t.rows.map((row) => row.cells[0] ?? ""))[0];
-      if (r === undefined) continue;
+      const r = h.t.rows.findIndex((row) => namedAs(row, it));
+      if (r < 0) continue;
       out.set(it, piece(h, r));
-      home.set(h, (home.get(h) ?? 0) + 1);
       break;
     }
-  const left = items.filter((it) => !out.has(it));
-  const best = [...home].sort((a, b) => b[1] - a[1])[0]?.[0] ?? holding[0];
-  if (left.length && best) {
-    const found = await matchRows(client, question, left, best.t);
-    left.forEach((it, k) => found[k] !== undefined && out.set(it, piece(best, found[k]!)));
-  }
   return out;
 }
 

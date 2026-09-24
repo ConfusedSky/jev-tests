@@ -107,7 +107,7 @@ const CASES: Case[] = [
     truth: "passage",
     page: 344,
     contains: ["Drum Magazine", "500eb", "Extended Magazine", "100eb"],
-    known: "p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page",
+    known: "p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page or take the ammunition page",
   },
   // The note under each weapon's row must not break the table apart, and
   // only the damage column stays beside the name.
@@ -167,9 +167,9 @@ const CASES: Case[] = [
       '"Pipe Gun","Damage":"3 CD","Fire Rate":"2","Cost":"30","Stock Mods":"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock","Barrel Mods":"Long Barrel, Ported Barrel, Finned Barrel","Ammo Type":".38"}',
     ],
   },
-  // Each mod in a cell takes its cost from the nearest mod table, p.103's
-  // small guns sights, and a table naming a mod short ("Long" for "Long
-  // Barrel") is matched by jev.
+  // Each mod in a cell takes its cost from the nearest mod table, the
+  // small guns' own, and a row named short by its group ("Long" under
+  // BARREL MODS) names "Long Barrel".
   {
     book: "fallout",
     question:
@@ -185,7 +185,12 @@ const CASES: Case[] = [
     book: "fallout",
     question: "Show me a table of the small guns with columns Damage and Barrel Mods. For each Mod column add the cost of the mod in parenthesis.",
     truth: "passage",
-    contains: ['"Barrel Mods":"Snubnose Barrel (–), Bull Barrel (+10)"}', '"Assault Rifle","Damage":"5 CD","Barrel Mods":"Long Barrel (+20), Ported Barrel (+35), Vented Barrel (+36)"}'],
+    contains: [
+      '"Barrel Mods":"Snubnose Barrel (–), Bull Barrel (+10)"}',
+      '"Assault Rifle","Damage":"5 CD","Barrel Mods":"Long Barrel (+20), Ported Barrel (+35), Vented Barrel (+36)"}',
+      // No barrel row is "Short"; the sights' "Short Scope" is not it.
+      '"Submachine Gun","Damage":"3 CD","Barrel Mods":"Short (N/A)"}',
+    ],
   },
   // A table to the question's design: columns from p.95, the extended and
   // drum sizes from p.345 matched by name, the ammo type read out of the
