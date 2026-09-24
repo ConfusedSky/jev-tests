@@ -734,9 +734,6 @@ export async function columnsFor(client: TypeSafeClient, question: string, quant
   );
 }
 
-/** Pages a passage may grow onto past the window it was found in. */
-const PASSAGE_REACH = 2;
-
 /**
  * The stretches of a page that answer a passage question: one noul per
  * sentence asks whether it is part of the answer, and the runs summing
@@ -785,13 +782,14 @@ export async function readPassage(
   const whole = () => paras.map((p) => p.text).join("\n\n");
   let ps = notesWithRows(units, paras, await judge(units, whole()));
   let runs = bestRuns(ps);
-  // A passage goes on past its window when the next page holds more of the
+  // A passage goes on past its window while the next page holds more of the
   // answer: the phases of combat are listed and explained over two pages.
-  // Only the new page's sentences are asked, and it is kept only if it
-  // holds a run of its own. The page before is never read: on its own
-  // account, the weapons table before the exotic one and a page before hero
-  // creation both got in, and nothing was ever found there.
-  for (let reach = 0; runs.length > 0 && more && reach < PASSAGE_REACH; reach++) {
+  // `more` says how far it may go. Only the new page's sentences are asked,
+  // and it is kept only if it holds a run of its own. The page before is
+  // never read: on its own account, the weapons table before the exotic one
+  // and a page before hero creation both got in, and nothing was ever found
+  // there.
+  while (runs.length > 0 && more) {
     const next = await more();
     if (next.length === 0) break;
     const fresh = unitsOf(next);

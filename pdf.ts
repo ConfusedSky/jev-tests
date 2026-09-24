@@ -293,7 +293,8 @@ export function batches(pages: Window[], chars: number): Window[][] {
  * verdict lets the walk go on instead of settling for that.
  */
 /** `nouls` are the window's gate nouls, in the gate's order, for a verifier that can read its answer off them. */
-export type Verify = (section: string, page: number, text: string, pdf: string, end: number, nouls: number[]) => Promise<Judged>;
+/** Reads a window out; `last` is the last page of the section it is in, as far as a passage may run on. */
+export type Verify = (section: string, page: number, text: string, pdf: string, end: number, nouls: number[], last: number) => Promise<Judged>;
 
 export type SearchOpts = {
   question: string;
@@ -411,7 +412,7 @@ export async function searchPdf(
    * "spent" once maxAnswers windows have answered below the floor, or
    * undefined to keep walking.
    */
-  const settle = async ({ w, p, nouls, label }: Passed, name: string, all?: Window[]): Promise<Hit | "spent" | undefined> => {
+  const settle = async ({ w, p, nouls, label }: Passed, name: string, all?: Window[], last = w.end): Promise<Hit | "spent" | undefined> => {
     let hit: Hit = { pdf, section: name, page: w.page, p, text: w.text };
     // A list can outrun one window, so a count reads the whole section rather
     // than the window that happened to answer. It links to the first page
@@ -429,7 +430,7 @@ export async function searchPdf(
         ui.log(`${indent}  drop  ${f.answer.text} (p=${f.answer.p.toFixed(2)})  ${f.hit.section}  part of ${name}`);
       }
       check = o.countAcross(name, all, pdf);
-    } else check = o.verify?.(name, w.page, w.text, pdf, w.end, nouls);
+    } else check = o.verify?.(name, w.page, w.text, pdf, w.end, nouls, last);
     if (!check) return hit;
     const { verdict, pages, ...answer } = await check;
     if (pages?.length) {
@@ -606,7 +607,7 @@ export async function searchPdf(
     const label = (w: Window, i: number) => `${name} p.${w.page}${ws.length > 1 ? ` (window ${i + 1}/${ws.length})` : ""}`;
     for (const w of ws) for (let p = w.page; p <= w.end; p++) readPages.add(p);
     for await (const c of passed(ws, name, label)) {
-      const out = await settle(c, name, ws);
+      const out = await settle(c, name, ws, s.end);
       if (out === "spent") return "spent";
       if (out && took(out)) {
         ui.log(`${indent}section ${split(sectionSnap)}  ${name}`);

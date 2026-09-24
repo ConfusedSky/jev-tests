@@ -248,9 +248,20 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
         l.x0 > lead.x0 + lead.size * 0.5 &&
         l.x0 < lead.x0 + lead.size * 3 &&
         l.y0 - prev.y1 < pitch;
+      // A sentence broken over two lines is one paragraph, whatever the gap
+      // between their boxes: beside an illustration Fallout's 9pt text gaps
+      // wider than its line pitch, and "attacks with thrown" / "weapons like
+      // javelins" came apart, the second half a passage fragment of its own.
+      const continues =
+        !bullet &&
+        !resize &&
+        !newColumn &&
+        !/[.!?:]["'’”)]?$/.test(text(prev).trim()) &&
+        /^\p{Ll}/u.test(text(l).trim()) &&
+        l.y0 - prev.y0 <= prev.size * 2;
       // A table row is one paragraph, whatever its cells' gaps and sizes.
       const [bp, bl] = [blockOf.get(prev)!, blockOf.get(l)!];
-      const split = gap && !hangs;
+      const split = gap && !hangs && !continues;
       if (bp.row !== bl.row ? bp.table || bl.table || newColumn || split || resize || bullet : !bl.table && (split || resize || bullet)) flush();
     }
     cur.push(l);

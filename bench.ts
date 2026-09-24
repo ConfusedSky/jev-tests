@@ -136,6 +136,16 @@ const CASES: Case[] = [
     contains: ['"Combat Rifle","DAMAGE RATING":"5 CD"'],
     without: ["DAMAGE EFFECTS", "DAMAGE TYPE", "COST"],
   },
+  // A list over four pages, its sentences broken around illustrations: the
+  // passage runs through the section and keeps "thrown / weapons like
+  // javelins" one sentence.
+  {
+    book: "fallout",
+    question: "What are the skills in fallout?",
+    truth: "passage",
+    contains: ["THROWING", "javelins, knives, and improvised weapons", "UNARMED", "fight with your fists"],
+    without: ["TAG SKILLS", "DERIVED STATISTICS"],
+  },
   // A table asked for by name and no columns is the book's own, read as a
   // passage even when jev takes it for one to be made.
   {

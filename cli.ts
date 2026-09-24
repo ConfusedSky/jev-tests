@@ -47,6 +47,9 @@ export const num =
 /** The cache of rankings for one question, kept with the text cache. */
 const rankingCacheFor = (m: CacheModel, question: string, subject: string[]) => makeRankingCache(m, embedder(m), `${cacheDir()}/rankings`, question, subject);
 
+/** Pages a passage may grow onto past the end of the section it was found in. */
+const PASSAGE_REACH = 2;
+
 /** Options every PDF-reading tool shares; jevfind adds its file-level floors on top. */
 export type ReadOpts = SearchOpts & {
   model: string;
@@ -199,13 +202,15 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, p
   // see layout.ts. Under --whole-windows a window spans pages.
   const verify: SearchOpts["verify"] =
     kind === "passage" || kind === "table"
-      ? async (section, page, _text, pdf, end) => {
+      ? async (section, page, _text, pdf, end, _nouls, last) => {
           const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
           const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
-          // The passage may run on past the window, a page at a time.
+          // The passage may run on a page at a time through the rest of its
+          // section, and PASSAGE_REACH pages past it: a list like Fallout's
+          // skills (p.46-49) can outrun a fixed reach from its first page.
           let after = end + 1;
-          const pages = await pageCount(pdf);
-          const more = () => (after > pages ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, after++)));
+          const upTo = Math.min(await pageCount(pdf), Math.max(end, last) + PASSAGE_REACH);
+          const more = () => (after > upTo ? Promise.resolve([]) : timed("extract", () => pageParagraphs(pdf, after++)));
           return judge(await readPassage(client, o.question, section, paras, more, read.quantities));
         }
       : kind === "truth"
