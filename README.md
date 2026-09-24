@@ -461,10 +461,13 @@ counted all the same. A step that spent no call says nothing of tokens.
 
 A table to order logs each of its steps the same way: reading the request,
 finding the rows, the columns their table holds, the entries, the column
-searches, filling the cells and looking up what goes beside each item.
-The column searches, and the lookups of several columns, run side by side,
-so each is one line for all of them, and its jev and read times can add up
-to more than its elapsed time.
+searches, filling the cells and looking up what goes beside each item. A
+step with lines of its own names itself first (`rows: finding the table of
+small guns…`), its lines stand indented under it, and its sum comes after
+them, so an indented line is part of the sum below it, never added to it;
+the unindented sums add up to the total. Sections read the same way. The
+column searches run one at a time so each one's lines sum only its own
+calls; the lookups of several columns run side by side and are one line.
 
 ## Where the time goes
 
