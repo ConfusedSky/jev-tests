@@ -234,20 +234,8 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
   const renderPara = (p: Para) => {
     if (p.heading) return indent + (styled ? `\u001b[1m${p.text}\u001b[0m` : p.text);
     if (!styled) return indent + p.text;
-    // Wrap at spaces, carrying each character's weight along with it.
-    const lines: string[] = [];
-    let at = 0;
-    while (at < p.text.length) {
-      let end = Math.min(p.text.length, at + cols);
-      if (end < p.text.length) {
-        const space = p.text.lastIndexOf(" ", end);
-        if (space > at) end = space;
-      }
-      lines.push(indent + styleLine(p.text.slice(at, end), p.style.slice(at, end)));
-      at = end;
-      while (p.text[at] === " ") at++;
-    }
-    return lines.join("\n");
+    // Each character's weight goes with it onto its line.
+    return wrap(p.text, cols).map(([a, b]) => indent + styleLine(p.text.slice(a, b), p.style.slice(a, b))).join("\n");
   };
   const blocks: string[] = [];
   for (let i = 0; i < paras.length; i++) {
@@ -270,20 +258,47 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
  */
 export function renderRows(rows: Row[], cols: number): string[] {
   const bold = (s: string) => `\u001b[1m${s}\u001b[0m`;
+  const lines = (text: string, cols: number) => wrap(text, cols).map(([a, b]) => text.slice(a, b));
   const lone = (r: Row) => r.cells.filter(Boolean).length === 1;
+  const only = (r: Row) => lines(r.cells.find(Boolean)!, cols);
+  const cell = (r: Row, i: number) => r.cells[i] ?? "";
   const keep = rows[0]!.heads.map((_, i) => i).filter((i) => rows.some((r) => !lone(r) && r.cells[i]));
+  if (keep.length === 0) return rows.flatMap(only);
   const heads = keep.map((i) => rows[0]!.heads[i]!);
-  const widths = keep.map((i, k) => Math.max(heads[k]!.length, ...rows.map((r) => (lone(r) ? 0 : (r.cells[i] ?? "").length))));
+  const widths = keep.map((i, k) => Math.max(heads[k]!.length, ...rows.map((r) => (lone(r) ? 0 : cell(r, i).length))));
   const gap = "  ";
   if (widths.reduce((a, b) => a + b, 0) + gap.length * (widths.length - 1) <= cols) {
     const line = (cells: string[]) => cells.map((c, k) => c.padEnd(widths[k]!)).join(gap).trimEnd();
-    return [bold(line(heads)), ...rows.map((r) => (lone(r) ? r.cells.find(Boolean)! : line(keep.map((i) => r.cells[i] ?? ""))))];
+    return [bold(line(heads)), ...rows.flatMap((r) => (lone(r) ? only(r) : [line(keep.map((i) => cell(r, i)))]))];
   }
   const width = Math.max(...heads.map((h) => h.length));
+  // A cell wraps under itself, clear of the heads.
+  const hang = " ".repeat(width + gap.length);
   return rows.flatMap((r, n) => [
     ...(n > 0 ? [""] : []),
-    ...(lone(r) ? [r.cells.find(Boolean)!] : keep.flatMap((i, k) => (r.cells[i] ? [`${bold(heads[k]!.padEnd(width))}  ${r.cells[i]}`] : []))),
+    ...(lone(r)
+      ? only(r)
+      : keep.flatMap((i, k) =>
+          lines(cell(r, i), Math.max(cols - hang.length, 20)).map((l, j) => (j === 0 ? `${bold(heads[k]!.padEnd(width))}${gap}${l}` : hang + l)),
+        )),
   ]);
+}
+
+/** Where `text` breaks to fit `cols`: at the last space that fits, or mid-word when none does. */
+function wrap(text: string, cols: number): [number, number][] {
+  const out: [number, number][] = [];
+  let at = 0;
+  while (at < text.length) {
+    let end = Math.min(text.length, at + cols);
+    if (end < text.length) {
+      const space = text.lastIndexOf(" ", end);
+      if (space > at) end = space;
+    }
+    out.push([at, end]);
+    at = end;
+    while (text[at] === " ") at++;
+  }
+  return out;
 }
 
 /** A value goes before the link on its line; a passage goes under it. */

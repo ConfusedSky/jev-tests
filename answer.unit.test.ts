@@ -323,6 +323,13 @@ describe("a passage", () => {
     expect(asked.filter((s) => s === "RadX reduces rads absorbed.")).toHaveLength(1);
   });
 
+  test("a table's row keeps its heads and cells, so a terminal can print it as a grid", async () => {
+    const table = { heads: ["Chem", "Cost"], cells: ["RadAway", "80"] };
+    const row = { ...plain('{"Chem":"RadAway","Cost":"80"}'), table };
+    const a = await readPassage(stub({ [row.text]: 0.9 }), "q", "s", [...page, row]);
+    expect(a.passage?.[0]?.table).toEqual(table);
+  });
+
   test("a page with no sentence of the answer is not stated", async () => {
     expect(await readPassage(stub({}), "q", "s", page)).toEqual({ text: "not stated", p: 1 });
   });
