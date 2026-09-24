@@ -1,5 +1,5 @@
 """Tables on the given pages of a PDF, as JSON on stdout: one object per table
-with its rows, each row its cells and its box on the page (top-left origin,
+with its rows, each row its cells, its box and each cell's box on the page (top-left origin,
 PDF points, like mutool's stext). pdfplumber finds a table by its ruling
 lines and cell shading, which is what a rulebook draws its tables with.
 
@@ -19,11 +19,16 @@ with pdfplumber.open(pdf) as doc:
             rows = []
             for r in t.rows:
                 cells = [page.crop(c).extract_text() if c else "" for c in r.cells]
-                rows.append({"cells": [" ".join(c.split()) for c in cells], "bbox": [round(v, 2) for v in r.bbox]})
+                rows.append({
+                    "cells": [" ".join(c.split()) for c in cells],
+                    "bbox": [round(v, 2) for v in r.bbox],
+                    "boxes": [[round(v, 2) for v in c] if c else None for c in r.cells],
+                })
             # A column with nothing in it is a ruling line the table happens to have.
             width = max((len(r["cells"]) for r in rows), default=0)
             keep = [i for i in range(width) if any(i < len(r["cells"]) and r["cells"][i] for r in rows)]
             for r in rows:
                 r["cells"] = [r["cells"][i] if i < len(r["cells"]) else "" for i in keep]
+                r["boxes"] = [r["boxes"][i] if i < len(r["boxes"]) else None for i in keep]
             out.append({"page": int(n), "bbox": [round(v, 2) for v in t.bbox], "rows": rows})
 json.dump(out, sys.stdout, ensure_ascii=False)

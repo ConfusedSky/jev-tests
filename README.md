@@ -708,6 +708,10 @@ stays there, and every hit in the same file adds its own; the Fallout
 rulebook's 248 MB take about a second to copy. `--open` opens the copy. A
 count, number or statement links to the page as before.
 
+A table's row is marked a cell at a time, so a passage that keeps only the
+asked columns marks only those cells: the weapon and its damage, not its
+magazine and cost.
+
 ```sh
 bun jevsec.ts --highlight --open book.pdf "What skills are there?"
 ```
