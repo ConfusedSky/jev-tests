@@ -206,8 +206,13 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       st += ls;
       boxes.push({ page: pageNumber, x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1, start, end: t.length });
       if (i < cur.length - 1) {
-        // A word broken at the margin is mended; otherwise the break is a space.
-        if (/[\p{L}][‐\u00ad-]$/u.test(t)) {
+        // A word broken at the margin is mended; otherwise the break is a
+        // space. A capital after the hyphen is a compound's second word, and
+        // the hyphen stays: "Recoil-" then "Compensating Stock".
+        const next = cur[i + 1]!.spans.map((sp) => sp.text).join("").trimStart();
+        if (/[\p{L}][‐\u00ad-]$/u.test(t) && /^\p{Lu}/u.test(next)) {
+          // Kept whole, with no space after it.
+        } else if (/[\p{L}][‐\u00ad-]$/u.test(t)) {
           t = t.slice(0, -1);
           st = st.slice(0, -1);
           boxes.at(-1)!.end--;
@@ -232,9 +237,21 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       const gap = l.y0 - prev.y1 > pitch * 0.6;
       const resize = Math.abs(l.size - prev.size) > 0.5;
       const bullet = BULLET.test(text(l).trim());
+      // A bullet item's wrapped line hangs under its text, a line's pitch
+      // below; in small type its box is short enough that the gap between
+      // them reads as a paragraph's (Fallout's weapon mod lists).
+      const lead = cur[0]!;
+      const hangs =
+        BULLET.test(text(lead).trim()) &&
+        !bullet &&
+        !resize &&
+        l.x0 > lead.x0 + lead.size * 0.5 &&
+        l.x0 < lead.x0 + lead.size * 3 &&
+        l.y0 - prev.y1 < pitch;
       // A table row is one paragraph, whatever its cells' gaps and sizes.
       const [bp, bl] = [blockOf.get(prev)!, blockOf.get(l)!];
-      if (bp.row !== bl.row ? bp.table || bl.table || newColumn || gap || resize || bullet : !bl.table && (gap || resize || bullet)) flush();
+      const split = gap && !hangs;
+      if (bp.row !== bl.row ? bp.table || bl.table || newColumn || split || resize || bullet : !bl.table && (split || resize || bullet)) flush();
     }
     cur.push(l);
   }

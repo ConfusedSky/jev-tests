@@ -156,6 +156,17 @@ const CASES: Case[] = [
       '"Railway Rifle","Damage":"10 CD","Fire Rate":"0","Cost":"290","Ammo Type":"Railway Spike"}',
     ],
   },
+  // An entry's labelled line that wraps: "• Stock: ... Recoil-" then
+  // "Compensating Stock", hanging under it.
+  {
+    book: "fallout",
+    question: "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Stock Mods, Barrel Mods and Ammo Type",
+    truth: "passage",
+    contains: [
+      '"Assault Rifle","Damage":"5 CD","Fire Rate":"2","Cost":"144","Stock Mods":"Full Stock, Marksman’s Stock, Recoil-Compensating Stock","Barrel Mods":"Long Barrel, Ported Barrel, Vented Barrel","Ammo Type":"5.56mm Rifle"}',
+      '"Pipe Gun","Damage":"3 CD","Fire Rate":"2","Cost":"30","Stock Mods":"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock","Barrel Mods":"Long Barrel, Ported Barrel, Finned Barrel","Ammo Type":".38"}',
+    ],
+  },
   // A table to the question's design: columns from p.95, the extended and
   // drum sizes from p.345 matched by name, the ammo type read out of the
   // standard magazine's cell, and a weapon p.345 lacks left N/A.

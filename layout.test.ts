@@ -170,6 +170,26 @@ describe("paragraphs", () => {
     ]);
   });
 
+  // Fallout's weapon mods: 9pt lines 15pt apart, their boxes short enough
+  // that the gap between a bullet and its wrapped line passes for a paragraph's.
+  test("a bullet item's wrapped line, hanging under its text, stays in the item; a hyphen before a capital stays too", () => {
+    const small = (x: number, y: number, text: string) => stextLine(x, y, 9, "Alegreya-Regular", text);
+    const block = (...lines: string[]) => `<block>${lines.join("")}</block>`;
+    const xml = `<page id="p" width="612" height="792">${[
+      block(small(80, 100, "• Barrel: Long Barrel, Ported Barrel")),
+      block(small(80, 115, "• Stock: Full Stock, Marksman’s Stock, Recoil-")),
+      block(small(92, 130, "Compensating Stock")),
+      block(small(80, 145, "• Grip: Comfort Grip")),
+      block(small(80, 175, "Every one of them is a mod.")),
+    ].join("")}</page>`;
+    expect(paragraphs(parseStext(xml)).map((p) => p.text)).toEqual([
+      "• Barrel: Long Barrel, Ported Barrel",
+      "• Stock: Full Stock, Marksman’s Stock, Recoil-Compensating Stock",
+      "• Grip: Comfort Grip",
+      "Every one of them is a mod.",
+    ]);
+  });
+
   test("a bullet set as a line of its own leads the line beside it, and starts a paragraph", () => {
     const lines = [
       body(50, 100, "A list of things to do, set out with bullets of their own."),
