@@ -16,7 +16,7 @@
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
 import { composeTable } from "./compose";
 import { makeUi, searchPdf, type Outcome } from "./pdf";
-import { DEFAULT_MODEL, makeClient } from "./shared";
+import { DEFAULT_MODEL, DOLLARS_PER_MILLION_IN, makeClient, tokens } from "./shared";
 
 type Case = {
   book: "heart" | "fallout" | "litm" | "cpr";
@@ -222,6 +222,8 @@ type Result = {
   /** 1 is right; a count scores by how close; a passage by the share of its checks met. */
   score: number;
   ms: number;
+  /** Input tokens the case spent; jev's output is free. */
+  tokens?: number;
   known?: string;
 };
 type Run = { at: string; commit: string; model: string; results: Result[] };
@@ -261,6 +263,7 @@ for (const c of picked) {
     continue;
   }
   const t = Date.now();
+  const spentBefore = tokens.in;
   let r: Outcome | undefined;
   try {
     const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, ...c.opts }, ui);
@@ -273,7 +276,7 @@ for (const c of picked) {
   const got = best?.answer?.text;
   const page = best?.hit.page;
   const answer = best?.answer;
-  results.push({ book: c.book, question: c.question, truth: c.truth, got, p: answer?.p, page, score: score(c, got, page), ms: Date.now() - t, known: c.known });
+  results.push({ book: c.book, question: c.question, truth: c.truth, got, p: answer?.p, page, score: score(c, got, page), ms: Date.now() - t, tokens: tokens.in - spentBefore, known: c.known });
 }
 
 const snapshot = Bun.fileURLToPath(new URL("bench/latest.json", import.meta.url));
@@ -283,7 +286,7 @@ const previous = new Map(last?.results.map((r) => [r.question, r]) ?? []);
 
 const short = (s: string | undefined, n: number) => (s === undefined ? "—" : s.replace(/\n/g, " ").length > n ? `${s.replace(/\n/g, " ").slice(0, n - 1)}…` : s.replace(/\n/g, " "));
 const pct = (x: number | undefined) => (x === undefined ? "  —" : `${Math.round(x * 100)}%`.padStart(4));
-console.log(`${"case".padEnd(52)} ${"truth".padEnd(10)} ${"got".padEnd(22)} ${"p".padStart(5)} ${"page".padStart(5)} ${"score".padStart(5)} ${"last".padStart(5)}  ${"time".padStart(6)}`);
+console.log(`${"case".padEnd(52)} ${"truth".padEnd(10)} ${"got".padEnd(22)} ${"p".padStart(5)} ${"page".padStart(5)} ${"score".padStart(5)} ${"last".padStart(5)}  ${"time".padStart(6)} ${"tokens".padStart(8)}`);
 let regressions = 0;
 for (const r of results) {
   const was = previous.get(r.question);
@@ -292,12 +295,18 @@ for (const r of results) {
   if (delta < -0.05) regressions++;
   const truth = typeof r.truth === "string" && r.truth.length > 10 ? "figures" : String(r.truth);
   console.log(
-    `${short(`${r.book}: ${r.question}`, 52).padEnd(52)} ${truth.padEnd(10)} ${short(r.got, 22).padEnd(22)} ${(r.p === undefined ? "—" : r.p.toFixed(2)).padStart(5)} ${String(r.page ?? "—").padStart(5)} ${pct(r.score)} ${pct(was?.score)}${mark.padEnd(2)} ${`${(r.ms / 1000).toFixed(1)}s`.padStart(6)}${r.known ? `  (${r.known})` : ""}`,
+    `${short(`${r.book}: ${r.question}`, 52).padEnd(52)} ${truth.padEnd(10)} ${short(r.got, 22).padEnd(22)} ${(r.p === undefined ? "—" : r.p.toFixed(2)).padStart(5)} ${String(r.page ?? "—").padStart(5)} ${pct(r.score)} ${pct(was?.score)}${mark.padEnd(2)} ${`${(r.ms / 1000).toFixed(1)}s`.padStart(6)} ${(r.tokens ?? 0).toLocaleString("en-US").padStart(8)}${r.known ? `  (${r.known})` : ""}`,
   );
 }
 const mean = results.reduce((s, r) => s + r.score, 0) / Math.max(1, results.length);
 const lastMean = last ? last.results.reduce((s, r) => s + r.score, 0) / Math.max(1, last.results.length) : undefined;
-console.log(`\nmean score ${pct(mean)}${lastMean !== undefined ? ` (last ${pct(lastMean)}, ${last!.commit} ${last!.at.slice(0, 10)})` : ""}, ${regressions} regression${regressions === 1 ? "" : "s"}`);
+const spentAll = results.reduce((a, r) => a + (r.tokens ?? 0), 0);
+const spentLast = last?.results.reduce((a, r) => a + (r.tokens ?? 0), 0);
+console.log(
+  `\n${spentAll.toLocaleString("en-US")} tokens in, $${((spentAll / 1e6) * DOLLARS_PER_MILLION_IN).toFixed(4)}` +
+    (spentLast ? ` (last ${spentLast.toLocaleString("en-US")})` : ""),
+);
+console.log(`mean score ${pct(mean)}${lastMean !== undefined ? ` (last ${pct(lastMean)}, ${last!.commit} ${last!.at.slice(0, 10)})` : ""}, ${regressions} regression${regressions === 1 ? "" : "s"}`);
 
 // A partial run is not a baseline: a skipped case would vanish from the record.
 if (save && only.length === 0 && skipped === 0) {

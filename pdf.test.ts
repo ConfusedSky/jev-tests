@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { terms } from "./search";
-import { batches, bookText, cacheDir, confine, GATE, highlighted, outline, quadsOn, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, quadsOn, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -544,5 +544,19 @@ describe("quadsOn", () => {
       [0, 10, 20, 10, 0, 20, 20, 20],
       [50, 10, 70, 10, 50, 20, 70, 20],
     ]);
+  });
+});
+
+describe("coarse to fine", () => {
+  const s = (path: string) => ({ path, start: 1, end: 1 });
+  const pool = [s("Equipment"), s("Equipment > Small Guns"), s("Equipment > Small Guns > .44 Pistol"), s("Equipment > Small Guns > .44 Pistol > Mods"), s("Equipment > Chems > RadAway"), s("Combat")];
+
+  test("the coarse pass is the top two levels", () => {
+    expect(coarse(pool).map((x) => x.path)).toEqual(["Equipment", "Equipment > Small Guns", "Combat"]);
+  });
+
+  test("the fine pass is what lies deeper under the best of them, and nothing under the rest", () => {
+    expect(sectionsUnder(pool, ["Equipment > Small Guns"]).map((x) => x.path)).toEqual(["Equipment > Small Guns > .44 Pistol", "Equipment > Small Guns > .44 Pistol > Mods"]);
+    expect(sectionsUnder(pool, ["Equipment > Small"]).map((x) => x.path)).toEqual([]);
   });
 });
