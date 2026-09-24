@@ -96,6 +96,14 @@ ranked 169 sections in 0.5s, 79 above title floor 1 (90 below)
   …
 ```
 
+An outline of more than 200 sections is ranked coarse to fine: its top two
+levels and the excerpts first, then only the sections under the best eight
+of those levels. Ranking costs a jev question per section, and all 1058 of
+Fallout's were most of a question's tokens; coarse to fine spent about 40%
+fewer tokens over the bench with the same scores, the section that answers
+still near the top. A shorter outline, or one the contents already
+confine, is ranked whole.
+
 `-n, --hits N` keeps walking until N passages have passed the threshold and
 prints them all, best first within a section. Passage questions only: a
 count, number or statement has one answer.

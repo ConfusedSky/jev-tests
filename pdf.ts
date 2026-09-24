@@ -1,12 +1,27 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
-import { rank, secs, snapshot, split, timed } from "./shared";
+import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
 import { excerpts, type Term } from "./search";
 import { claimNouls, type Answer, type Judged, type OutlineAnswer } from "./answer";
 import type { Box } from "./layout";
 
 export type Section = { path: string; start: number; end: number };
+/**
+ * An outline this long is ranked coarse to fine: its top two levels, then
+ * only what lies under the best TIER_K of them. Ranking every one of
+ * Fallout's 1058 sections was most of a question's tokens, and the section
+ * that answers stood near the top either way.
+ */
+const TIER_MIN = 200;
+const TIER_K = 8;
+
+const depth = (s: Section) => s.path.split(" > ").length;
+/** The sections of an outline's top two levels. */
+export const coarse = (pool: Section[]) => pool.filter((s) => depth(s) <= 2);
+/** The sections deeper than the top two levels that lie under one of `best`. */
+export const sectionsUnder = (pool: Section[], best: string[]) => pool.filter((s) => depth(s) > 2 && best.some((b) => s.path.startsWith(`${b} > `)));
+
 export type Hit = { pdf: string; section: string; page: number; p: number; text: string; answer?: Answer };
 /** A window that answered, with whatever the answer layer read out of it. */
 export type Candidate = { hit: Hit; answer: Answer };
@@ -475,17 +490,20 @@ export async function searchPdf(
       ? ((await excerpts([await file], o.terms, { within: confined ? (p) => pool.some((s) => p >= s.start && p <= s.end) : undefined })).get(await file) ?? [])
       : [];
   const rankSnap = snapshot();
-  const all = pool.length + ex.length === 0 ? [] : await rank(
-    client,
-    o.question,
-    [
-      // The titles stay under `candidates`: as `sections`, Fallout's perk list
-      // ranked its child bookmark above the chapter itself, every run.
-      { key: "candidates", noun: "section", items: pool.map((s) => ({ label: s.path, value: s.path })) },
-      { key: "excerpts", noun: "page excerpt", items: ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) },
-    ],
-    o.batch,
-  );
+  /** The top two levels and the excerpts first, then the sections under the best of those levels. */
+  const rankTiered = async (): Promise<Ranked[]> => {
+    const first = await rank(client, o.question, lists(coarse(pool), true), o.batch);
+    const under = sectionsUnder(pool, first.filter((r) => r.list === "candidates").slice(0, TIER_K).map((r) => r.name));
+    const second = under.length ? await rank(client, o.question, lists(under, false), o.batch) : [];
+    return [...first, ...second].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+  };
+  const lists = (of: Section[], withEx: boolean): List[] => [
+    // The titles stay under `candidates`: as `sections`, Fallout's perk list
+    // ranked its child bookmark above the chapter itself, every run.
+    { key: "candidates", noun: "section", items: of.map((s) => ({ label: s.path, value: s.path })) },
+    { key: "excerpts", noun: "page excerpt", items: withEx ? ex.map((e) => ({ label: `p.${e.page} ${e.content}`, value: { page: e.page, content: e.content } })) : [] },
+  ];
+  const all = pool.length + ex.length === 0 ? [] : !confined && pool.length > TIER_MIN ? await rankTiered() : await rank(client, o.question, lists(pool, true), o.batch);
   // --max bounds the sections read; the excerpts are bounded by their own
   // limit, or a spread of twenty pages would push a section out of reach.
   let sectionsLeft = o.max;
