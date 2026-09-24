@@ -278,6 +278,8 @@ describe("namedAs", () => {
     expect(namedAs(row("Reflex Sight", "SIGHT MODS"), "Reflex Sight")).toBe(true);
     expect(namedAs(row("Short Scope", "SIGHT MODS"), "Short")).toBe(false);
     expect(namedAs(row("Long"), "Long Barrel")).toBe(false);
+    expect(namedAs(row("Marksman’s Stock", "STOCK MODS"), "Marksman’s")).toBe(true);
+    expect(namedAs(row("Recoil Compensating Stock", "STOCK MODS"), "Recoil-Compensating")).toBe(true);
   });
 });
 
