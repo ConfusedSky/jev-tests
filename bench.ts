@@ -167,6 +167,26 @@ const CASES: Case[] = [
       '"Pipe Gun","Damage":"3 CD","Fire Rate":"2","Cost":"30","Stock Mods":"Standard Stock, Marksman’s Stock, Recoil-Compensating Stock","Barrel Mods":"Long Barrel, Ported Barrel, Finned Barrel","Ammo Type":".38"}',
     ],
   },
+  // Each mod in a cell takes its cost from the nearest mod table, p.103's
+  // small guns sights, and a table naming a mod short ("Long" for "Long
+  // Barrel") is matched by jev.
+  {
+    book: "fallout",
+    question:
+      "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Sight Mods, and Ammo Type. " +
+      "For each Mod column add the cost of the mod in parenthesis.",
+    truth: "passage",
+    contains: [
+      '".44 Pistol","Damage":"6 CD","Fire Rate":"1","Cost":"99","Sight Mods":"Short Scope (+11), Reflex Sight (+14), Recon Scope (+59)","Ammo Type":".44 Magnum"}',
+      '"Assault Rifle","Damage":"5 CD","Fire Rate":"2","Cost":"144","Sight Mods":"Reflex Sight (+14), Short Scope (+11), Long Scope (+29), Short Night Vision Scope (+38), Long Night Vision Scope (+50), Recon Scope (+59)"',
+    ],
+  },
+  {
+    book: "fallout",
+    question: "Show me a table of the small guns with columns Damage and Barrel Mods. For each Mod column add the cost of the mod in parenthesis.",
+    truth: "passage",
+    contains: ['"Barrel Mods":"Snubnose Barrel (–), Bull Barrel (+10)"}', '"Assault Rifle","Damage":"5 CD","Barrel Mods":"Long Barrel (+20), Ported Barrel (+35), Vented Barrel (+36)"}'],
+  },
   // A table to the question's design: columns from p.95, the extended and
   // drum sizes from p.345 matched by name, the ammo type read out of the
   // standard magazine's cell, and a weapon p.345 lacks left N/A.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { deriveCells, entriesOf, entryPieces, labelsFor, matchRows, pickTable, piecesOf, readRequest, sameNames, tablesIn, type Found } from "./compose";
+import { annotate, deriveCells, entriesOf, entryPieces, itemsOf, labelsFor, matchRows, namesBy, pickTable, piecesOf, readRequest, sameNames, tablesIn, type Found } from "./compose";
+import { wordsOf } from "./answer";
 import type { Para } from "./layout";
 import type { Hit } from "./pdf";
 
@@ -102,18 +103,19 @@ describe("readRequest", () => {
     const word = q.split(" ")[i]!.replace(/,$/, "");
     const rows = ["each", "standard", "ranged", "weapons"].includes(word) && i < 8;
     const cols = ["rate", "fire", "standard", "magazine", "size", "ammo", "type"].includes(word);
-    return { type: "noul", noul: (key[0] === "r" ? rows : cols) ? 0.9 : 0.1 };
+    return { type: "noul", noul: key[0] === "a" ? 0.1 : (key[0] === "r" ? rows : cols) ? 0.9 : 0.1 };
   });
 
   test("with no word naming the rows, there are none, and every column word stays a column", async () => {
     const none = stub((key) => ({ type: "noul", noul: key[0] === "c" && key !== "c0" ? 0.9 : 0.1 }));
-    expect(await readRequest(none, "Columns damage, cost")).toEqual({ things: "", columns: ["damage", "cost"] });
+    expect(await readRequest(none, "Columns damage, cost")).toEqual({ things: "", columns: ["damage", "cost"], annotated: [] });
   });
 
   test("the rows are the first name, without its each; its words are not columns; an of between column words stays", async () => {
     expect(await readRequest(client, q)).toEqual({
       things: "standard ranged weapons",
       columns: ["rate of fire", "standard magazine size", "ammo type"],
+      annotated: [],
     });
   });
 });
@@ -202,5 +204,72 @@ describe("labelsFor", () => {
       throw new Error("asked");
     });
     expect(await labelsFor(client, "q", ["ammo type"], [])).toEqual([undefined]);
+  });
+});
+
+describe("namesBy", () => {
+  const words = wordsOf("Show the small guns with Barrel Mods, rate of fire. Each Mod column");
+  const at = (...ws: string[]) => (i: number) => ws.includes(words[i]!.word);
+
+  test("a name starts at a sure word and runs on through half-sure ones; a comma or full stop ends it; an of joins", () => {
+    expect(namesBy(words, at("small", "Barrel", "rate"), at("guns", "Mods", "fire"), true).map((n) => n.name)).toEqual(["small guns", "Barrel Mods", "rate of fire"]);
+  });
+
+  test("a half-sure word starts nothing; without `of` an of ends the name", () => {
+    expect(namesBy(words, at("rate"), at("guns", "fire")).map((n) => n.name)).toEqual(["rate"]);
+  });
+});
+
+describe("itemsOf", () => {
+  test("a cell's items are its parts between commas, semicolons and bullets", () => {
+    expect(itemsOf("Reflex Sight, Short Scope; Recon Scope • Long Scope")).toEqual(["Reflex Sight", "Short Scope", "Recon Scope", "Long Scope"]);
+    expect(itemsOf("")).toEqual([]);
+  });
+});
+
+describe("annotate", () => {
+  const mods = (page: number, rows: [string, string][]): Found => ({
+    heads: ["MOD", "EFFECTS", "COST"],
+    rows: rows.map(([name, cost]) => ({ cells: [name, "fx", cost], lines: [{ page, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 1, cell: 2 }] })),
+    hit: { ...hit([]), page },
+  });
+  const near = mods(102, [["Long", "+20"], ["Bull Barrel", "+10"]]);
+  const far = mods(106, [["Bull Barrel", "+99"]]);
+  /** Every table's cost is its third column; "Long Barrel" is the row "Long". */
+  const client = stub((key, q) => {
+    if (key.startsWith("t")) return picked("c2");
+    return picked(q.instructions.includes("Long Barrel") ? "o0" : "none");
+  });
+
+  test("an item takes its value from the nearest table naming it, with that cell's box; one named by no table is matched by jev in the table most came from", async () => {
+    const v = await annotate(client, "q", "cost", ["Bull Barrel", "Long Barrel", "Short"], [near, far]);
+    expect(v.get("Bull Barrel")?.text).toBe("+10");
+    expect(v.get("Bull Barrel")?.lines[0]?.page).toBe(102);
+    expect(v.get("Long Barrel")).toMatchObject({ text: "+20", from: "Long" });
+    expect(v.has("Short")).toBe(false);
+  });
+});
+
+describe("readRequest's instruction", () => {
+  const q = "Show me the small guns with columns Damage and Sight Mods. For each Mod column add the cost in parenthesis.";
+  const ws = wordsOf(q).map((w) => w.word);
+  const score: Record<string, [number, number, number]> = {
+    // word: [rows, column, add]
+    small: [0.9, 0.1, 0.1],
+    guns: [0.4, 0.1, 0.1],
+    Damage: [0.1, 0.9, 0.1],
+    Sight: [0.1, 0.9, 0.1],
+    Mods: [0.1, 0.4, 0.6],
+    Mod: [0.1, 0.6, 0.7],
+    cost: [0.1, 0.4, 0.9],
+  };
+  const client = stub((key, question) => {
+    if (key.startsWith("k")) return { type: "noul", noul: question.instructions.includes('"Sight Mods"') ? 0.9 : 0.1 };
+    const [r, c, a] = score[ws[Number(key.slice(1))]!] ?? [0.1, 0.1, 0.1];
+    return { type: "noul", noul: key[0] === "r" ? r : key[0] === "c" ? c : a };
+  });
+
+  test("what to add is read apart from the columns, which keep their half-sure words, and it goes on the columns it names", async () => {
+    expect(await readRequest(client, q)).toEqual({ things: "small guns", columns: ["Damage", "Sight Mods"], add: "cost", annotated: [1] });
   });
 });
