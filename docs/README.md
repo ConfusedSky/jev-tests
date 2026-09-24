@@ -10,7 +10,7 @@ rest of this directory records experiments:
 
 | document | covers |
 | --- | --- |
-| [token-usage.md](token-usage.md) | where a question's tokens go; page embeddings picking the sections jev ranks (adopted), coarse-to-fine ranking (adopted before it, now the fallback); shorter ranking prompts, reusing a ranking across a table's columns (dropped); reading a table's cells before searching (measured, not built) |
+| [token-usage.md](token-usage.md) | where a question's tokens go; page embeddings picking the sections jev ranks (adopted), coarse-to-fine ranking (adopted before it, now the fallback); shorter ranking prompts, reusing a ranking across a table's columns (dropped); reading a table's cells before searching (adopted) |
 | [ranking-cache.md](ranking-cache.md) | reusing a cached ranking for a similar question: jev pairwise vs embedding models, local and via OpenRouter; whole question vs subject; combining the two |
 | [choice-ranking.md](choice-ranking.md) | ranking an outline with one `choice` question instead of a `score` question per section (dropped) |
 | [dead-ends.md](dead-ends.md) | approaches tried while building features (question kinds, tables to order, lookups, the log) that did not work, and what replaced them |

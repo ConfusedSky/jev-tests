@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { annotate, deriveCells, entriesOf, entryPieces, itemsOf, labelsFor, matchRows, namedAs, namesBy, pickTable, piecesOf, readRequest, sameNames, tablesFrom, tablesIn, withValues, type Found } from "./compose";
+import { annotate, deriveCells, entriesOf, entryPieces, itemsOf, labelsFor, matchRows, mostlyFilled, namedAs, namesBy, pickTable, piecesOf, readRequest, sameNames, tablesFrom, tablesIn, withValues, type Found } from "./compose";
 import { wordsOf } from "./answer";
 import type { Para } from "./layout";
 import type { Hit } from "./pdf";
@@ -318,5 +318,13 @@ describe("readRequest's instruction", () => {
 
   test("what to add is read apart from the columns, which keep their half-sure words, and it goes on the columns it names", async () => {
     expect(await readRequest(client, q)).toEqual({ things: "small guns", columns: ["Damage", "Sight Mods"], add: "cost", annotated: [1] });
+  });
+});
+
+describe("mostlyFilled", () => {
+  test("a column the rows' own cells fill for half the rows or more is not searched for; one they fill less is", () => {
+    // Column 1 filled for 2 of 4 rows, column 2 for 1 of 4, column 3 for none.
+    const cells = new Map([["0 1", 1], ["3 1", 1], ["2 2", 1]]);
+    expect(mostlyFilled(cells, 4, [1, 2, 3])).toEqual([1]);
   });
 });

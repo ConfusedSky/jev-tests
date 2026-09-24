@@ -96,18 +96,21 @@ $ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard rang
    standard ranged weapons") gives the rows, its first column their names.
    Each column picks a column of that table, as a passage's quantities do.
 3. A column still missing is looked for in each row's own entry on the
-   pages after the table (`ENTRY_PAGES` of them): the paragraphs under a heading that is the row's name
+   pages after the table (`ENTRY_PAGES` of them): the paragraphs under a
+   heading that is the row's name
    (".44 PISTOL"). jev picks, once per column, the label the entries give
    it under ("Ammunition" for ammo type), and each entry's line with that
    label is the row's value, so every row reads the same line.
-4. Each column still missing gets a search of its own, collecting up to
+4. A column still missing is read from each row's own cells, a choice
+   among their pieces: "M Pistol" out of "12 (M Pistol)". A column the
+   cells fill for at least half the rows is not searched for.
+5. Each column still missing gets a search of its own, collecting up to
    three passages; every table those find is offered for every missing
    column, since the extended sizes' search may find the drum sizes too.
-5. Another table's rows are matched to ours by name, then by asking jev for
-   the rest.
-6. Any cell still empty, a row without an entry or one another table lacks,
-   is read from the row's own cells, a choice among their pieces: "M
-   Pistol" out of "12 (M Pistol)". None is N/A.
+6. Another table's rows are matched to ours by name, then by asking jev for
+   the rest; a row the table lacks keeps what its own cells gave.
+7. Any cell still empty, a row without an entry, is read from the row's own
+   cells. None is N/A.
 
 A request can also ask for something beside each item of a column: "For
 each Mod column add the cost of the mod in parenthesis".
