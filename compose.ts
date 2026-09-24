@@ -7,8 +7,8 @@
  * after the table ("Ammunition: .44 Magnum" under ".44 PISTOL"), then
  * searched for as a table of its own, whose rows are matched to ours by
  * name; a value none of those hold is read from our row's own cells ("M
- * Pistol" out of "12 (M Pistol)"), and anything left is N/A. The result is a passage of table rows, so it prints, pipes and
- * highlights as one.
+ * Pistol" out of "12 (M Pistol)"), and anything left is N/A. The result
+ * is a passage of table rows, so it prints, pipes and highlights as one.
  */
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { columnsFor, namesFrom, normalize, STOPWORDS, wordsOf, type Answer, type Reading } from "./answer";
@@ -31,17 +31,29 @@ export type Piece = { text: string; from: string; lines: Box[] };
 /** A table a passage holds: its heads and its rows, each with the boxes of its cells. */
 export type Found = { heads: string[]; rows: { cells: string[]; lines: Box[] }[]; hit: Hit };
 
-/** The tables in a hit's passage, notes under rows left out, in the order they appear. */
+/**
+ * The tables in a hit's passage, notes under rows left out, in the order
+ * they appear. A heading or prose between rows ends a table, though the next
+ * has the same heads: Fallout sets its small guns and energy weapons under
+ * one header. Rows left out between two runs of one table do not.
+ */
 export function tablesIn(hit: Hit): Found[] {
-  const out = new Map<string, Found>();
+  const out: Found[] = [];
+  let cur: Found | undefined;
   for (const p of hit.answer?.passage ?? []) {
-    if (!p.table || lone(p.table)) continue;
-    const key = p.table.heads.join("\t");
-    if (!out.has(key)) out.set(key, { heads: p.table.heads, rows: [], hit });
-    out.get(key)!.rows.push({ cells: p.table.cells, lines: p.lines });
+    if (!p.table) {
+      if (p.text !== "…") cur = undefined;
+      continue;
+    }
+    if (lone(p.table)) continue;
+    if (!cur || cur.heads.join("\t") !== p.table.heads.join("\t")) out.push((cur = { heads: p.table.heads, rows: [], hit }));
+    cur.rows.push({ cells: p.table.cells, lines: p.lines });
   }
-  return [...out.values()];
+  return out;
 }
+
+/** A cell's boxes, or the row's whole box when it was read without cell boxes. */
+const boxesOf = (row: { lines: Box[] }, cell: number) => row.lines.filter((l) => l.cell === cell || l.cell === undefined);
 
 /** For each of `ours`, the index of the row of `theirs` with the same name, ignoring case and punctuation. */
 export function sameNames(ours: string[], theirs: string[]): (number | undefined)[] {
@@ -78,9 +90,9 @@ export function entryPieces(entry: Para[]): (Piece & { label: string })[] {
 
 /**
  * For each column, the label the entries give it under, or undefined: one
- * choice per column among the labels the entries share. Asked a row at a
- * time, "Ammunition: Flare" was no ammo type to jev at 0.3, while every
- * other gun's ammunition line was one.
+ * choice per column among the labels the entries share, so every row reads
+ * the same line. Asked a row at a time, jev doubted a value that was odd
+ * for its kind ("Ammunition: Flare") where it took the same line elsewhere.
  */
 export async function labelsFor(client: TypeSafeClient, question: string, columns: string[], labels: string[]): Promise<(string | undefined)[]> {
   if (labels.length === 0 || columns.length === 0) return columns.map(() => undefined);
@@ -88,7 +100,8 @@ export async function labelsFor(client: TypeSafeClient, question: string, column
     columns.map((c, j) => [
       `c${j}`,
       choice(`Under which label do the entries give each one's ${c}, that very thing and not something like it?`, {
-        ...Object.fromEntries(labels.map((l, k) => [`l${k}`, `"${l}"`])),
+        // A choice takes at most 255 options.
+        ...Object.fromEntries(labels.slice(0, 254).map((l, k) => [`l${k}`, `"${l}"`])),
         none: `No label gives the ${c}`,
       }),
     ]),
@@ -110,7 +123,7 @@ export function piecesOf(cells: string[]): { text: string; cell: number }[] {
   const seen = new Set<string>();
   const add = (text: string, cell: number) => {
     const t = text.replace(/^[\s•,;]+|[\s•,;]+$/g, "");
-    if (t && !seen.has(t)) (seen.add(t), out.push({ text: t, cell }));
+    if (t && !seen.has(`${cell}\t${t}`)) (seen.add(`${cell}\t${t}`), out.push({ text: t, cell }));
   };
   cells.forEach((c, cell) => {
     add(c, cell);
@@ -126,7 +139,15 @@ export function piecesOf(cells: string[]): { text: string; cell: number }[] {
  * word at a time. The question's own reading will not do: its quantities are
  * figures, and "ammo type" or "weapon skill" is not one.
  */
-export async function readRequest(client: TypeSafeClient, question: string): Promise<{ things: string; columns: string[] }> {
+export function readRequest(client: TypeSafeClient, question: string): Promise<{ things: string; columns: string[] }> {
+  // jevfind composes a table per file; the request reads the same in each.
+  let r = requests.get(question);
+  if (!r) requests.set(question, (r = readRequestOnce(client, question)));
+  return r;
+}
+const requests = new Map<string, Promise<{ things: string; columns: string[] }>>();
+
+async function readRequestOnce(client: TypeSafeClient, question: string): Promise<{ things: string; columns: string[] }> {
   const words = wordsOf(question);
   const questions = Object.fromEntries(
     words.flatMap((w, i) => [
@@ -171,18 +192,18 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   // Naming no columns, "show me the exotic weapons table" wants a table the
   // book prints, and jev reads it as one to be made now and then; the
   // table kind reads a page as a passage does, so the search runs as one.
-  if (columns.length === 0) {
-    ui.log(`${indent}no columns named; read as a passage`);
+  if (columns.length === 0 || !things) {
+    ui.log(`${indent}${columns.length ? "no rows" : "no columns"} named; read as a passage`);
     return searchPdf(client, pdf, o, ui, indent);
   }
-  ui.log(`${indent}table of ${things || "?"}: ${columns.join(", ")}`);
+  ui.log(`${indent}table of ${things}: ${columns.join(", ")}`);
   const main = await passageSearch(client, pdf, o, ui, indent, `Show me the table of all the ${things}`, [things]);
   const first = main.hit && tablesIn(main.hit);
   if (!main.hit || !first?.length) {
     ui.log(`${indent}no table of ${things} found`);
     return { hits: [], tried: main.tried, rejected: main.rejected, dropped: main.hits.map((hit) => ({ hit, answer: hit.answer! })) };
   }
-  const ours = first[0]!;
+  const ours = first.length === 1 ? first[0]! : await pickTable(client, o.question, things, first);
   ui.log(`${indent}rows: ${ours.rows.length} ${things} from p.${main.hit.page}`);
 
   // Each column comes from the first table that holds it, ours first.
@@ -237,7 +258,9 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
       // lacks it; the drum sizes stand two pages on, in the clip chart.
       const r = await passageSearch(client, pdf, o, ui, `${indent}  `, q, [columns[j]!], COLUMN_HITS);
       tried.push(...r.tried);
-      const found = r.hits.flatMap(tablesIn).filter((t) => !first.some((f) => f.heads.join("\t") === t.heads.join("\t")));
+      // A table two searches both found is offered once.
+      const same = (a: Found, b: Found) => a.heads.join("\t") === b.heads.join("\t") && a.rows[0]?.cells[0] === b.rows[0]?.cells[0];
+      const found = r.hits.flatMap(tablesIn).filter((t) => !first.some((f) => f.heads.join("\t") === t.heads.join("\t")) && !seen.some((f) => same(f, t)));
       seen.push(...found);
       await place(found, q, [j]);
     }),
@@ -252,27 +275,34 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
 
   const matches = new Map<Found, (number | undefined)[]>();
   for (const s of sources) if (s && s.table !== ours && !matches.has(s.table)) matches.set(s.table, await matchRows(client, o.question, names, s.table));
-  const fromCells = unplaced().filter((j) => !byEntry.has(j));
-  for (const [k, v] of await deriveCells(client, o.question, ours, fromCells.map((j) => ({ column: columns[j]!, j })))) read.set(k, v);
+  // What a table holds for each row, then what the row's own cells state
+  // wherever that left a gap: a row the entries or another table lack.
+  const cellOf = (i: number, j: number): Piece | undefined => {
+    const s = sources[j];
+    const r = !s ? undefined : s.table === ours ? i : matches.get(s.table)![i];
+    const from = s && r !== undefined ? s.table.rows[r] : undefined;
+    const cell = from?.cells[s!.col];
+    return cell ? { text: cell, from: cell, lines: boxesOf(from!, s!.col) } : undefined;
+  };
+  for (const [i] of names.entries())
+    for (const [j] of columns.entries()) {
+      const c = !read.has(`${i} ${j}`) && cellOf(i, j);
+      if (c) read.set(`${i} ${j}`, c);
+    }
+  const gaps = names.flatMap((_, i) => columns.flatMap((column, j) => (read.has(`${i} ${j}`) ? [] : [{ row: i, j, column }])));
+  for (const [k, v] of await deriveCells(client, o.question, ours, gaps)) read.set(k, v);
+  if (read.size === 0) ui.log(`${indent}no column found for any ${things}`);
 
   const heads = [ours.heads[0]!, ...columns];
   const passage: Para[] = ours.rows.map((row, i) => {
-    const lines: Box[] = row.lines.filter((l) => l.cell === undefined || l.cell === 0);
+    const lines: Box[] = boxesOf(row, 0);
     const cells = [
       names[i]!,
       ...columns.map((_, j) => {
         const piece = read.get(`${i} ${j}`);
-        if (piece) {
-          lines.push(...piece.lines);
-          return piece.text;
-        }
-        const s = sources[j];
-        const r = !s ? undefined : s.table === ours ? i : matches.get(s.table)![i];
-        const from = s && r !== undefined ? s.table.rows[r] : undefined;
-        const cell = from?.cells[s!.col];
-        if (!cell) return NA;
-        lines.push(...from!.lines.filter((l) => l.cell === s!.col));
-        return cell;
+        if (!piece) return NA;
+        lines.push(...piece.lines);
+        return piece.text;
       }),
     ];
     const table = { heads, cells };
@@ -281,6 +311,8 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   });
   const answer: Answer = { text: passage.map((p) => p.text).join("\n"), p: main.hit.answer!.p, pages: [...new Set(passage.flatMap((p) => p.lines.map((l) => l.page)))], passage };
   const hit: Hit = { ...main.hit, answer };
+  // A table of names and N/A answers nothing; it is shown as the best found.
+  if (read.size === 0) return { hits: [], tried, rejected: [{ hit, answer: { ...answer, p: 0 } }], dropped: [] };
   return { hit, hits: [hit], tried, rejected: [], dropped: [] };
 }
 
@@ -313,17 +345,36 @@ export async function matchRows(client: TypeSafeClient, question: string, names:
 }
 
 /**
- * Values no column holds, read from each row's own cells: for every row and
- * missing column, one choice among the pieces of the row's other cells, or
- * none. Keyed "row column".
+ * Values read from a row's own cells where nothing else gave one: for each
+ * gap, one choice among the pieces of the row's other cells, or none.
+ * Keyed "row column".
  */
-export async function deriveCells(client: TypeSafeClient, question: string, ours: Found, missing: { column: string; j: number }[]): Promise<Map<string, Piece>> {
-  const asks = ours.rows.flatMap((r, i) => {
-    const pieces = piecesOf(r.cells.slice(1)).map((p) => ({ text: p.text, from: r.cells[p.cell + 1]!, lines: r.lines.filter((l) => l.cell === p.cell + 1) }));
+export async function deriveCells(client: TypeSafeClient, question: string, ours: Found, gaps: { row: number; j: number; column: string }[]): Promise<Map<string, Piece>> {
+  const asks = gaps.flatMap(({ row: i, j, column }) => {
+    const r = ours.rows[i]!;
+    const pieces = piecesOf(r.cells.slice(1)).map((p) => ({ text: p.text, from: r.cells[p.cell + 1]!, lines: boxesOf(r, p.cell + 1) }));
     const row = rowText({ heads: ours.heads, cells: r.cells });
-    return pieces.length === 0 ? [] : missing.map(({ column, j }) => ({ key: `${i} ${j}`, prompt: `Which part of the row for "${r.cells[0]}" (${row}) states its ${column}?`, column, pieces }));
+    return pieces.length === 0 ? [] : [{ key: `${i} ${j}`, prompt: `Which part of the row for "${r.cells[0]}" (${row}) states its ${column}?`, column, pieces }];
   });
   return choosePieces(client, question, asks);
+}
+
+/** Of several tables a passage holds, the one with a row for each of `things`. */
+export async function pickTable(client: TypeSafeClient, question: string, things: string, tables: Found[]): Promise<Found> {
+  const res = await timed("api", () =>
+    client.systemOne({
+      state: { question },
+      questions: {
+        table: choice(
+          `Which table has a row for each of the ${things}?`,
+          Object.fromEntries(
+            tables.map((t, k) => [`t${k}`, `The table headed "${t.heads.join(", ")}", with rows such as ${t.rows.slice(0, 3).map((r) => `"${r.cells[0]}"`).join(", ")}`]),
+          ),
+        ),
+      },
+    }),
+  );
+  return tables[Number((res.answers.table as { choice: string }).choice.slice(1))] ?? tables[0]!;
 }
 
 /** For each ask, the piece it picks, or none; all in one call, keyed by the ask's key. */

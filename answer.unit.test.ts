@@ -652,6 +652,10 @@ describe("readQuestion", () => {
     expect(await quantities([], "How does it work?")).toEqual([]);
   });
 
+  test("a full stop ends a name as a comma does", async () => {
+    expect(await quantities(["cost", "weight"], "Give the cost. weight too")).toEqual(["cost", "weight"]);
+  });
+
   test("grammar words never name a quantity, whatever the model says, and they end a name", async () => {
     const names = await quantities(["What", "cost", "weight", "of"], "What is the cost and weight of the Lantern?");
     expect(names).toEqual(["cost", "weight"]);

@@ -107,6 +107,7 @@ const CASES: Case[] = [
     truth: "passage",
     page: 344,
     contains: ["Drum Magazine", "500eb", "Extended Magazine", "100eb"],
+    known: "p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page",
   },
   // The note under each weapon's row must not break the table apart, and
   // only the damage column stays beside the name.

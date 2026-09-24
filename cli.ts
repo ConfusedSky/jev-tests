@@ -123,7 +123,8 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
       --no-search      rank outline titles only, without searching the text
-      --tsv            piped, print a table's rows tab-separated under their heads, not as JSON
+      --tsv            piped, print a table's rows tab-separated under their heads, not as JSON,
+                       and the link on stderr
       --kind K         force count, number, truth, passage or table instead of asking jev`;
 
 /**
@@ -320,7 +321,11 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   if (!answer) console.log(hitLine(hit));
   else if (long && answer.passage) {
     const tty = process.stdout.isTTY;
-    console.log(`${conf}  ${hitLine(hit)}${tty ? "\n" : ""}\n${renderPassage(answer.passage, process.stdout.columns, tty, tsv)}`);
+    // Piped as TSV, stdout is the table alone, ready for a spreadsheet or cut.
+    if (tsv && !tty) {
+      console.error(`${conf}  ${hitLine(hit)}`);
+      console.log(renderPassage(answer.passage, process.stdout.columns, false, true));
+    } else console.log(`${conf}  ${hitLine(hit)}${tty ? "\n" : ""}\n${renderPassage(answer.passage, process.stdout.columns, tty, tsv)}`);
   } else if (long) console.log(`${conf}  ${hitLine(hit)}\n${answer.text.replace(/^/gm, "  ")}`);
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }

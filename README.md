@@ -573,21 +573,27 @@ $ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard rang
    next eight pages: the paragraphs under a heading that is the row's name
    (".44 PISTOL"). jev picks, once per column, the label the entries give
    it under ("Ammunition" for ammo type), and each entry's line with that
-   label is the row's value. Asked a row at a time, "Ammunition: Flare" was
-   no ammo type to jev.
+   label is the row's value, so every row reads the same line.
 4. Each column still missing gets a search of its own, collecting up to
    three passages; every table those find is offered for every missing
    column, since the extended sizes' search may find the drum sizes too.
 5. Another table's rows are matched to ours by name, then by asking jev for
-   the rest; a weapon it lacks is N/A.
-6. A column nothing else holds is read from each row's own cells, a choice
-   among their pieces: "M Pistol" out of "12 (M Pistol)". None is N/A.
+   the rest.
+6. Any cell still empty, a row without an entry or one another table lacks,
+   is read from the row's own cells, a choice among their pieces: "M
+   Pistol" out of "12 (M Pistol)". None is N/A.
+
+When the rows' passage holds several tables, jev picks the one with a row
+for each of the things; a heading or prose between two tables with the
+same heads keeps them apart.
 
 The table prints, pipes and highlights as a passage's rows do, each cell
 marked on the page it came from. A table request that names no columns
 ("show me the exotic weapons table") wants the book's own and is read as a
 passage. Piped, a row is a line of JSON; `--tsv` prints heads and rows
-tab-separated, for a built table and a passage's table alike. The full
+tab-separated, for a built table and a passage's table alike, with the link
+on stderr so stdout is the table alone. A table found but with no column
+for any row is not an answer: it prints as the best found and exits 1. The full
 request takes about twenty seconds, most of it the column searches.
 
 ## The exact page
