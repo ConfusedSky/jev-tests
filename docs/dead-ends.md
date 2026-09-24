@@ -76,6 +76,14 @@ replaced them. Numbers are from the runs at the time (September 2026).
   (Fallout's mod lists: "Recoil-" / "Compensating Stock"). A hanging line
   within a line's pitch now stays in its item, and a hyphen before a capital
   stays.
+- **The paragraph gap rule** also split a sentence where Fallout's 9pt text
+  wraps around an illustration ("attacks with thrown" / "weapons like
+  javelins"), leaving the second half a passage fragment that was cut. A
+  line that ends no sentence, followed in its column within two type sizes
+  by one starting lower case, now continues the paragraph.
+- **A passage growing a fixed two pages** from the page it was found on
+  stopped Fallout's skills at p.48, leaving out Unarmed on p.49. It now grows
+  through its section and two pages past it.
 - **Repeated highlight boxes** (one cost cell used by many guns) blended
   darker in viewers; boxes are drawn once per page.
 - **Summary lines after their sub-lines** made the rows search's "ranked"

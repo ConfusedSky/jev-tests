@@ -92,8 +92,11 @@ page with no sentence of the answer is dropped and the walk goes on.
 
 A passage goes on past its page when the next page holds more of the
 answer: it is laid out and its sentences asked, and kept if a run of its
-own clears the minimum, up to two pages on. Necromunda's phases of close
-combat are listed on one page and the last three explained on the next. The
+own clears the minimum, through the rest of its section and up to two
+pages past it. Necromunda's phases of close combat are listed on one page
+and the last three explained on the next; Fallout's skills run over four
+pages, p.46 to p.49, and a fixed two pages from the first left out
+Unarmed. The
 page before is never read: tried, it got in twice on its own account, the
 weapons table before the exotic one and a page before hero creation, and
 never held anything. The link lands on the page the passage starts on, and
