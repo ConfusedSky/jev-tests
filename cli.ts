@@ -361,7 +361,7 @@ export async function report(
   if (r.dropped.length > 0) {
     const where = r.dropped.map(({ hit }) => `${hit.section} p.${hit.page}`).join(", ");
     console.error(
-      `${tool}: ${r.dropped.length} windows${across} held the pages but stated no number in ${split(since)}: ${where}`,
+      `${tool}: ${r.dropped.length} windows${across} held the pages but did not state the answer in ${split(since)}: ${where}`,
     );
     process.exit(1);
   }
