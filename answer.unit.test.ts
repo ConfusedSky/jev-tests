@@ -531,13 +531,14 @@ describe("a stated figure", () => {
 });
 
 describe("readQuestion", () => {
-  /** Says yes to the listed quantity, kind and subject words, and calls every question the given kind. */
-  const stub = (kind: string, quantities: string[], kinds: string[] = [], subject: string[] = [], game: string[] = []) =>
+  /** Says yes to the listed quantity, kind and subject words, calls every question the given kind, and answers `each` as given. */
+  const stub = (kind: string, quantities: string[], kinds: string[] = [], subject: string[] = [], game: string[] = [], each = 0.1) =>
     ({
       systemOne: async ({ questions }: { questions: Record<string, { type: string; instructions: string }> }) => ({
         answers: Object.fromEntries(
           Object.entries(questions).map(([k, q]) => {
             if (q.type === "choice") return [k, { type: "choice", choice: kind, confidence: 1, probabilities: { [kind]: 1 } }];
+            if (k === "each") return [k, { type: "noul", noul: each }];
             const word = /^`words\[\d+\]` \("(.*?)"\)/.exec(q.instructions)![1]!;
             const list = q.instructions.includes("kind of thing")
               ? kinds
@@ -562,6 +563,13 @@ describe("readQuestion", () => {
       subject: [],
       game: [],
     });
+  });
+
+  test("a figure for each of several things is a passage, one thing's figures a number", async () => {
+    const q = "How much does each type of magazine cost?";
+    expect((await readQuestion(stub("number", ["cost"], [], [], [], 0.4), q)).kind).toBe("passage");
+    expect((await readQuestion(stub("number", ["cost"], [], [], [], 0.2), q)).kind).toBe("number");
+    expect((await readQuestion(stub("truth", [], [], [], [], 0.9), "Does each magazine cost 100eb?")).kind).toBe("truth");
   });
 
   test("reads what a count counts, joined into one name", async () => {

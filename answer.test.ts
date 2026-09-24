@@ -33,6 +33,9 @@ describe.if(live)("readQuestion", () => {
     ["Radiation damage is permanent until treated.", "truth"],
     ["How do I treat radiation sickness?", "passage"],
     ["What does the Lockpick skill cover?", "passage"],
+    ["How much do each type of magazine cost in cyberpunk red?", "passage"],
+    ["What does every small gun weigh?", "passage"],
+    ["What do all the chems cost?", "passage"],
   ] as [string, Kind][])("%s is a %s question", async (question, kind) => {
     expect((await readQuestion(client, question)).kind).toBe(kind);
   });

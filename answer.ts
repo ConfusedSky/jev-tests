@@ -44,6 +44,10 @@ function namesFrom(words: Word[], passed: (i: number) => boolean): string[] {
   return names;
 }
 
+// "What does every small gun weigh?" leaves jev unsure, well above where
+// one thing's figures sit, so the bar is below its usual half.
+const EACH = 0.3;
+
 /**
  * What shape of answer the question wants, which quantities it names ("the
  * cost, weight and damage rating of a combat rifle" names three), what kind
@@ -65,6 +69,12 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
     truth: "States something that is either true or false, or asks whether something is the case",
     passage: "Asks what, how or why, and wants an explanation or the place it is written",
   });
+  // A question of its own rather than a kind's choice, since there the
+  // wording pulled one rifle's cost, weight and damage rating over too.
+  const each = noul(
+    "`question` asks for a figure for each of several things, such as what each type of magazine costs or what every gun weighs, " +
+      "which a table of them answers. Not several figures of one thing, such as one rifle's cost, weight and damage rating.",
+  );
   const perWord: Record<string, ReturnType<typeof noul>> = Object.fromEntries(
     words.flatMap((w, i) => [
       [
@@ -99,13 +109,14 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
     ]),
   );
   const res = await timed("api", () =>
-    client.systemOne({ state: { question, words: words.map((w) => w.word) }, questions: { kind, ...perWord } }),
+    client.systemOne({ state: { question, words: words.map((w) => w.word) }, questions: { kind, each, ...perWord } }),
   );
   // The spread hides the per-word keys from the answer type.
   const perWordAnswers = res.answers as unknown as Record<string, { noul: number }>;
   const passed = (prefix: string) => (i: number) => perWordAnswers[`${prefix}${i}`]!.noul >= 0.5;
   return {
-    kind: res.answers.kind.choice,
+    // A figure for each of several things is a table's rows, read as a passage.
+    kind: res.answers.kind.choice === "number" && res.answers.each.noul >= EACH ? "passage" : res.answers.kind.choice,
     quantities: namesFrom(words, passed("w")),
     // A count counts one kind of thing; the first name is it.
     counted: namesFrom(words, passed("k"))[0] ?? "",

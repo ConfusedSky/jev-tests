@@ -188,6 +188,13 @@ follows.
 | "How much does the Umber cost?" | number | `80  (p=1.00)` + link |
 | "Legend in the Mist uses a d20 for every roll." | truth | `false  (p=0.98)` + link |
 | "How do I create a hero?" | passage | link + the sentences that answer |
+| "How much does each type of magazine cost?" | passage | link + the table's rows that answer |
+
+A figure for each of several things ("each type", "every gun") is asked on
+its own beside the kind; a number question that asks it is read as a
+passage, so the rows of the table print rather than one of its figures.
+Several figures of one thing ("the cost, weight and damage rating of a
+combat rifle") stay a number.
 
 Because jev emits no text, every answer is a decision over options code
 prepared, and the arithmetic stays in code. jev does not tally: it recognises
