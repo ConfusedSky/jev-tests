@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { annotate, deriveCells, entriesOf, entryPieces, itemsOf, labelsFor, matchRows, namesBy, pickTable, piecesOf, readRequest, sameNames, tablesIn, type Found } from "./compose";
+import { annotate, deriveCells, entriesOf, entryPieces, itemsOf, labelsFor, matchRows, namedAs, namesBy, pickTable, piecesOf, readRequest, sameNames, tablesFrom, tablesIn, withValues, type Found } from "./compose";
 import { wordsOf } from "./answer";
 import type { Para } from "./layout";
 import type { Hit } from "./pdf";
@@ -51,6 +51,18 @@ describe("tablesIn", () => {
       ]),
     );
     expect(tables.map((t) => t.rows.map((r) => r.cells[0]))).toEqual([["Medium Pistol", "Shotgun"], ["Air Pistol"]]);
+  });
+});
+
+describe("tablesFrom", () => {
+  test("a row of one cell names the group of the rows under it, and a table is found on its first row's page", () => {
+    const at = (page: number, cells: string[]): Para => ({ ...row(cells), lines: [{ page, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 1, cell: 0 }] });
+    const [t] = tablesFrom([at(102, ["BARREL MODS", "", ""]), at(102, ["Long", "fx", "+20"]), at(103, ["SIGHT MODS", "", ""]), at(103, ["Short Scope", "fx", "+11"])], hit([]));
+    expect(t!.hit.page).toBe(102);
+    expect(t!.rows.map((r) => [r.cells[0], r.group])).toEqual([
+      ["Long", "BARREL MODS"],
+      ["Short Scope", "SIGHT MODS"],
+    ]);
   });
 });
 
@@ -228,25 +240,58 @@ describe("itemsOf", () => {
 });
 
 describe("annotate", () => {
-  const mods = (page: number, rows: [string, string][]): Found => ({
+  const mods = (page: number, rows: [string, string, string?][]): Found => ({
     heads: ["MOD", "EFFECTS", "COST"],
-    rows: rows.map(([name, cost]) => ({ cells: [name, "fx", cost], lines: [{ page, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 1, cell: 2 }] })),
+    rows: rows.map(([name, cost, group]) => ({
+      cells: [name, "fx", cost],
+      lines: [{ page, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 1, cell: 2 }],
+      ...(group && { group }),
+    })),
     hit: { ...hit([]), page },
   });
-  const near = mods(102, [["Long", "+20"], ["Bull Barrel", "+10"]]);
-  const far = mods(106, [["Bull Barrel", "+99"]]);
-  /** Every table's cost is its third column; "Long Barrel" is the row "Long". */
-  const client = stub((key, q) => {
-    if (key.startsWith("t")) return picked("c2");
-    return picked(q.instructions.includes("Long Barrel") ? "o0" : "none");
-  });
+  /** Every table's cost is its third column; the group is the first offered. */
+  const client = stub((key) => picked(key === "group" ? "g0" : "c2"));
 
-  test("an item takes its value from the nearest table naming it, with that cell's box; one named by no table is matched by jev in the table most came from", async () => {
-    const v = await annotate(client, "q", "cost", ["Bull Barrel", "Long Barrel", "Short"], [near, far]);
+  test("an item takes its value from the nearest table naming it, with that cell's box; a name short by its group's noun counts; one named neither way has none", async () => {
+    const near = mods(102, [["Long", "+20", "BARREL MODS"], ["Bull Barrel", "+10", "BARREL MODS"]]);
+    const far = mods(106, [["Bull Barrel", "+99", "BARREL MODS"]]);
+    const v = await annotate(client, "q", "cost", "Barrel Mods", ["Bull Barrel", "Long Barrel", "Short"], [near, far]);
     expect(v.get("Bull Barrel")?.text).toBe("+10");
     expect(v.get("Bull Barrel")?.lines[0]?.page).toBe(102);
     expect(v.get("Long Barrel")).toMatchObject({ text: "+20", from: "Long" });
     expect(v.has("Short")).toBe(false);
+  });
+
+  // A barrel's "Short" is no sight's "Short Scope", though one table lists both.
+  test("where a table's rows fall in groups, an item is looked for only in the group jev picks for the column", async () => {
+    const grouped = mods(102, [["Long", "+20", "BARREL MODS"], ["Short Scope", "+11", "SIGHT MODS"], ["Short", "+5", "SIGHT MODS"]]);
+    const v = await annotate(client, "q", "cost", "Barrel Mods", ["Short", "Long Barrel"], [grouped]);
+    expect(v.has("Short")).toBe(false);
+    expect(v.get("Long Barrel")?.text).toBe("+20");
+  });
+});
+
+describe("namedAs", () => {
+  test("a row names an item by its name, or by its name and its group's noun, ignoring case and punctuation", () => {
+    const row = (name: string, group?: string) => ({ cells: [name], ...(group && { group }) });
+    expect(namedAs(row("Sawed-Off", "BARREL MODS"), "Sawed-off Barrel")).toBe(true);
+    expect(namedAs(row("Reflex Sight", "SIGHT MODS"), "Reflex Sight")).toBe(true);
+    expect(namedAs(row("Short Scope", "SIGHT MODS"), "Short")).toBe(false);
+    expect(namedAs(row("Long"), "Long Barrel")).toBe(false);
+  });
+});
+
+describe("withValues", () => {
+  const values = new Map([["Reflex Sight", { text: "+14", from: "Reflex Sight", lines: [{ page: 103, x0: 1, y0: 2, x1: 3, y1: 4, start: 0, end: 1 }] }]]);
+
+  test("each item gets its value in brackets, N/A where it has none, and the value's box joins the cell's", () => {
+    const out = withValues({ text: "Reflex Sight, Recon Scope", from: "Sights: Reflex Sight, Recon Scope", lines: [] }, values);
+    expect(out.text).toBe("Reflex Sight (+14), Recon Scope (N/A)");
+    expect(out.lines.map((l) => l.page)).toEqual([103]);
+  });
+
+  test("a cell that stands for no value is left as it is", () => {
+    for (const text of ["None", "N/A", "–"]) expect(withValues({ text, from: text, lines: [] }, values).text).toBe(text);
   });
 });
 

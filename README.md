@@ -570,7 +570,7 @@ $ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard rang
    standard ranged weapons") gives the rows, its first column their names.
    Each column picks a column of that table, as a passage's quantities do.
 3. A column still missing is looked for in each row's own entry on the
-   next eight pages: the paragraphs under a heading that is the row's name
+   pages after the table (`ENTRY_PAGES` of them): the paragraphs under a heading that is the row's name
    (".44 PISTOL"). jev picks, once per column, the label the entries give
    it under ("Ammunition" for ammo type), and each entry's line with that
    label is the row's value, so every row reads the same line.
@@ -594,13 +594,17 @@ each Mod column add the cost of the mod in parenthesis".
 
 jev reads what to add ("cost") and which columns it goes on apart from the
 columns themselves, so "Mod" in "each Mod column" is not a column. Each
-cell is split into items at its commas, and each item is looked up in the
-tables on the pages from the rows' table on, nearest first: the same mod
-can cost differently in a weapon's own table further on, and the nearest
-is the one for the rows' kind. jev picks each table's column for what to
-add, an item named in no table is matched by jev among the rows of the
-table most items came from ("Long Barrel" is the row "Long"), and one
-still unmatched is `(N/A)`. Words of the request start a name only where
+cell is split into items at its commas, semicolons and bullets, and each
+column's items are looked up on their own in the tables on the pages from
+the rows' table on, nearest first: the same mod can cost differently in a
+weapon's own table further on, and the nearest is the one for the rows'
+kind. jev picks each table's column for what to add and, where the rows
+fall in groups ("BARREL MODS", "SIGHT MODS"), the group for the column, so
+a barrel's "Short" is never a sight's "Short Scope". A row names an item by
+its name, or by its name and the group's noun ("Long" under BARREL MODS is
+"Long Barrel"); an item named neither way is `(N/A)`, not a guess. A cell
+that stands for no value ("None", "–") is left as it is. Each looked-up
+cell is highlighted once, however many rows used it. Words of the request start a name only where
 jev is sure of them and carry one on where it half believes them, since
 "guns" of "small guns" sits either side of even odds from one reading to
 the next.
