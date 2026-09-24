@@ -446,12 +446,18 @@ export function itemsOf(cell: string): string[] {
     .filter(Boolean);
 }
 
-/** Whether a row names `item`, by its name alone or with its group's noun after it ("Long" under "BARREL MODS"). */
+/**
+ * Whether a row names `item`, the one or the other short by its group's
+ * noun: "Long" under "BARREL MODS" is "Long Barrel", and a gun's entry's
+ * "Marksman's" is the row "Marksman's Stock".
+ */
 export function namedAs(row: { cells: string[]; group?: string }, item: string): boolean {
   const name = normalize(row.cells[0] ?? "");
   const noun = normalize(row.group ?? "").replace(/\s*\bmods?\b\s*/g, " ").trim();
   const want = normalize(item);
-  return name !== "" && (want === name || (noun !== "" && (want === `${name} ${noun}` || want === `${name} ${singular(noun)}`)));
+  if (name === "" || want === "") return false;
+  if (want === name) return true;
+  return noun !== "" && [noun, singular(noun)].some((n) => want === `${name} ${n}` || name === `${want} ${n}`);
 }
 
 /** A cell's text that stands for no value: "None", "N/A", a dash. */
