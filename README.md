@@ -583,6 +583,28 @@ $ bun jevsec.ts cpr.pdf "Give me a table that contains each of the standard rang
    is read from the row's own cells, a choice among their pieces: "M
    Pistol" out of "12 (M Pistol)". None is N/A.
 
+A request can also ask for something beside each item of a column: "For
+each Mod column add the cost of the mod in parenthesis".
+
+```
+  SMALL GUN      Damage  Sight Mods
+  .44 Pistol     6 CD    Short Scope (+11), Reflex Sight (+14), Recon Scope (+59)
+  Assault Rifle  5 CD    Reflex Sight (+14), Short Scope (+11), Long Scope (+29), …
+```
+
+jev reads what to add ("cost") and which columns it goes on apart from the
+columns themselves, so "Mod" in "each Mod column" is not a column. Each
+cell is split into items at its commas, and each item is looked up in the
+tables on the pages from the rows' table on, nearest first: the same mod
+can cost differently in a weapon's own table further on, and the nearest
+is the one for the rows' kind. jev picks each table's column for what to
+add, an item named in no table is matched by jev among the rows of the
+table most items came from ("Long Barrel" is the row "Long"), and one
+still unmatched is `(N/A)`. Words of the request start a name only where
+jev is sure of them and carry one on where it half believes them, since
+"guns" of "small guns" sits either side of even odds from one reading to
+the next.
+
 When the rows' passage holds several tables, jev picks the one with a row
 for each of the things; a heading or prose between two tables with the
 same heads keeps them apart.

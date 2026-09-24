@@ -11,7 +11,7 @@
  * is a passage of table rows, so it prints, pipes and highlights as one.
  */
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import { columnsFor, namesFrom, normalize, STOPWORDS, wordsOf, type Answer, type Reading } from "./answer";
+import { columnsFor, normalize, STOPWORDS, wordsOf, type Answer, type Reading, type Word } from "./answer";
 import { answerLayer, type ReadOpts } from "./cli";
 import { lone, pageParagraphs, rowText, type Box, type Para } from "./layout";
 import { pageCount, searchPdf, type Hit, type Outcome, type Ui } from "./pdf";
@@ -38,15 +38,20 @@ export type Found = { heads: string[]; rows: { cells: string[]; lines: Box[] }[]
  * one header. Rows left out between two runs of one table do not.
  */
 export function tablesIn(hit: Hit): Found[] {
+  return tablesFrom(hit.answer?.passage ?? [], hit);
+}
+
+/** The tables among `paras`, as tablesIn reads a passage's, each found on the page its first row stands on. */
+export function tablesFrom(paras: Para[], hit: Hit): Found[] {
   const out: Found[] = [];
   let cur: Found | undefined;
-  for (const p of hit.answer?.passage ?? []) {
+  for (const p of paras) {
     if (!p.table) {
       if (p.text !== "…") cur = undefined;
       continue;
     }
     if (lone(p.table)) continue;
-    if (!cur || cur.heads.join("\t") !== p.table.heads.join("\t")) out.push((cur = { heads: p.table.heads, rows: [], hit }));
+    if (!cur || cur.heads.join("\t") !== p.table.heads.join("\t")) out.push((cur = { heads: p.table.heads, rows: [], hit: { ...hit, page: p.lines[0]?.page ?? hit.page } }));
     cur.rows.push({ cells: p.table.cells, lines: p.lines });
   }
   return out;
@@ -139,15 +144,51 @@ export function piecesOf(cells: string[]): { text: string; cell: number }[] {
  * word at a time. The question's own reading will not do: its quantities are
  * figures, and "ammo type" or "weapon skill" is not one.
  */
-export function readRequest(client: TypeSafeClient, question: string): Promise<{ things: string; columns: string[] }> {
+/**
+ * Names as runs of words: a run starts at a word `start` passes and goes on
+ * through words `go` passes, a joining word never starting or ending one; a
+ * comma or full stop ends it. With `of`, an "of" between two such words
+ * stays inside ("rate of fire"). Each name keeps its first and last word's index.
+ */
+export function namesBy(words: Word[], start: (i: number) => boolean, go: (i: number) => boolean, of = false): { name: string; start: number; end: number }[] {
+  const out: { name: string; start: number; end: number }[] = [];
+  const stop = (i: number) => STOPWORDS.has(words[i]!.word.toLowerCase());
+  let i = 0;
+  while (i < words.length) {
+    if (stop(i) || !start(i)) {
+      i++;
+      continue;
+    }
+    let end = i;
+    for (;;) {
+      if (words[end]!.ends || end + 1 >= words.length) break;
+      const next = end + 1;
+      if (!stop(next) && go(next)) end = next;
+      else if (of && words[next]!.word.toLowerCase() === "of" && next + 1 < words.length && !stop(next + 1) && go(next + 1)) end = next + 1;
+      else break;
+    }
+    out.push({ name: words.slice(i, end + 1).map((w) => w.word).join(" "), start: i, end });
+    i = end + 1;
+  }
+  return out;
+}
+
+/**
+ * What the table is of, its columns, and what to add beside each item of
+ * some of them: "for each Mod column add the cost of the mod in
+ * parenthesis" adds `add: "cost"` to the columns named in `annotated`.
+ */
+export type Request = { things: string; columns: string[]; add?: string; annotated: number[] };
+
+export function readRequest(client: TypeSafeClient, question: string): Promise<Request> {
   // jevfind composes a table per file; the request reads the same in each.
   let r = requests.get(question);
   if (!r) requests.set(question, (r = readRequestOnce(client, question)));
   return r;
 }
-const requests = new Map<string, Promise<{ things: string; columns: string[] }>>();
+const requests = new Map<string, Promise<Request>>();
 
-async function readRequestOnce(client: TypeSafeClient, question: string): Promise<{ things: string; columns: string[] }> {
+async function readRequestOnce(client: TypeSafeClient, question: string): Promise<Request> {
   const words = wordsOf(question);
   const questions = Object.fromEntries(
     words.flatMap((w, i) => [
@@ -162,22 +203,51 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
         `c${i}`,
         noul(
           `\`words[${i}]\` ("${w.word}") is part of the name of a column \`question\` wants the table to have, ` +
-            'such as "single shot damage" or "ammo type". Not the things the rows are for, not a joining word.',
+            'such as "single shot damage" or "ammo type". Not the things the rows are for, not a word of an instruction about ' +
+            'what to add to the columns ("for each Mod column add the cost"), not a joining word.',
+        ),
+      ],
+      [
+        `a${i}`,
+        noul(
+          `\`words[${i}]\` ("${w.word}") is part of the name of what \`question\` asks to add beside each item of some columns, ` +
+            'such as "cost" in "add the cost of the mod in parenthesis". Not the kind of column it is added to ("Mod" in ' +
+            '"each Mod column"), not the item it is of ("the mod"), not how it is written ("in parenthesis"), not a column, ' +
+            "not the things the rows are for, not a joining word.",
         ),
       ],
     ]),
   );
   const res = await timed("api", () => client.systemOne({ state: { question, words: words.map((w) => w.word) }, questions }));
-  const yes = (prefix: string) => (i: number) => (res.answers[`${prefix}${i}`] as { noul: number }).noul >= 0.5 && !/^(each|every|all)$/i.test(words[i]!.word);
-  // The rows are the first name; its words are not columns too, though the
-  // "standard" of "standard ranged weapons" reads like one.
-  const rows = yes("r");
-  const first = words.findIndex((w, i) => !STOPWORDS.has(w.word.toLowerCase()) && rows(i));
-  let last = first;
-  while (first >= 0 && last + 1 < words.length && !words[last]!.ends && !STOPWORDS.has(words[last + 1]!.word.toLowerCase()) && rows(last + 1)) last++;
-  const things = first < 0 ? "" : words.slice(first, last + 1).map((w) => w.word).join(" ");
-  const cols = yes("c");
-  return { things, columns: namesFrom(words, (i) => (i < first || i > last) && cols(i), true) };
+  const p = (prefix: string, i: number) => (res.answers[`${prefix}${i}`] as { noul: number }).noul;
+  const quantifier = (i: number) => /^(each|every|all)$/i.test(words[i]!.word);
+  // A name starts at a word jev is sure of and runs on through words it
+  // half believes: "guns" of "small guns" and "Mods" of "Barrel Mods" sit
+  // either side of even odds from one reading to the next.
+  const rowsIn = namesBy(words, (i) => p("r", i) >= 0.5 && !quantifier(i), (i) => p("r", i) >= 0.3);
+  const things = rowsIn[0]?.name ?? "";
+  const inRows = (i: number) => rowsIn[0] !== undefined && i >= rowsIn[0].start && i <= rowsIn[0].end;
+  // A word of the instruction starts no column, though "Mod" in "each Mod
+  // column" reads like one; inside a column's name ("Barrel Mods") it stays.
+  const columns = namesBy(
+    words,
+    (i) => !inRows(i) && p("c", i) >= 0.5 && p("c", i) >= p("a", i),
+    (i) => !inRows(i) && p("c", i) >= 0.3,
+    true,
+  ).map((n) => n.name);
+  // Of the names read as what to add, the one jev is surest of.
+  const adds = namesBy(words, (i) => !inRows(i) && p("a", i) >= 0.5 && p("a", i) >= p("c", i), (i) => !inRows(i) && p("a", i) >= 0.3, true);
+  const surest = (n: { start: number; end: number }) => Math.max(...words.slice(n.start, n.end + 1).map((_, k) => p("a", n.start + k)));
+  const add = adds.sort((x, y) => surest(y) - surest(x))[0]?.name;
+  if (!add || columns.length === 0) return { things, columns, annotated: [] };
+  const which = await timed("api", () =>
+    client.systemOne({
+      state: { question },
+      questions: Object.fromEntries(columns.map((c, j) => [`k${j}`, noul(`\`question\` asks to add the ${add} beside each item of the "${c}" column.`)])),
+    }),
+  );
+  const annotated = columns.flatMap((_, j) => ((which.answers[`k${j}`] as { noul: number }).noul >= 0.5 ? [j] : []));
+  return { things, columns, add: annotated.length ? add : undefined, annotated };
 }
 
 /** A search for a passage, its question and reading set here rather than asked of jev. */
@@ -188,7 +258,7 @@ async function passageSearch(client: TypeSafeClient, pdf: string, o: ReadOpts, u
 }
 
 export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadOpts, ui: Ui, indent = ""): Promise<Outcome> {
-  const { things, columns } = await readRequest(client, o.question);
+  const { things, columns, add, annotated } = await readRequest(client, o.question);
   // Naming no columns, "show me the exotic weapons table" wants a table the
   // book prints, and jev reads it as one to be made now and then; the
   // table kind reads a page as a passage does, so the search runs as one.
@@ -226,10 +296,16 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   // gives each gun's ammunition under its heading, in no table.
   const read = new Map<string, Piece>();
   const byEntry = new Set<number>();
+  // The pages from the rows' table on, where the entries and their tables stand.
+  const from = Math.max(main.hit.page, ...ours.rows.flatMap((r) => r.lines.map((l) => l.page)));
+  let near: Promise<{ to: number; paras: Para[] }> | undefined;
+  const nearby = () =>
+    (near ??= (async () => {
+      const to = Math.min(await pageCount(pdf), from + ENTRY_PAGES);
+      return { to, paras: (await Promise.all(Array.from({ length: to - from + 1 }, (_, k) => pageParagraphs(pdf, from + k)))).flat() };
+    })());
   if (unplaced().length) {
-    const from = Math.max(main.hit.page, ...ours.rows.flatMap((r) => r.lines.map((l) => l.page)));
-    const to = Math.min(await pageCount(pdf), from + ENTRY_PAGES);
-    const paras = (await Promise.all(Array.from({ length: to - from + 1 }, (_, k) => pageParagraphs(pdf, from + k)))).flat();
+    const { to, paras } = await nearby();
     const entries = entriesOf(paras, names);
     const pieces = new Map([...entries].map(([i, entry]) => [i, entryPieces(entry)]));
     // A label counts once however many entries give it.
@@ -293,6 +369,27 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   for (const [k, v] of await deriveCells(client, o.question, ours, gaps)) read.set(k, v);
   if (read.size === 0) ui.log(`${indent}no column found for any ${things}`);
 
+  if (add && annotated.length) {
+    // The tables near the rows, nearest first; ours holds no item of its own cells.
+    const tables = tablesFrom((await nearby()).paras, main.hit)
+      .filter((t) => t.heads.join("\t") !== ours.heads.join("\t"))
+      .sort((a, b) => Math.abs(a.hit.page - from) - Math.abs(b.hit.page - from));
+    const items = [...new Set(annotated.flatMap((j) => names.flatMap((_, i) => itemsOf(read.get(`${i} ${j}`)?.text ?? ""))))];
+    const values = await annotate(client, o.question, add, items, tables);
+    ui.log(`${indent}${add}: ${[...values.values()].filter((v) => v.text).length} of ${items.length} items found`);
+    for (const j of annotated)
+      for (const [i] of names.entries()) {
+        const piece = read.get(`${i} ${j}`);
+        if (!piece) continue;
+        const parts = itemsOf(piece.text).map((it) => ({ it, v: values.get(it) }));
+        read.set(`${i} ${j}`, {
+          text: parts.map(({ it, v }) => `${it} (${v?.text || NA})`).join(", "),
+          from: piece.from,
+          lines: [...piece.lines, ...parts.flatMap(({ v }) => v?.lines ?? [])],
+        });
+      }
+  }
+
   const heads = [ours.heads[0]!, ...columns];
   const passage: Para[] = ours.rows.map((row, i) => {
     const lines: Box[] = boxesOf(row, 0);
@@ -314,6 +411,66 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   // A table of names and N/A answers nothing; it is shown as the best found.
   if (read.size === 0) return { hits: [], tried, rejected: [{ hit, answer: { ...answer, p: 0 } }], dropped: [] };
   return { hit, hits: [hit], tried, rejected: [], dropped: [] };
+}
+
+/** A cell's items: its parts between commas, semicolons and bullets. */
+export function itemsOf(cell: string): string[] {
+  return cell
+    .split(/\s*[,;•]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * For each item, its `add` from the nearest of `tables` (nearest first)
+ * that names it and holds an `add` column: the same mod costs differently
+ * in a weapon's own table further on. An item no table names outright is
+ * matched by jev among the rows of the table most items came from.
+ */
+export async function annotate(client: TypeSafeClient, question: string, add: string, items: string[], tables: Found[]): Promise<Map<string, Piece>> {
+  const out = new Map<string, Piece>();
+  if (items.length === 0 || tables.length === 0) return out;
+  // Asked of the table's own rows, not the question's: the question has a
+  // Cost column of its own, the gun's, and "the cost it asks for" is that.
+  const res = await timed("api", () =>
+    client.systemOne({
+      state: { question },
+      questions: Object.fromEntries(
+        tables.map((t, k) => [
+          `t${k}`,
+          choice(`Which column of the table headed "${t.heads.join(", ")}" gives the ${add} of each of its rows (${t.rows.slice(0, 3).map((r) => `"${r.cells[0]}"`).join(", ")})?`, {
+            ...Object.fromEntries(t.heads.flatMap((h, c) => (c > 0 && t.rows.some((r) => r.cells[c]) ? [[`c${c}`, `The column headed "${h}"`]] : []))),
+            none: `No column gives the ${add}`,
+          }),
+        ]),
+      ),
+    }),
+  );
+  const cols = tables.map((_, k) => {
+    const c = /^c(\d+)$/.exec((res.answers[`t${k}`] as { choice: string }).choice)?.[1];
+    return c === undefined ? undefined : Number(c);
+  });
+  const holding = tables.flatMap((t, k) => (cols[k] === undefined ? [] : [{ t, col: cols[k]! }]));
+  const piece = ({ t, col }: { t: Found; col: number }, r: number): Piece => {
+    const row = t.rows[r]!;
+    return { text: row.cells[col] ?? "", from: row.cells[0] ?? "", lines: row.cells[col] ? boxesOf(row, col) : [] };
+  };
+  const home = new Map<(typeof holding)[number], number>();
+  for (const it of items)
+    for (const h of holding) {
+      const r = sameNames([it], h.t.rows.map((row) => row.cells[0] ?? ""))[0];
+      if (r === undefined) continue;
+      out.set(it, piece(h, r));
+      home.set(h, (home.get(h) ?? 0) + 1);
+      break;
+    }
+  const left = items.filter((it) => !out.has(it));
+  const best = [...home].sort((a, b) => b[1] - a[1])[0]?.[0] ?? holding[0];
+  if (left.length && best) {
+    const found = await matchRows(client, question, left, best.t);
+    left.forEach((it, k) => found[k] !== undefined && out.set(it, piece(best, found[k]!)));
+  }
+  return out;
 }
 
 /**
