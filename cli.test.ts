@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { num, parseFlags, readDefaults, readFlags } from "./cli";
+import { num, parseFlags, readDefaults, readFlags, renderPassage } from "./cli";
+import type { Para } from "./layout";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
@@ -66,3 +67,53 @@ describe("readFlags", () => {
   });
 });
 
+
+describe("renderPassage", () => {
+  const heads = ["Small Gun", "Damage", "Notes", "Cost"];
+  const row = (cells: string[]): Para => ({ heading: false, text: JSON.stringify(cells), style: "", lines: [], table: { heads, cells } });
+  const paras = [
+    { heading: false, text: "Guns for sale.", style: "              ", lines: [] },
+    row([".44 Pistol", "6", "", "99"]),
+    row(["Combat Rifle", "5", "", "117"]),
+    row(["Alt. Fire: None", "", "", ""]),
+  ];
+  const plain = (s: string) => s.replace(/\u001b\[[\d;]*m/g, "");
+
+  test("a table's rows print as a grid under their heads, an empty column left out, a lone cell spanning", () => {
+    expect(plain(renderPassage(paras, 80, true))).toBe(
+      [
+        "  Guns for sale.",
+        "",
+        "  Small Gun     Damage  Cost",
+        "  .44 Pistol    6       99",
+        "  Combat Rifle  5       117",
+        "  Alt. Fire: None",
+      ].join("\n"),
+    );
+  });
+
+  test("too wide for the window, a row prints a head and its cell a line", () => {
+    const wide = [row([".44 Pistol", "6", "Loud, heavy and hard to find in the wastes", "99"]), row(["Combat Rifle", "5", "", "117"])];
+    expect(plain(renderPassage(wide, 40, true))).toBe(
+      [
+        "  Small Gun  .44 Pistol",
+        "  Damage     6",
+        "  Notes      Loud, heavy and hard to find in the wastes",
+        "  Cost       99",
+        "",
+        "  Small Gun  Combat Rifle",
+        "  Damage     5",
+        "  Cost       117",
+      ].join("\n"),
+    );
+  });
+
+  test("a table takes the whole window, past the measure prose wraps at", () => {
+    const wide = [row([".44 Pistol", "6", "x".repeat(100), "99"])];
+    expect(plain(renderPassage(wide, 140, true)).split("\n")).toHaveLength(2);
+  });
+
+  test("piped, a row stays its one line of text", () => {
+    expect(renderPassage(paras.slice(1, 2), 80, false)).toBe(`  ${paras[1]!.text}`);
+  });
+});

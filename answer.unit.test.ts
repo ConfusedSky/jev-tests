@@ -203,7 +203,7 @@ describe("unitsOf", () => {
   const plain = (text: string, heading = false) => ({ heading, text, style: " ".repeat(text.length), lines: [] });
 
   test("a table's row is one unit whatever its stops", () => {
-    const row = { heading: false, table: true as const, text: '{"Weapon":"Dr. Gun","Cost":"5. 000eb"}', style: "", lines: [] };
+    const row = { heading: false, table: { heads: ["Weapon", "Cost"], cells: ["Dr. Gun", "5. 000eb"] }, text: '{"Weapon":"Dr. Gun","Cost":"5. 000eb"}', style: "", lines: [] };
     expect(unitsOf([row]).map((u) => u.text)).toEqual([row.text]);
   });
 

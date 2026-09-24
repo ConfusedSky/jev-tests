@@ -239,7 +239,7 @@ describe("tables", () => {
       '{"Small Gun":"Hunting Rifle","Damage":"6","Weight":"10","Cost":"55"}',
       "The table ends here and the prose goes on for a line or two more.",
     ]);
-    expect(paras[3]?.table).toBe(true);
+    expect(paras[3]?.table).toEqual({ heads: ["Small Gun", "Damage", "Weight", "Cost"], cells: [".44 Pistol", "6", "4", "99"] });
     expect(paras[3]?.lines).toHaveLength(1);
     expect(paras[3]?.lines[0]?.page).toBe(1);
   });

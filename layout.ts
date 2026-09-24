@@ -14,7 +14,9 @@ export type Box = { page: number; x0: number; y0: number; x1: number; y1: number
  * A paragraph's text with, per character, "b" for bold, "i" for italic, "B"
  * for both and " " for neither, and the boxes of its lines for highlighting.
  */
-export type Para = { heading: boolean; text: string; style: string; lines: Box[]; table?: true };
+export type Para = { heading: boolean; text: string; style: string; lines: Box[]; table?: Row };
+/** A table row with its table's heads, a cell a head, so a passage can print its rows as a grid. */
+export type Row = { heads: string[]; cells: string[] };
 
 /** A table as tables.py reads it: rows of cells, each row with its box on the page, the first row the heads. */
 export type Table = { page: number; bbox: [number, number, number, number]; rows: { cells: string[]; bbox: [number, number, number, number] }[] };
@@ -254,7 +256,7 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
       if (filled.length === 0) return [];
       const text = filled.length === 1 ? filled[0]![1] : JSON.stringify(Object.fromEntries(filled));
       const [x0, y0, x1, y1] = r.bbox;
-      return [{ heading: false, table: true, text, style: " ".repeat(text.length), lines: [{ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length }] }];
+      return [{ heading: false, table: { heads: names, cells: r.cells }, text, style: " ".repeat(text.length), lines: [{ page: pageNumber, x0, y0, x1, y1, start: 0, end: text.length }] }];
     });
     const at = paras.findIndex((p) => p.lines[0] && p.lines[0].y0 > t.bbox[1] && p.lines[0].x1 > t.bbox[0] && p.lines[0].x0 < t.bbox[2]);
     paras.splice(at < 0 ? paras.length : at, 0, ...records);

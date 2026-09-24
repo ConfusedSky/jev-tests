@@ -1,6 +1,6 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind } from "./answer";
-import { pageParagraphs, type Para } from "./layout";
+import { pageParagraphs, type Para, type Row } from "./layout";
 import { GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, split, timed, type Snapshot } from "./shared";
 import { terms } from "./search";
@@ -207,12 +207,15 @@ const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =
 
 /**
  * A passage for the terminal: headings and bold runs in bold, italics in
- * italics, paragraphs wrapped to the window and set apart, all indented.
- * Piped, it is plain text, a paragraph a line, so it stays greppable.
+ * italics, paragraphs wrapped to the window and set apart, a table's rows
+ * as a grid, all indented. Piped, it is plain text, a paragraph or a row's
+ * JSON a line, so it stays greppable.
  */
 export function renderPassage(paras: Para[], width: number | undefined, styled: boolean): string {
   const indent = "  ";
-  const cols = Math.min(width && width >= 40 ? width : 80, 100) - indent.length;
+  const window = (width && width >= 40 ? width : 80) - indent.length;
+  // Prose wraps at a readable measure; a table takes the whole window.
+  const cols = Math.min(window, 100 - indent.length);
   const code = (s: string) => (s === "B" ? "\u001b[1;3m" : s === "b" ? "\u001b[1m" : s === "i" ? "\u001b[3m" : "\u001b[0m");
   const styleLine = (text: string, style: string) => {
     if (!styled) return text;
@@ -228,7 +231,7 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
     }
     return cur === " " ? out : `${out}\u001b[0m`;
   };
-  const blocks = paras.map((p) => {
+  const renderPara = (p: Para) => {
     if (p.heading) return indent + (styled ? `\u001b[1m${p.text}\u001b[0m` : p.text);
     if (!styled) return indent + p.text;
     // Wrap at spaces, carrying each character's weight along with it.
@@ -245,8 +248,42 @@ export function renderPassage(paras: Para[], width: number | undefined, styled: 
       while (p.text[at] === " ") at++;
     }
     return lines.join("\n");
-  });
+  };
+  const blocks: string[] = [];
+  for (let i = 0; i < paras.length; i++) {
+    const t = paras[i]!.table;
+    if (styled && t) {
+      const key = t.heads.join("\t");
+      const rows = [t];
+      while (paras[i + 1]?.table?.heads.join("\t") === key) rows.push(paras[++i]!.table!);
+      blocks.push(renderRows(rows, window).map((l) => (l && indent + l)).join("\n"));
+    } else blocks.push(renderPara(paras[i]!));
+  }
   return blocks.join(styled ? "\n\n" : "\n");
+}
+
+/**
+ * Rows under the same heads as a grid, a column as wide as its widest cell
+ * and the heads above in bold; a column no printed row fills is left out,
+ * and a row of one cell spans the grid. Too wide for the window, each row
+ * prints a head and its cell a line instead.
+ */
+export function renderRows(rows: Row[], cols: number): string[] {
+  const bold = (s: string) => `\u001b[1m${s}\u001b[0m`;
+  const lone = (r: Row) => r.cells.filter(Boolean).length === 1;
+  const keep = rows[0]!.heads.map((_, i) => i).filter((i) => rows.some((r) => !lone(r) && r.cells[i]));
+  const heads = keep.map((i) => rows[0]!.heads[i]!);
+  const widths = keep.map((i, k) => Math.max(heads[k]!.length, ...rows.map((r) => (lone(r) ? 0 : (r.cells[i] ?? "").length))));
+  const gap = "  ";
+  if (widths.reduce((a, b) => a + b, 0) + gap.length * (widths.length - 1) <= cols) {
+    const line = (cells: string[]) => cells.map((c, k) => c.padEnd(widths[k]!)).join(gap).trimEnd();
+    return [bold(line(heads)), ...rows.map((r) => (lone(r) ? r.cells.find(Boolean)! : line(keep.map((i) => r.cells[i] ?? ""))))];
+  }
+  const width = Math.max(...heads.map((h) => h.length));
+  return rows.flatMap((r, n) => [
+    ...(n > 0 ? [""] : []),
+    ...(lone(r) ? [r.cells.find(Boolean)!] : keep.flatMap((i, k) => (r.cells[i] ? [`${bold(heads[k]!.padEnd(width))}  ${r.cells[i]}`] : []))),
+  ]);
 }
 
 /** A value goes before the link on its line; a passage goes under it. */
