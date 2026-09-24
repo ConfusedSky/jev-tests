@@ -133,7 +133,7 @@ The earlier "131k per column ranking" in the logs was the parallel column
 searches counting each other's calls on the shared counter; they now run
 one at a time.
 
-## Measured, not built: read a table's cells before searching its columns
+## Adopted: read a table's own cells before searching its columns (issue #1)
 
 On the CPR drum table 213k of 282k tokens went to the column searches; the
 ammo type search alone spent 112k and found no table, and ammo type then
@@ -147,8 +147,19 @@ leave mostly empty (tried behind `JEV_CELLS_FIRST=1`, reverted):
 | all 7 columns | 391–392k | **261–276k (−30%)** |
 
 Cells were the same in every run; drum and extended sizes still came from
-the p.345 clip chart (jev reads no such value from the cells). Largest
-saving left for tables; about 20 lines in `compose.ts`, needs a full bench.
+the p.345 clip chart (jev reads no such value from the cells).
+
+Built in `composeTable` (a column the rows' cells fill for at least half
+the rows, `OWN_SHARE`, is not searched for; what they give for a column
+still searched fills rows its table lacks). Against the code before it,
+both with the embedding shortlist:
+
+| table (CPR) | before | after |
+| --- | --- | --- |
+| drum magazine size | 212k, 213k | 111k (−48%) |
+| all 7 columns | 294k, 349k | 246k, 251k (−15 to −29%) |
+
+The bench's ten table cases all scored 100%.
 
 ## Other ideas
 

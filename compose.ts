@@ -24,6 +24,9 @@ const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 /** Passages a missing column's search collects before its tables are asked which holds it. */
 const COLUMN_HITS = 3;
 
+/** The share of rows a column's own cells must fill for the column not to be searched for. */
+const OWN_SHARE = 0.5;
+
 /** Pages from the rows' table on that are read for an entry per row. */
 const ENTRY_PAGES = 8;
 
@@ -355,7 +358,23 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     ui.log(`${indent}entries: ${entries.size} of ${names.length} ${things} on p.${from}-${to}, ${count(byEntry.size, "column")} from them  in ${took()}`);
   }
 
-  const missing = unplaced().filter((j) => !byEntry.has(j));
+  // A column the rows' own cells state for most rows is read from them
+  // before any search: CPR's ammo type sits in each "12 (M Pistol)", and
+  // its search spent more than the rest of the table and found no table.
+  // What they give for a column still searched fills the rows its table
+  // lacks, so no cell is asked of the rows twice.
+  const own = new Map<string, Piece>();
+  const fromOwn = new Set<number>();
+  const askOwn = unplaced().filter((j) => !byEntry.has(j));
+  if (askOwn.length) {
+    for (const [k, v] of await deriveCells(client, o.question, ours, names.flatMap((_, i) => askOwn.map((j) => ({ row: i, j, column: columns[j]! })))))
+      own.set(k, v);
+    for (const j of mostlyFilled(own, names.length, askOwn)) fromOwn.add(j);
+    for (const j of fromOwn) for (const [i] of names.entries()) if (own.has(`${i} ${j}`)) read.set(`${i} ${j}`, own.get(`${i} ${j}`)!);
+    ui.log(`${indent}rows' own cells: ${fromOwn.size ? [...fromOwn].map((j) => columns[j]).join(", ") : `none of ${count(askOwn.length, "column")}`} for most rows  in ${took()}`);
+  }
+
+  const missing = unplaced().filter((j) => !byEntry.has(j) && !fromOwn.has(j));
   if (missing.length) begin(`columns: searching for ${missing.map((j) => columns[j]).join(", ")}`);
   const tried = [...main.tried];
   const seen = [...first];
@@ -390,7 +409,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
 
   begin(`cells: filling ${names.length * columns.length}`);
   for (const [j, s] of sources.entries())
-    ui.log(`${indent}  ${columns[j]}: ${s ? `"${s.table.heads[s.col]}" p.${s.table.hit.page}` : byEntry.has(j) ? "each entry's label" : "not in a table; from the rows' own cells"}`);
+    ui.log(`${indent}  ${columns[j]}: ${s ? `"${s.table.heads[s.col]}" p.${s.table.hit.page}` : byEntry.has(j) ? "each entry's label" : fromOwn.has(j) ? "the rows' own cells" : "not in a table; from the rows' own cells"}`);
 
   const matches = new Map<Found, (number | undefined)[]>();
   for (const s of sources) if (s && s.table !== ours && !matches.has(s.table)) matches.set(s.table, await matchRows(client, o.question, names, s.table));
@@ -405,10 +424,11 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   };
   for (const [i] of names.entries())
     for (const [j] of columns.entries()) {
-      const c = !read.has(`${i} ${j}`) && cellOf(i, j);
+      const c = !read.has(`${i} ${j}`) && (cellOf(i, j) ?? own.get(`${i} ${j}`));
       if (c) read.set(`${i} ${j}`, c);
     }
-  const gaps = names.flatMap((_, i) => columns.flatMap((column, j) => (read.has(`${i} ${j}`) ? [] : [{ row: i, j, column }])));
+  // A cell the rows were already asked for is not asked again.
+  const gaps = names.flatMap((_, i) => columns.flatMap((column, j) => (read.has(`${i} ${j}`) || askOwn.includes(j) ? [] : [{ row: i, j, column }])));
   for (const [k, v] of await deriveCells(client, o.question, ours, gaps)) read.set(k, v);
   ui.log(`${indent}cells: ${read.size} of ${names.length * columns.length} filled, ${count(matches.size, "other table")} matched by row, ${count(gaps.length, "gap")} looked for in the rows' own cells  in ${took()}`);
   if (read.size === 0) ui.log(`${indent}no column found for any ${things}`);
@@ -609,6 +629,11 @@ export async function pickTable(client: TypeSafeClient, question: string, things
     }),
   );
   return tables[Number((res.answers.table as { choice: string }).choice.slice(1))] ?? tables[0]!;
+}
+
+/** Of `columns`, those `cells` (keyed "row column") fill for at least OWN_SHARE of `rows` rows. */
+export function mostlyFilled(cells: Map<string, unknown>, rows: number, columns: number[]): number[] {
+  return columns.filter((j) => Array.from({ length: rows }, (_, i) => cells.has(`${i} ${j}`)).filter(Boolean).length >= rows * OWN_SHARE);
 }
 
 /** For each ask, the piece it picks, or none; all in one call, keyed by the ask's key. */
