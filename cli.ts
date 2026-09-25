@@ -449,6 +449,7 @@ export async function report(
     if (o.json) console.log(JSON.stringify({ kind: o.kind, status, hits, message, spent: spentSince(since) } satisfies JsonReport));
   };
   const fail: (message: string) => never = (message) => {
+    ui.log(`total ${split(since)}${walked}`);
     console.error(`${tool}: ${message}`);
     json("unanswered", [], message);
     process.exit(1);

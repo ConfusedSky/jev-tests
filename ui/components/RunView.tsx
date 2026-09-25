@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { fileStem, runJson } from "../export";
+import { OUTCOME, TOOL_LABEL } from "../labels";
 import { factsOf, spendOf } from "../log";
 import { changed } from "../options";
 import { outcomeOf, type Run } from "../run";
 import type { JsonReport } from "../types";
-import { basename, copy, cx, dollars, secs, tokens, useTick } from "../util";
-import { OUTCOME, TOOL_LABEL } from "./History";
+import { basename, copy, cx, dollars, download, secs, tokens, useTick } from "../util";
 import { Log } from "./Log";
 import { Result } from "./Result";
+import { useToast } from "./Toast";
 
 function Fact({ label, children, tone = "stone" }: { label: string; children: React.ReactNode; tone?: "stone" | "teal" | "violet" }) {
   const t = { stone: "bg-white ring-stone-200", teal: "bg-teal-50 ring-teal-600/20", violet: "bg-violet-50 ring-violet-600/20" }[tone];
@@ -28,8 +29,10 @@ const PARTS = [
 ] as const;
 
 function Timing({ spent }: { spent: JsonReport["spent"] }) {
-  const ms = (k: (typeof PARTS)[number]["key"]) => spent.ms[k] ?? 0;
-  const total = Math.max(1, PARTS.reduce((n, p) => n + ms(p.key), 0));
+  // The bar draws what the legend says: tenths of a second, so a part it calls 0.0s takes no width.
+  const tenths = (k: (typeof PARTS)[number]["key"]) => Math.round((spent.ms[k] ?? 0) / 100);
+  const drawn = PARTS.filter((p) => tenths(p.key) > 0);
+  const total = Math.max(1, drawn.reduce((n, p) => n + tenths(p.key), 0));
   return (
     <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
       <div className="mb-2 flex items-baseline gap-3">
@@ -39,13 +42,15 @@ function Timing({ spent }: { spent: JsonReport["spent"] }) {
         </span>
       </div>
       <div className="flex h-2.5 overflow-hidden rounded-full bg-stone-100">
-        {PARTS.map((p) => ms(p.key) > 0 && <div key={p.key} className={p.color} style={{ width: `${(ms(p.key) / total) * 100}%` }} title={`${p.label} ${secs(ms(p.key))}`} />)}
+        {drawn.map((p) => (
+          <div key={p.key} className={p.color} style={{ width: `${(tenths(p.key) / total) * 100}%` }} title={`${p.label} ${secs(spent.ms[p.key])}`} />
+        ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-500">
-        {PARTS.filter((p) => ms(p.key) > 0 || p.key === "jev").map((p) => (
+        {PARTS.filter((p) => tenths(p.key) > 0 || p.key === "jev").map((p) => (
           <span key={p.key} className="flex items-center gap-1.5">
             <span className={cx("h-2 w-2 rounded-sm", p.color)} />
-            {p.label} <span className="font-mono tabular-nums text-stone-700">{secs(ms(p.key))}</span>
+            {p.label} <span className="font-mono tabular-nums text-stone-700">{secs(spent.ms[p.key])}</span>
           </span>
         ))}
         <span className="ml-auto text-stone-400">jev charges $0.042 per million tokens in; output is free</span>
@@ -56,8 +61,9 @@ function Timing({ spent }: { spent: JsonReport["spent"] }) {
 
 /** The run's own settings, which may differ from the form's now: the options it changed and its command line. */
 function RunSettings({ run }: { run: Run }) {
-  const [copied, setCopied] = useState(false);
+  const toast = useToast();
   const diff = changed(run.request.tool, run.request.options);
+  const link = "rounded-md px-1.5 py-0.5 text-stone-500 hover:bg-stone-200/60 hover:text-stone-800";
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
       <span className="text-stone-400">ran with</span>
@@ -67,16 +73,24 @@ function RunSettings({ run }: { run: Run }) {
           {d.label} <span className="font-semibold">{String(run.request.options[d.key]) || "default"}</span>
         </span>
       ))}
-      <button
-        onClick={async () => {
-          setCopied(await copy(run.command));
-          setTimeout(() => setCopied(false), 1500);
-        }}
-        title={run.command}
-        className="ml-auto rounded-md px-1.5 py-0.5 font-mono text-stone-500 hover:bg-stone-200/60"
-      >
-        {copied ? "copied" : "$ copy command"}
-      </button>
+      <span className="ml-auto flex gap-0.5">
+        <button onClick={async () => toast((await copy(run.command)) ? "Command copied" : "Could not reach the clipboard", "ok")} title={run.command} className={cx(link, "font-mono")}>
+          $ copy command
+        </button>
+        {run.status !== "running" && (
+          <button
+            onClick={() => {
+              const name = `jev-${fileStem(run.request.question)}.json`;
+              download(name, runJson(run), "application/json");
+              toast(`Saved ${name}`);
+            }}
+            title="Save the question, the answer and the log as one JSON file"
+            className={link}
+          >
+            save JSON
+          </button>
+        )}
+      </span>
     </div>
   );
 }

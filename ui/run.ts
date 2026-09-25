@@ -13,6 +13,8 @@ export type Run = {
   trying?: string;
   status: "running" | "done" | "stopped";
   end?: End;
+  /** Kept in the history however full it gets. */
+  pinned?: boolean;
 };
 
 export type Outcome = "running" | "answered" | "below" | "unanswered" | "names" | "error" | "stopped";
@@ -44,18 +46,25 @@ export function useRun(onDone: (run: Run) => void) {
   const [run, setRun] = useState<Run>();
   const abort = useRef<AbortController | null>(null);
 
-  async function start(request: RunRequest, command: string) {
+  /** Starts the run and returns its id at once; the run itself streams in behind. */
+  function start(request: RunRequest, command: string): string {
     abort.current?.abort();
     const ctrl = new AbortController();
     abort.current = ctrl;
-    let cur: Run = { id: crypto.randomUUID(), request, command, at: Date.now(), lines: [], status: "running" };
+    const cur: Run = { id: crypto.randomUUID(), request, command, at: Date.now(), lines: [], status: "running" };
+    setRun(cur);
+    void stream(cur, ctrl);
+    return cur.id;
+  }
+
+  async function stream(cur: Run, ctrl: AbortController) {
+    const request = cur.request;
     // A run started over this one has the screen; this one still ends into history.
     const update = (f: (r: Run) => Run) => {
       cur = f(cur);
       if (abort.current === ctrl) setRun(cur);
     };
     const fail = (error: string) => update((r) => ({ ...r, status: "done", trying: undefined, end: { type: "end", code: null, ms: Date.now() - r.at, error } }));
-    setRun(cur);
     try {
       const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request), signal: ctrl.signal });
       if (!res.ok || !res.body) fail(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);

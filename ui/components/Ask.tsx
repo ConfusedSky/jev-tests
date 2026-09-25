@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { changed, commandFor, DEFAULTS, invalid, SPECS, type Options, type Spec, type Tool } from "../options";
 import { basename, copy, cx } from "../util";
+import { useToast } from "./Toast";
 
 const MODES: { tool: Tool; label: string; asks: string; cost: string }[] = [
   { tool: "jevfind", label: "Whole shelf", asks: "Which page of which PDF answers it?", cost: "ranks the paths, then reads the best files" },
@@ -16,6 +17,14 @@ export const KIND_HINTS = [
   { kind: "passage", says: "How do I …?", gives: "the sentences that answer" },
   { kind: "table", says: "Make a table of … with …", gives: "a table built to the question" },
 ] as const;
+
+/** Why the question cannot be asked yet, or undefined when it can. */
+export function whyBlocked(a: { tool: Tool; question: string; options: Options; pdf?: string; files: number; cacheWhy?: string }): string | undefined {
+  if (!a.question.trim()) return "Type a question";
+  if (a.tool === "jevsec" && !a.pdf) return "Pick a PDF on the shelf";
+  if (a.tool !== "jevsec" && a.files === 0) return "Add a folder or a locate command to the shelf";
+  return invalid(a.tool, a.options) ?? (a.cacheWhy ? "The ranking cache can't run" : undefined);
+}
 
 type Props = {
   tool: Tool;
@@ -38,22 +47,19 @@ type Props = {
   /** Why the chosen ranking cache cannot run, when it cannot. */
   cacheWhy?: string;
   onCacheOffOnce: () => void;
+  /** Earlier questions like the one being typed, offered while the box has focus. */
+  suggestions: string[];
 };
 
 export function Ask(props: Props) {
-  const { tool, setTool, question, setQuestion, options, setOptions, pdf, folders, files, running, onAsk, onStop, note, onDismissNote, focus, cacheWhy, onCacheOffOnce } = props;
+  const { tool, setTool, question, setQuestion, options, setOptions, pdf, folders, files, running, onAsk, onStop, note, onDismissNote, focus, cacheWhy, onCacheOffOnce, suggestions } = props;
   const [showOptions, setShowOptions] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const toast = useToast();
   const box = useRef<HTMLTextAreaElement>(null);
   const diff = changed(tool, options);
   const mode = MODES.find((m) => m.tool === tool)!;
-  const blocked = !question.trim()
-    ? "Type a question"
-    : tool === "jevsec" && !pdf
-      ? "Pick a PDF on the shelf"
-      : tool !== "jevsec" && files === 0
-        ? "Add a folder or a locate command to the shelf"
-        : (invalid(tool, options) ?? (cacheWhy ? "The ranking cache can't run" : undefined));
+  const blocked = whyBlocked({ tool, question, options, pdf, files, cacheWhy });
   const command = commandFor(tool, options, question.trim(), { pdf, sources: folders });
 
   useEffect(() => {
@@ -71,17 +77,6 @@ export function Ask(props: Props) {
   useEffect(() => {
     if (focus) box.current?.focus();
   }, [focus]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
-        e.preventDefault();
-        box.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -131,12 +126,31 @@ export function Ask(props: Props) {
             }
             if (e.key === "Escape" && running) onStop();
           }}
+          onFocus={() => setTyping(true)}
+          onBlur={() => setTyping(false)}
           rows={2}
           placeholder={tool === "jevgrep" ? "What are you looking for? jev ranks the filenames against it" : "Ask a question, or state something to check"}
           aria-label="Question"
           className="w-full resize-none border-0 bg-transparent font-serif text-lg leading-snug text-stone-900 placeholder:text-stone-400 focus:outline-none"
         />
       </div>
+
+      {typing && suggestions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2" aria-label="Earlier questions">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">{question.trim() ? "asked before" : "recent"}</span>
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              // Pressing must not blur the box, or the row goes before the click lands.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setQuestion(s)}
+              className="max-w-full truncate rounded-full bg-stone-50 px-2.5 py-0.5 font-serif text-xs text-stone-700 ring-1 ring-stone-200 hover:bg-teal-50 hover:ring-teal-600/30"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tool !== "jevgrep" && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
@@ -219,14 +233,8 @@ export function Ask(props: Props) {
         <code className="min-w-0 flex-1 font-mono text-[11px] [overflow-wrap:anywhere] text-stone-600" title="The same run from a terminal in the repo">
           {command}
         </code>
-        <button
-          onClick={async () => {
-            setCopied(await copy(command));
-            setTimeout(() => setCopied(false), 1500);
-          }}
-          className="shrink-0 rounded-md px-2 py-0.5 text-[11px] text-stone-500 hover:bg-stone-200"
-        >
-          {copied ? "copied" : "copy"}
+        <button onClick={async () => toast((await copy(command)) ? "Command copied" : "Could not reach the clipboard", "ok")} className="shrink-0 rounded-md px-2 py-0.5 text-[11px] text-stone-500 hover:bg-stone-200">
+          copy
         </button>
       </div>
     </section>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { drain, factsOf, parseLine, spendOf, tree, withoutCost } from "./log";
+import { drain, factsOf, isTotal, parseLine, spendOf, tree, withoutCost } from "./log";
 
 const LOG = `question looks like a count question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)
 counts skills
@@ -58,6 +58,21 @@ describe("spendOf", () => {
     partial.push(parseLine("b 0.2s (jev 0.2s, read 0.0s, other 0.0s; 30 tokens in, 2 out, $0.00001)"));
     expect(spendOf(partial).in).toBe(130);
   });
+
+  // An unanswered run ends on the tool's message, which counts since the start; older logs have no total before it.
+  test("takes the tool's closing message as the whole, not as one more part", () => {
+    const unanswered = [
+      parseLine("question looks like a passage question  in 0.1s (jev 0.1s, read 0.0s, other 0.0s; 100 tokens in, 1 out, $0.00001)"),
+      parseLine("section A  p.1-1…"),
+      parseLine("  no   0.04  A p.1"),
+      parseLine("section 0.1s (jev 0.1s, read 0.0s, other 0.0s; 200 tokens in, 1 out, $0.00001)  A"),
+      parseLine("jevsec: none of 1 windows reached p=0.7 in 0.3s (jev 0.2s, read 0.1s, other 0.0s; 300 tokens in, 2 out, $0.00001); best was 0.04 at A p.1"),
+    ];
+    expect(isTotal(unanswered[4]!)).toBe(true);
+    expect(spendOf(unanswered).in).toBe(300);
+    expect(spendOf([...unanswered.slice(0, 4), parseLine("total 0.3s (jev 0.2s, read 0.1s, other 0.0s; 300 tokens in, 2 out, $0.00001)"), unanswered[4]!]).in).toBe(300);
+    expect(isTotal(parseLine("jevsec: no answer reached p=0.7 in 2 windows; best follows"))).toBe(false);
+  });
 });
 
 describe("factsOf", () => {
@@ -77,6 +92,40 @@ describe("factsOf", () => {
     ]);
     expect(f.cache).toEqual({ question: "How is radiation treated?", score: "question 0.53, subject 0.85", count: 1 });
     expect([f.files, f.windows]).toEqual([1, 2]);
+  });
+
+  // A cell of a table across the shelf ranks its files two levels down; its cache hits are not the question's.
+  test("leaves a cell's cached ranking to the cell", () => {
+    const line = `ranked from cache in 0.1s (jev 0.0s, read 0.0s, other 0.1s): "q" (question 0.9, subject 0.9)`;
+    expect(factsOf([parseLine(`    ${line}`)]).cache).toBeUndefined();
+    expect(factsOf([parseLine(`  ${line}`)]).cache?.count).toBe(1);
+  });
+
+  test("keeps what the contents answered, so a hit matching it is known to be read off them", () => {
+    const f = factsOf([parseLine("  toc   9 (p=0.98)  Classes  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 1,200 tokens in, 20 out, $0.00005)"), parseLine("toc   reading Gear (4 sections)  in 0.2s (jev 0.2s, read 0.0s, other 0.0s)")]);
+    expect(f.toc).toEqual([{ text: "9", section: "Classes" }]);
+  });
+
+  test("counts the sections one file's walk took up, skipped ones included, and a scan of a book without an outline", () => {
+    const shelf = [
+      "ranked 3 paths and 0 excerpts in 0.1s (jev 0.1s, read 0.0s, other 0.0s; 100 tokens in, 1 out, $0.00001), 1 above file floor 1.5 (2 below)",
+      "2.10  /a.pdf…",
+      "  ranked 6 sections and 0 excerpts in 0.1s (jev 0.1s, read 0.0s, other 0.0s; 100 tokens in, 1 out, $0.00001), 2 above title floor 1 (4 below)",
+      "  section A  p.1-1…",
+      "    no   0.04  A p.1",
+      "  section 0.1s (jev 0.1s, read 0.0s, other 0.0s; 10 tokens in, 1 out, $0.00001)  A",
+      "    --    B  already counted under A",
+      "file 0.3s (jev 0.2s, read 0.1s, other 0.0s; 210 tokens in, 2 out, $0.00001)  1 windows read",
+      "1.20  /b.pdf…",
+      "  section C  p.1-1…",
+      "  section 0.1s (jev 0.1s, read 0.0s, other 0.0s; 10 tokens in, 1 out, $0.00001)  C",
+      "  no outline: scanning 12 of 40 windows in page order…",
+    ].map((l) => parseLine(l));
+    const f = factsOf(shelf);
+    expect(f.mostSections).toBe(2);
+    expect(f.sections).toBe(2);
+    expect(f.scan).toEqual({ read: 12, of: 40 });
+    expect([f.titleBelow, f.filesBelow]).toEqual([4, 2]);
   });
 });
 

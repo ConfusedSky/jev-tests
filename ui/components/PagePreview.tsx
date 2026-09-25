@@ -33,7 +33,7 @@ export function PagePreview({ view, pdf, page, stamp, compact }: { view: string;
         {state === "failed" ? (
           <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-stone-400">No preview of p.{page}</div>
         ) : (
-          <img src={src} alt={`Page ${page} of ${basename(pdf)}`} onLoad={() => setDone({ src, ok: true })} onError={() => setDone({ src, ok: false })} className={cx("block w-full", state !== "ok" && "opacity-0")} />
+          <img src={src} alt={`Page ${page} of ${basename(pdf)}`} onLoad={() => setDone({ src, ok: true })} onError={() => setDone({ src, ok: false })} className={cx("page block w-full", state !== "ok" && "opacity-0")} />
         )}
       </a>
       <figcaption className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-stone-500">
