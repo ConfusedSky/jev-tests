@@ -5,7 +5,7 @@ import { clampOption, offerAfresh, type Options, type Tool } from "../options";
 import { OFFLINE, type Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
 import { AFRESH, inFlight, PER_MILLION } from "../labels";
-import { basename, copy, cx, dollars, plural } from "../util";
+import { basename, copy, cx, dollars, plainTitle, plural } from "../util";
 import { leadOf, type Spot } from "../viewer";
 import { GridExport } from "./GridExport";
 import { Action } from "./Icon";
@@ -43,9 +43,10 @@ export function Confidence({ p, floor, label }: { p: number; floor?: number; lab
 }
 
 function Source({ hit }: { hit: JsonHit }) {
-  const parts = hit.section.split(" > ");
+  const section = plainTitle(hit.section);
+  const parts = section.split(" > ");
   // A PDF without an outline names its windows by page, which the page already says.
-  const named = !/^p\.\d+(-\d+)?$/.test(hit.section);
+  const named = !/^p\.\d+(-\d+)?$/.test(section);
   return (
     <div className="min-w-0 text-xs text-stone-500">
       <span className="font-medium text-stone-700" title={hit.pdf}>
@@ -56,7 +57,7 @@ function Source({ hit }: { hit: JsonHit }) {
       {named && (
         <>
           <span aria-hidden="true" className="mx-1.5 text-stone-400">/</span>
-          <span title={hit.section}>
+          <span title={section}>
             {parts.length > 2 && <span className="text-stone-500">{parts.slice(0, -1).join(" › ")} › </span>}
             {parts[parts.length - 1]}
           </span>
@@ -171,7 +172,7 @@ function HitCard({ hit, kind, floor, index, count, below, reading, contents, ste
                 {reading && <Detail label="jev read it as">{reading}</Detail>}
                 <Detail label="found in">
                   <span className="font-medium">{basename(hit.pdf)}</span>, p.{hit.page}
-                  {!/^p\.\d+(-\d+)?$/.test(hit.section) && <span className="block text-stone-500">{hit.section.split(" > ").join(" › ")}</span>}
+                  {!/^p\.\d+(-\d+)?$/.test(hit.section) && <span className="block text-stone-500">{plainTitle(hit.section).split(" > ").join(" › ")}</span>}
                 </Detail>
                 <Detail label="how sure">
                   answer p={a.p.toFixed(2)} {a.p >= floor ? `clears the answer floor ${floor}` : `is under the answer floor ${floor}`}; the page passed the gate at p={hit.found.toFixed(2)}
@@ -335,8 +336,8 @@ function Lead({ run, reader }: { run: Run; reader: Reader }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-stone-100 px-5 py-3 text-xs text-stone-500">
         <span className="font-medium text-stone-700">{pdf ? basename(pdf) : "the PDF"}</span>
         <span>{r.kind === "contents" ? "the table of contents" : r.page ? `p.${r.page}` : ""}</span>
-        <span className="min-w-0 truncate" title={r.name}>
-          {r.name}
+        <span className="min-w-0 truncate" title={plainTitle(r.name)}>
+          {plainTitle(r.name)}
         </span>
         {r.sure !== undefined && <Confidence p={r.sure} floor={run.request.options.answerFloor} label="answer" />}
         {beside && <Action icon="zoom" label="show on the page" title="Show its page beside, unmarked" onClick={() => reader.show("lead")} />}

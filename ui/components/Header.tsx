@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { PRICE, spentOver, TOOL_LABEL, type Ledger } from "../labels";
 import { THEME_LABEL, THEMES, type Theme } from "../theme";
 import type { Health } from "../types";
-import { cx, dollars, MOD, tokens } from "../util";
+import { bytes, cx, dollars, MOD, tokens } from "../util";
 import { Icon } from "./Icon";
 
 type Check = { label: string; ok: boolean | "off"; detail: string; fix?: string };
@@ -213,7 +213,16 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
                 <span className="block text-xs text-stone-500">{canNotify ? "when a run ends while this tab is in the background" : "this browser cannot show them"}</span>
               </span>
             </label>
-            <div className="border-t border-stone-100 px-2 pt-2 pb-1 font-mono text-[11px] text-stone-500">cache: {health.cacheDir}</div>
+            <div className="space-y-0.5 border-t border-stone-100 px-2 pt-2 pb-1 text-[11px] text-stone-500">
+              {health.pages && (
+                <div title="Pages the viewer has drawn, kept to be shown again; past the cap, the least recently shown go first. JEV_PAGE_CACHE_MB sets the cap.">
+                  page images kept: <span className="font-medium tabular-nums text-stone-700">{health.pages.bytes > 0 ? bytes(health.pages.bytes) : "none yet"}</span>
+                  {health.pages.bytes > 0 ? " of " : ", up to "}
+                  <span className="tabular-nums">{bytes(health.pages.cap)}</span>
+                </div>
+              )}
+              <div className="font-mono">cache: {health.cacheDir}</div>
+            </div>
           </div>
         )}
       </div>

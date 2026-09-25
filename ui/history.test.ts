@@ -11,7 +11,7 @@ const run = (id: string, question: string, at: number, extra: Partial<Run> = {})
   at,
   lines: [],
   status: "done",
-  end: { type: "end", code: 0, ms: 1, report: { status: "answered", hits: [], spent: { in: 0, out: 0, dollars: 0, ms: { total: 0, jev: 0, read: 0, stdin: 0, embed: 0, highlight: 0, other: 0 } } } },
+  end: { type: "end", code: 0, ms: 1, report: { status: "answered", hits: [], spent: { in: 0, out: 0, dollars: 0, ms: { total: 0, jev: 0, read: 0, stdin: 0, embed: 0, highlight: 0, sizes: 0, other: 0 } } } },
   ...extra,
 });
 
@@ -77,7 +77,7 @@ describe("successor", () => {
 
 const answered = (id: string, question: string, report: Partial<JsonReport>): Run =>
   run(id, question, 1, { end: { type: "end", code: 0, ms: 1, report: { ...run("x", "", 0).end!.report!, ...report } } });
-const hit = (answer: NonNullable<JsonReport["hits"][number]["answer"]>) => ({ pdf: "/b/Guide.pdf", view: "/b/Guide.pdf", page: 3, section: "Start", found: 0.9, answer, marks: [], pages: {} });
+const hit = (answer: NonNullable<JsonReport["hits"][number]["answer"]>) => ({ pdf: "/b/Guide.pdf", view: "/b/Guide.pdf", page: 3, section: "Start", found: 0.9, answer, marks: [], sizes: {} });
 
 describe("answerOf", () => {
   test("is the figure, True or False, or a passage's opening", () => {

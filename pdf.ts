@@ -172,6 +172,20 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
   return windows(pdf, { path: "", start: 1, end: pages }, chars);
 }
 
+/**
+ * Why mutool cannot open `pdf`, or undefined when it can: a damaged file
+ * otherwise fails only once the walk opens it, after a call has been paid for.
+ */
+export async function unopenable(pdf: string): Promise<string | undefined> {
+  try {
+    await run(["mutool", "pages", pdf, "1"]);
+  } catch (e) {
+    // mutool warns as it tries to repair the file; its last error is why it gave up.
+    const said = (e instanceof Error ? e.message : String(e)).split("\n").findLast((l) => /error:/.test(l));
+    return said?.replace(/^.*error:\s*/, "").trim() || "mutool could not open it";
+  }
+}
+
 /** A box to highlight, in PDF points from its page's top left, where stext puts it. */
 export type Mark = Pick<Box, "page" | "x0" | "y0" | "x1" | "y1">;
 export type PageSize = { width: number; height: number };
@@ -184,7 +198,7 @@ export type PageSize = { width: number; height: number };
 export async function pageSizes(pdf: string, pages?: number[]): Promise<Record<number, PageSize>> {
   if (pages?.length === 0) return {};
   const script = Bun.fileURLToPath(new URL("sizes.js", import.meta.url));
-  const out = await run(["mutool", "run", script, pdf, ...(pages ?? []).map(String)]);
+  const out = await run(["mutool", "run", script, pdf, ...(pages ?? []).map(String)], "sizes");
   return Object.fromEntries(
     out
       .split("\n")

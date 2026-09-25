@@ -5,7 +5,7 @@
 import type { Run } from "./run";
 import { outcomeOf } from "./run";
 import type { JsonHit, JsonReport } from "./types";
-import { basename } from "./util";
+import { basename, plainTitle } from "./util";
 
 type Para = NonNullable<NonNullable<JsonHit["answer"]>["passage"]>[number];
 type TableRow = NonNullable<Para["table"]>;
@@ -16,7 +16,7 @@ const byPage = (section: string) => /^p\.\d+(-\d+)?$/.test(section);
 /** "book.pdf, p.12 (Chapter > Section)", enough to find the answer again. */
 export function citation(hit: JsonHit): string {
   const where = `${basename(hit.pdf)}, p.${hit.page}`;
-  return byPage(hit.section) ? where : `${where} (${hit.section})`;
+  return byPage(hit.section) ? where : `${where} (${plainTitle(hit.section)})`;
 }
 
 /** A passage as plain text: a heading on its line, a table's heads before its first row, each row's cells tab-separated. */

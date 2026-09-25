@@ -293,23 +293,29 @@ export function App() {
   const [paneOff, setPaneOff] = useState(false);
   const [split, setSplit] = useStored("jev.split", 0.5);
   const splitBox = useRef<HTMLDivElement>(null);
+  // Each run opens on its first highlight, with its pages beside it: hiding them is for the run it was done in.
   useEffect(() => {
     setSpotAt((s) => ({ i: 0, n: s.n + 1 }));
     setReading(false);
+    setPaneOff(false);
   }, [shown?.id]);
   const pane = wide && spots.length > 0 && !paneOff;
   const serving: Served = { boot: health && health !== "down" ? health.boot : undefined, listed, pending: folders.some((f) => scans[f] === undefined), down: health === "down" };
   const showAt = (i: number) => setSpotAt((s) => ({ i: Math.max(0, Math.min(spots.length - 1, i)), n: s.n + 1 }));
-  /** Shows the pages of the answer `key` names (see Spot): in the pane beside it, or over the page. */
+  /** Shows the pages at highlight `i`, with the cursor in them: in the pane beside the answer, or over the page, where the viewer takes it as it opens. */
+  const showPages = (i: number) => {
+    showAt(i);
+    if (!wide) return setReading(true);
+    setPaneOff(false);
+    requestAnimationFrame(() => document.getElementById("viewer-pages")?.focus());
+  };
+  /** Shows the pages of the answer `key` names (see Spot). */
   const showSpot = (key: string) => {
     const i = spots.findIndex((s) => s.key === key);
-    if (i < 0) return;
-    showAt(i);
-    if (wide) setPaneOff(false);
-    else setReading(true);
+    if (i >= 0) showPages(i);
   };
   const reader: Reader = { spots, wide, served: serving, show: showSpot, current: pane ? spots[spotAt.i]?.key : undefined };
-  const viewer = (onClose: () => void, closeLabel: string) => <Viewer spots={spots} at={spotAt.i} seq={spotAt.n} onAt={showAt} served={serving} onClose={onClose} closeLabel={closeLabel} />;
+  const viewer = (onClose: () => void, closeLabel: string, autoFocus = false) => <Viewer spots={spots} at={spotAt.i} seq={spotAt.n} onAt={showAt} served={serving} onClose={onClose} closeLabel={closeLabel} autoFocus={autoFocus} />;
   // The address names a run this browser does not have: another's link, or one deleted since.
   const missing = viewingId !== null && !shown;
   // Word of a finished run goes once it is on screen, or gone from the history.
@@ -506,14 +512,6 @@ export function App() {
   const covered = narrow && drawer;
   useFocusInside(aside, covered);
   useTabTrap(aside, covered && !dialog);
-
-  /** Shows the pages at highlight `i`, with the cursor in them. */
-  const showPages = (i: number) => {
-    showAt(i);
-    if (!wide) return setReading(true);
-    setPaneOff(false);
-    requestAnimationFrame(() => document.getElementById("viewer-pages")?.focus());
-  };
 
   const items = (): Item[] => {
     const act = (id: string, label: string, run: () => void, extra: Partial<Item> = {}): Item => ({ id, group: "Actions", label, run, ...extra });
@@ -765,7 +763,7 @@ export function App() {
       {dialog === "shortcuts" && <Shortcuts onClose={closeDialog} />}
       {reading && !wide && spots.length > 0 && (
         <Dialog title={`The pages of ${basename(spots[Math.min(spotAt.i, spots.length - 1)]!.pdf)}`} onClose={() => setReading(false)} size="full">
-          {viewer(() => setReading(false), "Close the pages")}
+          {viewer(() => setReading(false), "Close the pages", true)}
         </Dialog>
       )}
     </div>

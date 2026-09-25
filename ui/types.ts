@@ -26,6 +26,8 @@ export type Health = {
   cache: Record<string, string | null>;
   tools: { mutool: boolean; pdftotext: boolean; rg: boolean; tables: boolean };
   cacheDir: string;
+  /** The page images the viewer is drawn from, in bytes, and the cap they are held to. */
+  pages: { bytes: number; cap: number };
   /** When the server started; one started afresh serves no PDF until the shelf is listed again. */
   boot: number;
 };

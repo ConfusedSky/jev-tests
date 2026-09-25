@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { parseLine } from "./log";
 import type { Run } from "./run";
 import type { JsonHit, JsonReport } from "./types";
-import { layOut, pageAt, placed, renderWidth, scrollFor, splitAt, spotsOf, stepSpot, zoomStep } from "./viewer";
+import { anchorAt, layOut, markAnchor, pageAt, pageInput, placed, renderWidth, scrollFor, scrollOf, splitAt, spotsOf, stepSpot, zoomStep } from "./viewer";
 
-const spent = { in: 0, out: 0, dollars: 0, ms: { total: 0, jev: 0, read: 0, stdin: 0, embed: 0, highlight: 0, other: 0 } };
+const spent = { in: 0, out: 0, dollars: 0, ms: { total: 0, jev: 0, read: 0, stdin: 0, embed: 0, highlight: 0, sizes: 0, other: 0 } };
 const run = (report: JsonReport | undefined, extra: Partial<Run> = {}): Run => ({
   id: "r",
   request: { tool: "jevfind", question: "q", options: {} as Run["request"]["options"], paths: ["/a.pdf"] },
@@ -25,15 +25,15 @@ const hit = (pdf: string, page: number, extra: Partial<JsonHit> = {}): JsonHit =
   found: 0.9,
   answer: { text: "Open the box and read the rules", p: 0.9 },
   marks: [],
-  pages: {},
+  sizes: {},
   ...extra,
 });
 
 describe("spotsOf", () => {
   test("lists each hit's marked pages in page order, passages in different books included", () => {
     const hits = [
-      hit("/a.pdf", 12, { marks: [mark(13, 100), mark(12, 700), mark(12, 712)], pages: { 12: size, 13: size } }),
-      hit("/b.pdf", 3, { marks: [mark(3, 40)], pages: { 3: size } }),
+      hit("/a.pdf", 12, { marks: [mark(13, 100), mark(12, 700), mark(12, 712)], sizes: { 12: size, 13: size } }),
+      hit("/b.pdf", 3, { marks: [mark(3, 40)], sizes: { 3: size } }),
     ];
     const spots = spotsOf(run({ kind: "passage", status: "answered", hits, spent }));
     expect(spots.map((s) => [s.key, s.pdf, s.page, s.marks.length])).toEqual([
@@ -48,9 +48,22 @@ describe("spotsOf", () => {
   test("keeps an unmarked hit's page, saying why: a statement, a run saved before marks were kept", () => {
     const truth = spotsOf(run({ kind: "truth", status: "answered", hits: [hit("/a.pdf", 5)], spent }));
     expect(truth).toMatchObject([{ page: 5, marks: [], unmarked: "a statement rests on no single line, so nothing is marked" }]);
-    const { marks, pages, ...old } = hit("/a.pdf", 7);
+    const { marks, sizes, ...old } = hit("/a.pdf", 7);
     const saved = spotsOf(run({ kind: "passage", status: "answered", hits: [old as JsonHit], spent }));
     expect(saved).toMatchObject([{ page: 7, marks: [], unmarked: "this run was saved before highlights were kept with each run" }]);
+  });
+
+  test("reads the page sizes of a run saved while they were called pages, never the answer's own list of pages", () => {
+    const { sizes, ...rest } = hit("/a.pdf", 12, { marks: [mark(12, 100)], answer: { text: "9", p: 1, pages: [12] } });
+    const saved = { ...rest, pages: { 12: size } } as unknown as JsonHit;
+    expect(spotsOf(run({ kind: "count", status: "answered", hits: [saved], spent }))[0]!.size).toEqual(size);
+    const listed = { ...rest, pages: [12] } as unknown as JsonHit;
+    expect(spotsOf(run({ kind: "count", status: "answered", hits: [listed], spent }))[0]!.size).toBeUndefined();
+  });
+
+  test("shows a section's title without the object replacement character an outline can carry", () => {
+    const h = hit("/a.pdf", 46, { section: "Skills > \uFFFC Skill Or\u200B Trade", marks: [mark(46, 100)] });
+    expect(spotsOf(run({ kind: "passage", status: "answered", hits: [h], spent }))[0]!.section).toBe("Skills > Skill Or Trade");
   });
 
   test("says a count off the contents marks nothing, as the log's toc line tells", () => {
@@ -124,7 +137,50 @@ describe("laying out and placing", () => {
     expect(scrollFor({ marks: [] }, 1000, 400, size, 300)).toBe(988);
   });
 
+  test("a typed page goes there, held to the last page; nothing typed, or no page, goes nowhere", () => {
+    expect([pageInput("2", 3), pageInput("9", 3), pageInput("", 3), pageInput(undefined, 3), pageInput("0", 3), pageInput(" ", 3), pageInput("2", 0)]).toEqual([2, 3, undefined, undefined, undefined, undefined, undefined]);
+  });
+
   test("the split follows the pointer, within its bounds", () => {
     expect([splitAt(600, 0, 1000), splitAt(100, 0, 1000), splitAt(950, 0, 1000)]).toEqual([0.4, 0.7, 0.3]);
+  });
+});
+
+describe("holding the view while the pages change size", () => {
+  const pages: [number, number][] = [
+    [600, 800],
+    [600, 800],
+    [600, 800],
+  ];
+  const laid = (width: number) => ({ lay: layOut(pages, width, 12), width, pad: 16 });
+  const view = { left: 0, top: 0, width: 400, height: 600 };
+
+  test("a point under the view stays under the same place of it at any zoom", () => {
+    // Fit to a 400px view: pages 368px wide, 490.67px tall; the view's middle is on page 2.
+    const at = { ...view, top: 700 };
+    const a = anchorAt(laid(368), at, 0.5, 0.5);
+    expect(a.page).toBe(2);
+    const to = scrollOf(a, laid(368 * 3), view.width, view.height);
+    // The same point of page 2, now three times as far down and across, stands at the view's middle again.
+    const [x, y] = [16 + a.fx * 368 * 3 - to.left, 16 + layOut(pages, 368 * 3, 12).tops[1]! + a.fy * layOut(pages, 368 * 3, 12).heights[1]! - to.top];
+    expect([Math.round(x), Math.round(y)]).toEqual([200, 300]);
+    // Unzoomed, it comes back to where it was.
+    const back = scrollOf(a, laid(368), view.width, view.height);
+    expect([back.left, back.top].map(Math.round)).toEqual([0, 700]);
+  });
+
+  test("zooming holds on the highlight while its page is in view, brought in from the view's lower half", () => {
+    const spot = { page: 1, marks: [mark(1, 700)] };
+    // Page 1 fills the view from its top; the mark, 7/8 of the way down, is near the view's bottom.
+    const a = markAnchor(spot, size, laid(368), { ...view, height: 500 })!;
+    expect([a.page, a.fx, a.fy, a.vy]).toEqual([1, 0.1, 0.875, 0.5]);
+    const at3 = scrollOf(a, laid(368 * 3), view.width, 500);
+    const y = 16 + 0.875 * layOut(pages, 368 * 3, 12).heights[0]! - at3.top;
+    expect(y).toBeCloseTo(250, 6);
+  });
+
+  test("zooming holds on the view's middle when the highlight's page is out of view or nothing is marked", () => {
+    expect(markAnchor({ page: 3, marks: [mark(3, 100)] }, size, laid(368), view)).toBeUndefined();
+    expect(markAnchor({ page: 1, marks: [] }, size, laid(368), view)).toBeUndefined();
   });
 });

@@ -164,16 +164,19 @@ body {
 
 /*
  * A highlight over a drawn page. The page is paper in either theme, so these
- * are fixed colours, not the palette's, and multiply keeps the ink dark.
+ * are fixed colours, not the palette's, and multiply keeps the ink dark. The
+ * edge finds a mark on a page already tinted like it, as parchment is.
  */
 .mark {
   position: absolute;
   border-radius: 1px;
-  background: rgb(250 204 21 / 0.28);
+  background: rgb(250 204 21 / 0.4);
+  box-shadow: 0 0 0 1px rgb(202 138 4 / 0.6);
   mix-blend-mode: multiply;
 }
 .mark-now {
   background: rgb(250 190 21 / 0.62);
+  box-shadow: 0 0 0 1px rgb(180 83 9 / 0.85);
 }
 .mark-bar {
   position: absolute;

@@ -421,7 +421,7 @@ export type JsonHit = {
   /** What the answer highlights, each box once, in PDF points from its page's top left (see Mark); none for a statement. */
   marks: Mark[];
   /** The size of each page `marks` fall on, in their units, to scale them onto the page drawn at any size. */
-  pages: Record<number, PageSize>;
+  sizes: Record<number, PageSize>;
 };
 
 /**
@@ -454,14 +454,21 @@ export function jsonHit(hit: Hit, view = hit.pdf, sizes: Record<number, PageSize
       passage: hit.answer.passage?.map(({ lines, ...p }) => p),
     },
     marks,
-    pages: Object.fromEntries([...new Set(marks.map((m) => m.page))].flatMap((p) => (sizes[p] ? [[p, sizes[p]]] : []))),
+    sizes: Object.fromEntries([...new Set(marks.map((m) => m.page))].flatMap((p) => (sizes[p] ? [[p, sizes[p]]] : []))),
   };
 }
 
-/** jsonHit with the size of each page it marks, read off the PDF; a size mutool cannot read is left out rather than losing the answer. */
-export async function sizedHit(hit: Hit, view?: string): Promise<JsonHit> {
-  const pages = [...new Set(marksOf(hit.answer).map((m) => m.page))];
-  return jsonHit(hit, view, await pageSizes(hit.pdf, pages).catch(() => ({})));
+/**
+ * jsonHits with the size of each page they mark, read off each PDF once, a
+ * file at a time so the time split counts them as they took. A size mutool
+ * cannot read is left out rather than losing the answer.
+ */
+export async function sizedHits(hits: { hit: Hit; view?: string }[]): Promise<JsonHit[]> {
+  const pages = new Map<string, Set<number>>();
+  for (const { hit } of hits) for (const m of marksOf(hit.answer)) pages.set(hit.pdf, (pages.get(hit.pdf) ?? new Set()).add(m.page));
+  const sizes = new Map<string, Record<number, PageSize>>();
+  for (const [pdf, marked] of pages) sizes.set(pdf, await pageSizes(pdf, [...marked]).catch(() => ({})));
+  return hits.map(({ hit, view }) => jsonHit(hit, view, sizes.get(hit.pdf)));
 }
 
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
@@ -485,10 +492,12 @@ export async function report(
     process.exit(1);
   };
 
+  // The marked copy and the page sizes are made before the total, so it counts them.
   if (r.hit) {
-    ui.log(`total ${split(since)}${walked}`);
     const hits = await highlightAll(r.hits, o);
-    if (o.json) json("answered", await Promise.all(hits.map((h, i) => sizedHit(r.hits[i]!, h.pdf))));
+    const out = o.json ? await sizedHits(hits.map((h, i) => ({ hit: r.hits[i]!, view: h.pdf }))) : [];
+    ui.log(`total ${split(since)}${walked}`);
+    if (o.json) json("answered", out);
     else for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
@@ -497,10 +506,11 @@ export async function report(
   // Nothing cleared the floor, so report the best of what was read and say so.
   if (r.rejected.length > 0) {
     const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
+    const out = o.json ? await sizedHits([{ hit: { ...hit, answer } }]) : [];
     ui.log(`total ${split(since)}${walked}`);
     const message = `no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`;
     console.error(`${tool}: ${message}`);
-    if (o.json) json("below", [await sizedHit({ ...hit, answer })], message);
+    if (o.json) json("below", out, message);
     else printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
     process.exit(1);
   }

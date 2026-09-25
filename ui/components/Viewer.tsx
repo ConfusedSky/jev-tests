@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Mark, PageSize } from "../types";
 import { basename, cx, isTyping, plural } from "../util";
-import { layOut, pageAt, renderWidth, scrollFor, stepSpot, zoomStep, type Spot } from "../viewer";
+import { anchorAt, layOut, markAnchor, pageAt, pageInput, renderWidth, scrollFor, scrollOf, stepSpot, zoomStep, type Anchor, type Spot, type ViewBox } from "../viewer";
 import { Icon } from "./Icon";
 import { docProblem, MarkLayer, pageSrc, PageImage, sizeOf, useDoc, type Served } from "./Page";
 
@@ -21,6 +21,8 @@ type Props = {
   /** Closes the viewer: the dialog it is in, or the pane beside the answer. */
   onClose: () => void;
   closeLabel: string;
+  /** Takes the cursor into the pages as it opens, so the arrow keys and Page Down scroll them. */
+  autoFocus?: boolean;
 };
 
 const tail = (section: string) => section.split(" > ").pop() ?? section;
@@ -30,7 +32,7 @@ const tail = (section: string) => section.split(" > ").pop() ?? section;
  * in a column, drawn by the server only as it nears the view, the run's
  * marks laid over them, and a list of the highlights to go between.
  */
-export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLabel }: Props) {
+export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLabel, autoFocus }: Props) {
   const at = Math.max(0, Math.min(wanted, spots.length - 1));
   const spot = spots[at]!;
   const pdf = spot.pdf;
@@ -39,6 +41,8 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
+  const nav = useRef<HTMLElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   const [view, setView] = useState({ width: 0, height: 0, root: 0 });
   const [zoom, setZoom] = useState(1);
   const [page, setPage] = useState(spot.page);
@@ -52,24 +56,34 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const drawn = renderWidth(width, window.devicePixelRatio || 1);
   const name = basename(pdf);
 
-  // Where the view was, as a page and how far down it, to hold it there while the pages change size.
-  const anchor = useRef<{ page: number; frac: number; x: number }>(undefined);
-  const laid = useRef({ lay, width });
-  laid.current = { lay, width };
-  const hold = () => {
+  // What the view holds on to while the pages change size (see Anchor): the
+  // highlight shown while its page is in view, so neither a zoom nor the pane
+  // settling its width as it opens moves it out of sight; else the point
+  // `vy` down the view, across its middle.
+  const anchor = useRef<Anchor>(undefined);
+  const laid = useRef({ lay, width, pad: PAD });
+  laid.current = { lay, width, pad: PAD };
+  const shown = useRef({ spot, info: doc.info });
+  shown.current = { spot, info: doc.info };
+  const viewBox = (el: HTMLElement): ViewBox => ({ left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight });
+  const hold = (vy: number) => {
     const el = scroller.current;
-    const { lay, width } = laid.current;
-    if (!el || lay.tops.length === 0) return;
-    const y = el.scrollTop - PAD;
-    const p = pageAt(lay.tops, y);
-    anchor.current = { page: p, frac: (y - lay.tops[p - 1]!) / Math.max(1, lay.heights[p - 1]!), x: (el.scrollLeft + el.clientWidth / 2) / (width + 2 * PAD) };
+    if (!el || laid.current.lay.tops.length === 0) return;
+    const { spot, info } = shown.current;
+    const size = spot.size ?? sizeOf(info, spot.page);
+    anchor.current = (size && markAnchor(spot, size, laid.current, viewBox(el))) || anchorAt(laid.current, viewBox(el), 0.5, vy);
   };
+
+  // Before the dialog around it, if any, puts the cursor on its first button.
+  useLayoutEffect(() => {
+    if (autoFocus) scroller.current?.focus({ preventScroll: true });
+  }, []);
 
   useLayoutEffect(() => {
     const [el, box] = [scroller.current, root.current];
     if (!el || !box) return;
     const measure = () => {
-      hold();
+      hold(0);
       setView({ width: el.clientWidth, height: el.clientHeight, root: box.clientWidth });
     };
     measure();
@@ -110,11 +124,10 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
     const el = scroller.current;
     const target = jump.current === undefined ? undefined : spots[jump.current];
     if (el && anchor.current && lay.tops.length) {
-      const a = anchor.current;
+      const to = scrollOf(anchor.current, laid.current, el.clientWidth, el.clientHeight);
       anchor.current = undefined;
-      const i = Math.min(a.page, lay.tops.length) - 1;
-      el.scrollTop = PAD + lay.tops[i]! + a.frac * lay.heights[i]!;
-      el.scrollLeft = a.x * (width + 2 * PAD) - el.clientWidth / 2;
+      el.scrollTop = to.top;
+      el.scrollLeft = to.left;
     }
     if (!el || !target || target.pdf !== pdf || view.width === 0 || target.page > lay.tops.length) return;
     jump.current = undefined;
@@ -137,7 +150,8 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
 
   const go = (by: 1 | -1) => onAt(stepSpot(spots.length, at, by));
   const zoomTo = (z: number) => {
-    hold();
+    if (z === zoom) return;
+    hold(0.5);
     setZoom(z);
   };
   const toPage = (n: number) => {
@@ -193,13 +207,44 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   };
 
   const button = "flex h-8 min-w-7 items-center justify-center rounded-lg px-1 text-stone-600 hover:bg-stone-100 hover:text-stone-900 disabled:opacity-40 disabled:hover:bg-transparent";
+  const floating = compact && listOpen;
   const showList = !compact || listOpen;
+
+  // The list folded over the pages takes the cursor as it opens, and goes on
+  // Escape, which closes nothing else, on a press outside it, or once the
+  // cursor leaves it; the dialog around it leaves it Escape (see Dialog).
+  useEffect(() => {
+    if (!floating) {
+      if (!compact) setListOpen(false);
+      return;
+    }
+    list.current?.querySelector<HTMLButtonElement>('button[tabindex="0"]')?.focus();
+    const mine = (t: EventTarget | null) => t instanceof Node && !!(nav.current?.contains(t) || toggle.current?.contains(t));
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (nav.current?.contains(document.activeElement)) toggle.current?.focus();
+      setListOpen(false);
+    };
+    const away = (e: Event) => {
+      if (!mine(e.target)) setListOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", away);
+    document.addEventListener("pointerdown", away, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", away);
+      document.removeEventListener("pointerdown", away, true);
+    };
+  }, [floating, compact]);
 
   return (
     <div ref={root} onKeyDown={onKey} role="region" aria-label={`Pages of ${name}`} className="flex h-full min-h-0 flex-col bg-stone-50">
       <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 border-b border-stone-200 bg-white px-1.5 py-1.5">
         {compact && (
-          <button onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="viewer-list" title="The run's highlights" className={cx(button, "gap-1 text-xs font-medium", listOpen && "bg-teal-50 text-teal-900")}>
+          <button ref={toggle} onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="viewer-list" title="The run's highlights" className={cx(button, "gap-1 text-xs font-medium", listOpen && "bg-teal-50 text-teal-900")}>
             <Icon name="list" size={16} />
             {spots.length}
           </button>
@@ -225,7 +270,8 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               e.preventDefault();
-              toPage(Number(typed));
+              const n = pageInput(typed, pages.length);
+              if (n !== undefined) toPage(n);
               setTyped(undefined);
             }}
             inputMode="numeric"
@@ -278,7 +324,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
 
       <div className="relative flex min-h-0 flex-1">
         {showList && (
-          <nav id="viewer-list" aria-label="The run's highlights" className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 shadow-xl")}>
+          <nav ref={nav} id="viewer-list" aria-label="The run's highlights" data-closes-on-escape={floating || undefined} className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 shadow-xl")}>
             <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-stone-500 uppercase">
               {plural(spots.length, "highlight")}
               <span className="sr-only">; the arrow keys move between them</span>

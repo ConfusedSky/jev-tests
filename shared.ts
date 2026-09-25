@@ -61,10 +61,11 @@ export function reason(a: ScoreResponse<typeof RUBRIC>): string {
 
 /**
  * Wall time spent waiting on jev versus shelling out to pdftotext/mutool,
- * reading stdin, embedding for the ranking cache, and marking the answer in a copy.
+ * reading stdin, embedding for the ranking cache, marking the answer in a
+ * copy, and reading the marked pages' sizes for --json.
  * Parallel work is timed as one span so the parts never exceed the elapsed time.
  */
-export const clock = { api: 0, extract: 0, wait: 0, embed: 0, highlight: 0 };
+export const clock = { api: 0, extract: 0, wait: 0, embed: 0, highlight: 0, sizes: 0 };
 
 export async function timed<T>(kind: keyof typeof clock, fn: () => Promise<T>): Promise<T> {
   const t = Date.now();
@@ -81,7 +82,7 @@ export const tokens = { in: 0, out: 0 };
 /** jev's price per million input tokens; its output tokens are free. */
 export const DOLLARS_PER_MILLION_IN = 0.042;
 
-export type Snapshot = { at: number; api: number; extract: number; wait: number; embed: number; highlight: number; in: number; out: number };
+export type Snapshot = { at: number; api: number; extract: number; wait: number; embed: number; highlight: number; sizes: number; in: number; out: number };
 export const snapshot = (): Snapshot => ({ at: Date.now(), ...clock, ...tokens });
 
 /** "12,345 tokens in, 60 out, $0.00052" for the tokens since the snapshot, or "" when there were none. */
@@ -94,17 +95,17 @@ export function spent(s: Pick<Snapshot, "in" | "out">): string {
 export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 /** Time in milliseconds and tokens since a snapshot, the figures `split` prints. */
-export type Spent = { in: number; out: number; dollars: number; ms: { total: number; jev: number; read: number; stdin: number; embed: number; highlight: number; other: number } };
+export type Spent = { in: number; out: number; dollars: number; ms: { total: number; jev: number; read: number; stdin: number; embed: number; highlight: number; sizes: number; other: number } };
 
 export function spentSince(s: Snapshot): Spent {
   const total = Date.now() - s.at;
-  const [jev, read, stdin, embed, highlight] = [clock.api - s.api, clock.extract - s.extract, clock.wait - s.wait, clock.embed - s.embed, clock.highlight - s.highlight];
+  const [jev, read, stdin, embed, highlight, sizes] = [clock.api - s.api, clock.extract - s.extract, clock.wait - s.wait, clock.embed - s.embed, clock.highlight - s.highlight, clock.sizes - s.sizes];
   const i = tokens.in - s.in;
   return {
     in: i,
     out: tokens.out - s.out,
     dollars: (i / 1e6) * DOLLARS_PER_MILLION_IN,
-    ms: { total, jev, read, stdin, embed, highlight, other: Math.max(0, total - jev - read - stdin - embed - highlight) },
+    ms: { total, jev, read, stdin, embed, highlight, sizes, other: Math.max(0, total - jev - read - stdin - embed - highlight - sizes) },
   };
 }
 
@@ -115,6 +116,7 @@ export function split(s: Snapshot): string {
   if (ms.stdin > 0) parts.push(`stdin ${secs(ms.stdin)}`);
   if (ms.embed > 0) parts.push(`embed ${secs(ms.embed)}`);
   if (ms.highlight > 0) parts.push(`highlight ${secs(ms.highlight)}`);
+  if (ms.sizes > 0) parts.push(`sizes ${secs(ms.sizes)}`);
   parts.push(`other ${secs(ms.other)}`);
   const cost = spent(s);
   return `${secs(ms.total)} (${parts.join(", ")}${cost ? `; ${cost}` : ""})`;

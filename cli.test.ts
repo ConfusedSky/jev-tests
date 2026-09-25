@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { jsonHit, marksOf, num, parseFlags, readDefaults, readFlags, renderPassage, sizedHit, tsvRows } from "./cli";
+import { jsonHit, marksOf, num, parseFlags, readDefaults, readFlags, renderPassage, sizedHits, tsvRows } from "./cli";
+import { snapshot, split, spentSince } from "./shared";
 import type { Para } from "./layout";
 
 const usage = (code: number): never => {
@@ -158,7 +159,7 @@ describe("jsonHit", () => {
       found: 0.9,
       answer: { text: "Skills", p: 0.8, pages: undefined, passage: [{ heading: true, text: "Skills", style: "bbbbbb" }] },
       marks: [{ page: 3, x0: 0, y0: 0, x1: 1, y1: 1 }],
-      pages: { 3: size },
+      sizes: { 3: size },
     });
   });
 
@@ -178,7 +179,7 @@ describe("jsonHit", () => {
       [3, 40],
       [4, 40],
     ]);
-    expect(Object.keys(j.pages)).toEqual(["3", "4"]);
+    expect(Object.keys(j.sizes)).toEqual(["3", "4"]);
     // Only the box itself: the characters it holds are the passage's business.
     expect(Object.keys(j.marks[0]!)).toEqual(["page", "x0", "y0", "x1", "y1"]);
   });
@@ -186,26 +187,44 @@ describe("jsonHit", () => {
   test("marks where a count's names or a figure stand, and nothing for a statement", () => {
     expect(marksOf({ text: "2", p: 1, marks: [box, { ...box, x0: 5, x1: 9 }] })).toHaveLength(2);
     const truth = jsonHit({ ...hit, answer: { text: "true", p: 0.9 } }, undefined, { 3: size });
-    expect([truth.marks, truth.pages]).toEqual([[], {}]);
+    expect([truth.marks, truth.sizes]).toEqual([[], {}]);
   });
 
   test("leaves out a size it was not given rather than guessing one", () => {
-    expect(jsonHit(hit).pages).toEqual({});
+    expect(jsonHit(hit).sizes).toEqual({});
   });
 });
 
-describe("sizedHit", () => {
+describe("sizedHits", () => {
   const manual = Bun.fileURLToPath(new URL("fixture/manual.pdf", import.meta.url));
+  const on = (page: number) => ({ text: "7", p: 1, marks: [{ page, x0: 72, y0: 100, x1: 90, y1: 112, start: 0, end: 1 }] });
 
-  test("reads each marked page's size off the PDF", async () => {
-    const answer = { text: "7", p: 1, marks: [{ page: 2, x0: 72, y0: 100, x1: 90, y1: 112, start: 0, end: 1 }] };
-    const j = await sizedHit({ pdf: manual, section: "s", page: 2, p: 0.9, text: "", answer });
-    expect(j.pages).toEqual({ 2: { width: 595, height: 842 } });
+  test("reads each marked page's size off the PDF, and the time split names the reading", async () => {
+    const before = snapshot();
+    const [a, b] = await sizedHits([{ hit: { pdf: manual, section: "s", page: 2, p: 0.9, text: "", answer: on(2) } }, { hit: { pdf: manual, section: "s", page: 3, p: 0.9, text: "", answer: on(3) }, view: "/cache/m.pdf" }]);
+    expect([a!.sizes, b!.sizes, b!.view]).toEqual([{ 2: { width: 595, height: 842 } }, { 3: { width: 595, height: 842 } }, "/cache/m.pdf"]);
+    expect(spentSince(before).ms.sizes).toBeGreaterThan(0);
+    expect(split(before)).toMatch(/, sizes \d+\.\ds, other /);
   });
 
   test("still answers when the PDF's sizes cannot be read", async () => {
-    const answer = { text: "7", p: 1, marks: [{ page: 2, x0: 1, y0: 1, x1: 2, y1: 2, start: 0, end: 1 }] };
-    const j = await sizedHit({ pdf: "/nowhere/gone.pdf", section: "s", page: 2, p: 0.9, text: "", answer });
-    expect([j.marks.length, j.pages]).toEqual([1, {}]);
+    const [j] = await sizedHits([{ hit: { pdf: "/nowhere/gone.pdf", section: "s", page: 2, p: 0.9, text: "", answer: on(2) } }]);
+    expect([j!.marks.length, j!.sizes]).toEqual([1, {}]);
+  });
+});
+
+describe("jevsec", () => {
+  const here = (f: string) => Bun.fileURLToPath(new URL(f, import.meta.url));
+  // Run with no key and away from .env, so a check that let the file through could not reach jev either.
+  test("refuses a file mutool cannot open before anything is asked, in a line and no trace", async () => {
+    const pdf = here("fixture/damaged.pdf");
+    const p = Bun.spawn([process.execPath, here("jevsec.ts"), pdf, "How much does it cost?"], {
+      cwd: process.env.XDG_CACHE_HOME,
+      env: { ...process.env, OPENROUTER_API_KEY: "" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+    expect([code, out, err]).toEqual([2, "", `jevsec: not a PDF mutool can open (no objects found): ${pdf}\n`]);
   });
 });

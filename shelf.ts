@@ -5,10 +5,10 @@
  */
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { normalize, STOPWORDS, wordsOf, type Answer, type Kind, type Word } from "./answer";
-import { answerLayer, highlightAll, hitLine, readDefaults, renderPassage, sizedHit, type JsonReport, type ReadOpts } from "./cli";
+import { answerLayer, highlightAll, hitLine, readDefaults, renderPassage, sizedHits, type JsonReport, type ReadOpts } from "./cli";
 import { composeTable, NA, namesBy } from "./compose";
 import { rowText, type Para, type Row } from "./layout";
-import { openAt, pageUrl, searchPdf, textFile, type Candidate, type Hit, type Outcome, type Tried, type Ui } from "./pdf";
+import { openAt, pageUrl, searchPdf, textFile, unopenable, type Candidate, type Hit, type Outcome, type Tried, type Ui } from "./pdf";
 import { excerpts, type Excerpt } from "./search";
 import { rank, snapshot, spentSince, split, timed, type Snapshot } from "./shared";
 
@@ -28,7 +28,12 @@ const FIND_IO: FindIo = { searchPdf, composeTable };
  * whose name falls below the floor is never opened: a table's row names its
  * document, and another file's answer would stand in that row.
  */
-export async function findIn(client: TypeSafeClient, paths: string[], search: FindOpts, ui: Ui, { hard = false } = {}, io: FindIo = FIND_IO): Promise<Walked> {
+export async function findIn(client: TypeSafeClient, shelf: string[], search: FindOpts, ui: Ui, { hard = false } = {}, io: FindIo = FIND_IO): Promise<Walked> {
+  // An empty file has nothing to read; ranked, its name alone could clear the
+  // floor and count as a file above it that was never there to open.
+  const empty = await Promise.all(shelf.map(async (p) => (await Bun.file(p).exists()) && Bun.file(p).size === 0));
+  for (const [i, p] of shelf.entries()) if (empty[i]) ui.log(`--  ${p}: empty file, left out of the ranking`);
+  const paths = shelf.filter((_, i) => !empty[i]);
   const rankSnap = snapshot();
   // A file's name may say nothing of what it holds, so the pages of every
   // readable PDF that mention the subject are ranked beside the names, and a
@@ -114,9 +119,10 @@ export async function findIn(client: TypeSafeClient, paths: string[], search: Fi
       ui.log(`${named}  --  no such file, skipped`);
       continue;
     }
-    // mutool cannot open an empty file, and its failure mid-walk ended the run.
-    if (Bun.file(r.name).size === 0) {
-      ui.log(`${named}  --  empty file, skipped`);
+    // Opened, a file mutool cannot read would end the whole run.
+    const broken = await unopenable(r.name);
+    if (broken) {
+      ui.log(`${named}  --  not a PDF mutool can open (${broken}), skipped`);
       continue;
     }
     // A file names itself first; what it read stands under it and its sum closes it.
@@ -285,22 +291,21 @@ export function acrossRows(t: Across): Row[] {
  */
 export async function reportAcross(tool: string, t: Across, o: FindOpts, ui: Ui, since: Snapshot): Promise<never> {
   ui.clear();
+  const flat = t.cells.flatMap((line, i) => line.map((cell, j) => ({ cell, name: `${t.rows[i]}, ${t.columns[j]}` })));
+  const found = flat.filter(({ cell }) => cell.hit && cell.answer);
+  const marked = new Map((await highlightAll(found.map(({ cell }) => cell.hit!), o)).map((hit, i) => [found[i]!.cell, hit]));
+  // The marked copies and the page sizes are made before the total, so it counts them.
+  const sized = o.json ? await sizedHits(found.map(({ cell }) => ({ hit: { ...cell.hit!, answer: cell.answer }, view: marked.get(cell)?.pdf }))) : [];
+  const hitJson = new Map(found.map(({ cell }, i) => [cell, sized[i]]));
   ui.log(`total ${split(since)}`);
   const tty = process.stdout.isTTY;
   const paras: Para[] = acrossRows(t).map((row) => ({ heading: false, text: rowText(row), style: "", lines: [], table: row }));
   if (!o.json) console.log(renderPassage(paras, process.stdout.columns, tty, o.tsv));
   // Piped as TSV, stdout is the table alone.
   const out = o.tsv && !tty ? console.error : console.log;
-  const flat = t.cells.flatMap((line, i) => line.map((cell, j) => ({ cell, name: `${t.rows[i]}, ${t.columns[j]}` })));
-  const found = flat.filter(({ cell }) => cell.hit && cell.answer);
-  const marked = new Map((await highlightAll(found.map(({ cell }) => cell.hit!), o)).map((hit, i) => [found[i]!.cell, hit]));
   const answered = t.cells.flat().some((c) => !c.why);
   if (o.json) {
-    const cells = await Promise.all(
-      t.cells.map((line) =>
-        Promise.all(line.map(async (c) => ({ text: c.text, kind: c.kind, why: c.why, hit: c.hit && c.answer ? await sizedHit({ ...c.hit, answer: c.answer }, marked.get(c)?.pdf) : undefined }))),
-      ),
-    );
+    const cells = t.cells.map((line) => line.map((c) => ({ text: c.text, kind: c.kind, why: c.why, hit: hitJson.get(c) })));
     const message = answered ? undefined : "no cell answered";
     if (message) console.error(`${tool}: ${message}`);
     const report: JsonReport = { kind: "table", status: answered ? "answered" : "unanswered", hits: [], message, table: { rows: t.rows, columns: t.columns, cells }, spent: spentSince(since) };
