@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { foreign, local } from "./guard";
+import { foreign, local, namesFrom } from "./guard";
 
 const PORT = 3217;
 const post = (headers: Record<string, string>, host = `127.0.0.1:${PORT}`) =>
@@ -36,5 +36,27 @@ describe("foreign", () => {
 
   test("refuses a rebound name even when its origin matches it", () => {
     expect(foreign(post({ ...JSON_, "sec-fetch-site": "same-origin", origin: `http://evil.example:${PORT}` }, `evil.example:${PORT}`), PORT)).toBe(true);
+  });
+});
+
+describe("extra names", () => {
+  const TAILNET = "box.tailnet.ts.net:3217";
+  const extra = namesFrom(` ${TAILNET.toUpperCase()} , `);
+
+  test("are read from a comma-separated list, trimmed and lower-cased", () => {
+    expect(extra).toEqual([TAILNET]);
+    expect(namesFrom(undefined)).toEqual([]);
+  });
+
+  test("are answered to only when given", () => {
+    expect(local(post({}, TAILNET), PORT)).toBe(false);
+    expect(local(post({}, TAILNET), PORT, extra)).toBe(true);
+  });
+
+  // A proxy such as tailscale serve ends TLS in front of the server, so the page's origin is https.
+  test("let in JSON from their own page over https, not from another site", () => {
+    expect(foreign(post({ ...JSON_, "sec-fetch-site": "same-origin", origin: `https://${TAILNET}` }, TAILNET), PORT, extra)).toBe(false);
+    expect(foreign(post({ ...JSON_, origin: "https://evil.example" }, TAILNET), PORT, extra)).toBe(true);
+    expect(foreign(post({ ...JSON_, origin: `https://${TAILNET}` }, "evil.example:3217"), PORT, extra)).toBe(true);
   });
 });
