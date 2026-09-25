@@ -161,15 +161,16 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
               <li key={f.path}>
                 <button
                   onClick={() => onPick(f.path)}
-                  title={`${f.path}\n${f.size === 0 ? "This file is empty: the tools cannot read it" : "Click to ask this PDF alone"}`}
+                  title={`${f.path}\n${f.size === 0 ? "This file is empty, so it cannot be asked" : "Click to ask this PDF alone"}`}
                   className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
                 >
                   <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-400")} />
                   <span className="min-w-0 flex-1">
                     <span className={cx("block truncate text-[13px]", on ? "font-medium text-teal-900" : "text-stone-700")}>{f.name}</span>
                     {sub && <MiddlePath path={sub} className="text-[11px] text-stone-500" />}
+                    {f.size === 0 && <span className="block text-[11px] font-medium text-amber-700">empty: nothing in it to ask</span>}
                   </span>
-                  <span className={cx("shrink-0 text-[11px] tabular-nums", f.size === 0 ? "font-medium text-amber-700" : "text-stone-500")}>{bytes(f.size)}</span>
+                  {f.size > 0 && <span className="shrink-0 text-[11px] tabular-nums text-stone-500">{bytes(f.size)}</span>}
                 </button>
               </li>
             );

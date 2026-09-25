@@ -42,9 +42,17 @@ const lone = (r: Row) => r.cells.filter(Boolean).length === 1;
 /** Where the column headed `head` was read from, its name matched as the log spells it or not. */
 const sourceOf = (columns: Record<string, string> | undefined, head: string) => columns && Object.entries(columns).find(([k]) => k.toLowerCase() === head.trim().toLowerCase())?.[1];
 
+/** A column's source as a reader says it: a table's column is named with its page. */
+const sourceText = (from: string) => from.replace(/^"(.+)" p\.(\d+)$/, "the “$1” column on p.$2");
+
 export function Rows({ rows, first, stem = "table", source, columns }: { rows: Row[]; first?: boolean; stem?: string; source?: string; columns?: Record<string, string> }) {
   const keep = rows[0]!.heads.map((_, i) => i).filter((i) => rows.some((r) => !lone(r) && r.cells[i]));
   if (keep.length === 0) return <>{rows.map((r, i) => <p key={i}>{r.cells.find(Boolean)}</p>)}</>;
+  const sources = keep.flatMap((i) => {
+    const head = rows[0]!.heads[i] ?? "";
+    const from = sourceOf(columns, head);
+    return from ? [{ head, from: sourceText(from) }] : [];
+  });
   return (
     <div className="scroll-thin relative overflow-x-auto rounded-lg ring-1 ring-stone-200">
       <div className="flex justify-end border-b border-stone-100 bg-stone-50 px-1 py-0.5">
@@ -53,19 +61,11 @@ export function Rows({ rows, first, stem = "table", source, columns }: { rows: R
       <table className="w-full border-collapse font-sans text-[13px]">
         <thead className="bg-stone-50">
           <tr>
-            {keep.map((i) => {
-              const head = rows[0]!.heads[i] ?? "";
-              const from = sourceOf(columns, head);
-              return (
-                <th
-                  key={i}
-                  title={from ? `read from ${from}` : undefined}
-                  className={cx("border-b border-stone-200 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap text-stone-600", from && "cursor-help underline decoration-stone-400 decoration-dotted underline-offset-4")}
-                >
-                  {head}
-                </th>
-              );
-            })}
+            {keep.map((i) => (
+              <th key={i} className="border-b border-stone-200 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap text-stone-600">
+                {rows[0]!.heads[i]}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -88,6 +88,17 @@ export function Rows({ rows, first, stem = "table", source, columns }: { rows: R
           )}
         </tbody>
       </table>
+      {sources.length > 0 && (
+        <p className="flex flex-wrap gap-x-3 border-t border-stone-100 bg-stone-50 px-3 py-1.5 font-sans text-[11px] leading-relaxed text-stone-500">
+          <span className="font-semibold text-stone-600">Read from</span>
+          {sources.map((c, i) => (
+            <span key={c.head}>
+              <span className="font-medium text-stone-700">{c.head}</span>: {c.from}
+              {i < sources.length - 1 && <span className="sr-only">;</span>}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

@@ -22,7 +22,7 @@ import { isLocate, locateHint, sourceKey } from "./sources";
 import { THEME_LABEL, THEMES, useTheme } from "./theme";
 import type { Config, Health, RunRequest, Scan } from "./types";
 import { hashFor, runInHash } from "./url";
-import { basename, copy, cx, dirname, dollars, download, readStored, secs, useMediaQuery, useStored, writeStored } from "./util";
+import { basename, copy, cx, dirname, dollars, download, plural, readStored, secs, useMediaQuery, useStored, writeStored } from "./util";
 
 const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
@@ -50,8 +50,6 @@ const typing = (e: KeyboardEvent) => {
   return el instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
 };
 
-const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
-
 export function App() {
   const toast = useToast();
   const [health, setHealth] = useState<Health | "down">();
@@ -76,7 +74,7 @@ export function App() {
   const budgetNow = useRef(budget);
   budgetNow.current = budget;
   const [note, setNote] = useState<string>();
-  const [focus, setFocus] = useState<{ n: number; select?: string }>({ n: 0 });
+  const [focus, setFocus] = useState<{ n: number; select?: string | true }>({ n: 0 });
   const main = useRef<HTMLElement>(null);
   const runView = useRef<HTMLDivElement>(null);
   const aside = useRef<HTMLElement>(null);
@@ -107,9 +105,11 @@ export function App() {
   }, []);
 
   const checkHealth = useCallback(() => {
+    // An answer like the last leaves the page as it is, so polling does not re-render it.
+    const got = (h: Health | "down" | undefined) => setHealth((old) => (JSON.stringify(old) === JSON.stringify(h) ? old : h));
     fetch("/api/health").then(
-      (r) => (r.ok ? (r.json() as Promise<Health>).then(setHealth, () => setHealth(undefined)) : setHealth(undefined)),
-      () => setHealth("down"),
+      (r) => (r.ok ? (r.json() as Promise<Health>).then(got, () => got(undefined)) : got(undefined)),
+      () => got("down"),
     );
   }, []);
 
@@ -161,20 +161,31 @@ export function App() {
     return () => window.removeEventListener("popstate", back);
   }, []);
 
-  // A server that went away is looked for until it is back, and the sources it could not list are listed again.
-  const wasDown = useRef(false);
+  // The server is looked for while the page is seen, so the header never says it is ready once it has gone:
+  // often while it is away, now and then while it answers, and whenever the tab is looked at again.
+  const down = health === "down";
   useEffect(() => {
+    const look = () => !document.hidden && checkHealth();
+    const id = setInterval(look, down ? 5000 : 15000);
+    document.addEventListener("visibilitychange", look);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", look);
+    };
+  }, [down, checkHealth]);
+
+  // A server back from being away, or started afresh, serves no PDF it has not listed, so every source is listed again.
+  const served = useRef<{ down: boolean; boot?: number }>({ down: false });
+  useEffect(() => {
+    if (!health) return;
     if (health === "down") {
-      wasDown.current = true;
-      const id = setInterval(checkHealth, 5000);
-      return () => clearInterval(id);
+      served.current.down = true;
+      return;
     }
-    if (health && wasDown.current) {
-      wasDown.current = false;
-      // A source that failed keeps its old list with a warning; either way it is listed afresh.
-      for (const f of folders) if (scansNow.current[f]?.error || scansNow.current[f]?.warning) rescan(f);
-    }
-  }, [health, checkHealth]);
+    const again = served.current.down || (served.current.boot !== undefined && served.current.boot !== health.boot);
+    served.current = { down: false, boot: health.boot };
+    if (again) for (const f of folders) rescan(f);
+  }, [health]);
 
   useEffect(() => {
     for (const f of folders) if (!(f in scans)) rescan(f);
@@ -234,10 +245,18 @@ export function App() {
     };
   }, []);
 
-  /** Moves the cursor into the question, selecting `select` in it; the drawer, if open, gives way. */
-  const focusQuestion = (select?: string) => {
+  /** Moves the cursor into the question, selecting `select` in it, or all of it for true; the drawer, if open, gives way. */
+  const focusQuestion = (select?: string | true) => {
     setDrawer(false);
     setFocus((f) => ({ n: f.n + 1, select }));
+  };
+
+  /** The welcome page, with the question selected to type over, so what was in it is kept until something replaces it. */
+  const home = () => {
+    view(null);
+    setNote(undefined);
+    main.current?.scrollTo({ top: 0 });
+    focusQuestion(true);
   };
 
   // One run at a time: starting another aborts the live one, and that is Stop's job, never a side effect.
@@ -272,7 +291,7 @@ export function App() {
   const cacheWhy = tool !== "jevgrep" && options.cache !== "off" && health && health !== "down" ? health.cache[options.cache] : null;
   const offline = health === "down";
   const target = () => (tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) });
-  const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files: files.length, cacheWhy: cacheWhy ?? undefined, offline });
+  const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files, cacheWhy: cacheWhy ?? undefined, offline });
   const askNow = () => {
     if (live || blocked) return;
     ask({ tool, question: question.trim(), options, ...target() });
@@ -412,34 +431,38 @@ export function App() {
     if (next) open(next);
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // A popover or dialog that took the key has done with it; one this page did not open, a page zoomed, keeps every key.
-      if (e.defaultPrevented || (!dialog && document.querySelector('[role="dialog"][aria-modal="true"]'))) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setDialog((d) => (d === "palette" ? undefined : "palette"));
-        return;
-      }
-      // The drawer shuts on Escape from anywhere in it, a text field too, before any run is stopped.
-      if (e.key === "Escape" && narrow && drawer && !dialog) {
-        e.preventDefault();
-        setDrawer(false);
-        return;
-      }
-      if (dialog || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "/") focusQuestion();
-      else if (e.key === "?") setDialog("shortcuts");
-      else if (e.key === "b") toggleSide();
-      else if (e.key === "[") step(1);
-      else if (e.key === "]") step(-1);
-      else if (e.key === "Escape" && live) stop();
-      else return;
+  // Subscribed once; each keystroke reaches the handler of the latest render.
+  const onKeyNow = useRef<(e: KeyboardEvent) => void>(() => {});
+  onKeyNow.current = (e: KeyboardEvent) => {
+    // A popover or dialog that took the key has done with it; one this page did not open, a page zoomed, keeps every key.
+    if (e.defaultPrevented || (!dialog && document.querySelector('[role="dialog"][aria-modal="true"]'))) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
-    };
+      setDialog((d) => (d === "palette" ? undefined : "palette"));
+      return;
+    }
+    // The drawer shuts on Escape from anywhere in it, a text field too, before any run is stopped.
+    if (e.key === "Escape" && narrow && drawer && !dialog) {
+      e.preventDefault();
+      setDrawer(false);
+      return;
+    }
+    if (dialog || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "/") focusQuestion();
+    else if (e.key === "n") home();
+    else if (e.key === "?") setDialog("shortcuts");
+    else if (e.key === "b") toggleSide();
+    else if (e.key === "[") step(1);
+    else if (e.key === "]") step(-1);
+    else if (e.key === "Escape" && live) stop();
+    else return;
+    e.preventDefault();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => onKeyNow.current(e);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   const sideOpen = narrow ? drawer : sidebar;
   const covered = narrow && drawer;
@@ -456,6 +479,7 @@ export function App() {
     const clearable = history.filter((r) => !r.pinned).length;
     return [
       live ? act("stop", "Stop the run", stop, { shortcut: "esc" }) : act("ask", "Ask", askNow, { hint: `“${question.trim()}”`, disabled: blocked, shortcut: "⏎" }),
+      act("home", "New question", home, { shortcut: "n", hint: shown || missing ? "leaves this run for the welcome page" : undefined, keywords: "home welcome start fresh" }),
       act("focus", "Type a question", () => focusQuestion(), { shortcut: "/" }),
       ...(shown && shown.status !== "running"
         ? [
@@ -524,6 +548,7 @@ export function App() {
         theme={theme}
         onTheme={setTheme}
         onPalette={() => setDialog("palette")}
+        onHome={home}
         notify={notify}
         onNotify={setNotifyAsking}
         inert={covered}
@@ -607,7 +632,12 @@ export function App() {
               onDismissNote={() => setNote(undefined)}
               focus={focus}
               cacheWhy={cacheWhy ?? undefined}
-              onCacheOffOnce={() => ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() })}
+              onCacheOffOnce={() => {
+                // The cache is the one thing turned off here; anything else that blocks the question still does.
+                const why = whyBlocked({ tool, question, options: { ...options, cache: "off" }, pdf: pdf || undefined, files, offline });
+                if (why) toast(why, "warn");
+                else ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() });
+              }}
               suggestions={recentQuestions(history, question)}
               onExample={example}
             />
@@ -656,13 +686,7 @@ export function App() {
                       Show the latest run
                     </button>
                   )}
-                  <button
-                    onClick={() => {
-                      view(null);
-                      focusQuestion();
-                    }}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/40 hover:bg-amber-100"
-                  >
+                  <button onClick={home} className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/40 hover:bg-amber-100">
                     Start a new question
                   </button>
                 </div>

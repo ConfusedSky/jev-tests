@@ -23,24 +23,45 @@ export const AFRESH = 37_000;
 
 export const runSpend = (r: Run) => r.end?.report?.spent.dollars ?? spendOf(r.lines).dollars;
 
-/** What this browser's runs have spent, in all and by day and mode (dollars, keyed by local date then tool). */
-export type Ledger = { dollars: number; in: number; runs: number; days?: Record<string, Partial<Record<Tool, number>>> };
+/**
+ * What this browser's runs have spent, in all and by day and mode (dollars,
+ * keyed by local date then tool), and what each recent run was charged, by
+ * its id.
+ */
+export type Ledger = { dollars: number; in: number; runs: number; days?: Record<string, Partial<Record<Tool, number>>>; charged?: Record<string, { dollars: number; in: number }> };
 
 /** A day as the ledger keys it, the local date as YYYY-MM-DD. */
 export const dayOf = (t: number) => new Date(t).toLocaleDateString("en-CA");
 
 /** Days the ledger keeps its daily figures for; the totals keep everything. */
 const KEEP_DAYS = 90;
+/** Runs the ledger remembers charging; a run is charged again only as it ends, well within these. */
+const KEEP_RUNS = 100;
 
-/** `ledger` with `run` added; a run the server never started spent nothing and is no run. */
+/**
+ * `ledger` with `run` added; a run the server never started spent nothing
+ * and is no run. A run charged before is not counted again: only what it
+ * spent since is added, as when a page saved it on leaving and then came
+ * back from the back-forward cache to see it end.
+ */
 export function charge(ledger: Ledger, run: Run): Ledger {
   if (run.unsent) return ledger;
-  const spent = runSpend(run);
+  const was = ledger.charged?.[run.id];
+  const now = { dollars: runSpend(run), in: run.end?.report?.spent.in ?? spendOf(run.lines).in };
+  const more = { dollars: Math.max(0, now.dollars - (was?.dollars ?? 0)), in: Math.max(0, now.in - (was?.in ?? 0)) };
+  if (was && !more.dollars && !more.in) return ledger;
   const day = dayOf(run.at);
   const tool = run.request.tool;
-  const days = { ...ledger.days, [day]: { ...ledger.days?.[day], [tool]: (ledger.days?.[day]?.[tool] ?? 0) + spent } };
+  const days = { ...ledger.days, [day]: { ...ledger.days?.[day], [tool]: (ledger.days?.[day]?.[tool] ?? 0) + more.dollars } };
   const kept = Object.keys(days).sort().slice(-KEEP_DAYS);
-  return { dollars: ledger.dollars + spent, in: ledger.in + (run.end?.report?.spent.in ?? spendOf(run.lines).in), runs: ledger.runs + 1, days: Object.fromEntries(kept.map((d) => [d, days[d]!])) };
+  const charged = [...Object.entries(ledger.charged ?? {}).filter(([id]) => id !== run.id), [run.id, { dollars: (was?.dollars ?? 0) + more.dollars, in: (was?.in ?? 0) + more.in }] as const].slice(-KEEP_RUNS);
+  return {
+    dollars: ledger.dollars + more.dollars,
+    in: ledger.in + more.in,
+    runs: ledger.runs + (was ? 0 : 1),
+    days: Object.fromEntries(kept.map((d) => [d, days[d]!])),
+    charged: Object.fromEntries(charged),
+  };
 }
 
 /** Dollars spent over the `n` days to `now`, today included, in all and by mode. */

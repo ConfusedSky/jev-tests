@@ -25,6 +25,8 @@ export type Health = {
   cache: Record<string, string | null>;
   tools: { mutool: boolean; pdftotext: boolean; rg: boolean; tables: boolean };
   cacheDir: string;
+  /** When the server started; one started afresh serves no PDF until the shelf is listed again. */
+  boot: number;
 };
 
 export type Config = { folders: string[]; root: string };

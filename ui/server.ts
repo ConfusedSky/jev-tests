@@ -16,16 +16,17 @@ import { cacheDir, openAt, pageUrl } from "../pdf";
 import index from "./index.html";
 import { foreign, local } from "./guard";
 import { drain, errorText } from "./log";
-import { argsFor, DEFAULTS, type Tool } from "./options";
+import { argsFor } from "./options";
+import { checkRequest } from "./request";
 import { isLocate, locateArgs, sourceKey } from "./sources";
 import type { Config, Health, RunEvent, RunRequest, Scan } from "./types";
 
 const ROOT = resolve(import.meta.dir, "..");
-const TOOLS: Tool[] = ["jevsec", "jevfind", "jevgrep"];
 const SCAN_LIMIT = 5000;
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const LOCATE_TIMEOUT = 30_000;
 const PORT = Number(process.env.PORT ?? 3217);
+const BOOT = Date.now();
 const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
 
 const real = (p: string) => {
@@ -135,20 +136,20 @@ async function health(): Promise<Health> {
       tables: await Bun.file(`${ROOT}/.venv/bin/python`).exists(),
     },
     cacheDir: cacheDir(),
+    boot: BOOT,
   };
 }
 
-function bad(r: RunRequest): string | undefined {
-  if (typeof r !== "object" || r === null) return "the request must be a JSON object";
-  if (!TOOLS.includes(r.tool)) return "unknown tool";
-  if (typeof r.question !== "string" || !r.question.trim()) return "ask a question";
-  if (r.tool === "jevsec" && !servable(r.pdf)) return "choose a PDF from the shelf";
-  if (r.tool !== "jevsec" && (!Array.isArray(r.paths) || r.paths.length === 0)) return "the shelf is empty";
+/** Why a well-formed request still cannot run: its PDF is not one the shelf shows, or has nothing in it to read. */
+function unrunnable(r: RunRequest): string | undefined {
+  if (r.tool !== "jevsec") return;
+  const pdf = servable(r.pdf);
+  if (!pdf) return "choose a PDF from the shelf";
+  if (Bun.file(pdf).size === 0) return "this file is empty: there is nothing in it to read";
 }
 
 function run(req: Request, r: RunRequest): Response {
-  const o = { ...DEFAULTS, ...r.options };
-  const args = [...argsFor(r.tool, o), "--json", ...(r.tool === "jevsec" ? [r.pdf!] : []), r.question.trim()];
+  const args = [...argsFor(r.tool, r.options), "--json", ...(r.tool === "jevsec" ? [r.pdf!] : []), r.question.trim()];
   const proc = Bun.spawn([process.execPath, `${ROOT}/${r.tool}.ts`, ...args], {
     cwd: ROOT,
     env: { ...process.env, JEV_PROGRESS: "1" },
@@ -275,9 +276,10 @@ const server = Bun.serve({
     "/api/run": {
       POST: async (req) => {
         if (foreign(req, PORT)) return refused();
-        const r = (await req.json().catch(() => null)) as RunRequest;
-        const why = bad(r);
-        return why ? json({ error: why }, 400) : run(req, r);
+        const checked = checkRequest(await req.json().catch(() => null));
+        if ("error" in checked) return json({ error: checked.error }, 400);
+        const why = unrunnable(checked.request);
+        return why ? json({ error: why }, 400) : run(req, checked.request);
       },
     },
     "/api/page": own((req) => page(new URL(req.url))),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isTotal, spendOf, tree, withoutCost, type Line, type Node } from "../log";
+import { isFrame, isTotal, spendOf, tree, withoutCost, type Line, type Node } from "../log";
 import { copy, cx, dollars, tokens } from "../util";
 import { Action, Actions, Icon } from "./Icon";
 import { useToast } from "./Toast";
@@ -84,9 +84,15 @@ function Row({ node, isOpen, toggle, depth, failed }: { node: Node; isOpen: (i: 
   );
 }
 
-/** The tool's stderr as a tree: a step's lines under it, its sum beside it, each line's tokens and dollars. */
+/**
+ * The tool's stderr as a tree: a step's lines under it, its sum beside it,
+ * each line's tokens and dollars. A crash's code frame and stack are no steps
+ * of the run, so they are left out here and kept for copy and export.
+ */
 export function Log({ lines, live, trying, failed = false }: { lines: Line[]; live: boolean; trying?: string; failed?: boolean }) {
-  const nodes = useMemo(() => tree(lines), [lines]);
+  const said = useMemo(() => lines.filter((l) => !isFrame(l.text)), [lines]);
+  const frames = lines.length - said.length;
+  const nodes = useMemo(() => tree(said), [said]);
   // Headers start open; `flipped` holds the ones the user turned the other way.
   const [openByDefault, setOpenByDefault] = useState(true);
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
@@ -118,8 +124,13 @@ export function Log({ lines, live, trying, failed = false }: { lines: Line[]; li
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-stone-800">Log</h3>
         <span className="text-xs text-stone-500">
-          {lines.length} line{lines.length === 1 ? "" : "s"} · {tokens(spend.in)} tokens in · {tokens(spend.out)} out · {dollars(spend.dollars)}
+          {said.length} line{said.length === 1 ? "" : "s"} · {tokens(spend.in)} tokens in · {tokens(spend.out)} out · {dollars(spend.dollars)}
         </span>
+        {frames > 0 && (
+          <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600" title="The code frame and stack trace the crash printed. Copy the log, or save the run as JSON, to have them">
+            {frames} line{frames === 1 ? "" : "s"} of the crash's trace left out; copy keeps them
+          </span>
+        )}
         {unitemized > 0 && (
           <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800 ring-1 ring-amber-600/20" title="The total counts tokens that no line above claims; a step logged no count of its own">
             {unitemized.toLocaleString("en-US")} tokens not itemized
@@ -132,7 +143,7 @@ export function Log({ lines, live, trying, failed = false }: { lines: Line[]; li
         </Actions>
       </div>
       <div ref={box} className="scroll-thin max-h-[32rem] overflow-y-auto px-2 py-2 font-mono text-xs leading-relaxed">
-        {lines.length === 0 && !trying && <div className="px-2 py-3 text-stone-500">{live ? "Starting…" : "Nothing was logged."}</div>}
+        {said.length === 0 && !trying && <div className="px-2 py-3 text-stone-500">{live ? "Starting…" : "Nothing was logged."}</div>}
         {nodes.map((n) => (
           <Row key={n.index} node={n} isOpen={isOpen} toggle={toggle} depth={0} failed={failed} />
         ))}

@@ -22,12 +22,14 @@ export const KIND_HINTS = [
   { kind: "across", says: "A table with … and … as rows", template: "Give me a table with … and … as rows, and ask …", gives: "a row per document named, a column per question; whole shelf only" },
 ] as const;
 
-/** Why the question cannot be asked yet, or undefined when it can. */
-export function whyBlocked(a: { tool: Tool; question: string; options: Options; pdf?: string; files: number; cacheWhy?: string; offline?: boolean }): string | undefined {
+/** Why the question cannot be asked yet, or undefined when it can; `files` is the shelf's, which says whether the PDF picked is empty. */
+export function whyBlocked(a: { tool: Tool; question: string; options: Options; pdf?: string; files: ShelfFile[]; cacheWhy?: string; offline?: boolean }): string | undefined {
   if (a.offline) return "The UI server is not running";
+  // Said before a question is typed, since the tools would spend a call on it before finding it empty.
+  if (a.tool === "jevsec" && a.pdf && a.files.find((f) => f.path === a.pdf)?.size === 0) return "This file is empty";
   if (!a.question.trim()) return "Type a question";
   if (a.tool === "jevsec" && !a.pdf) return "Pick a PDF to ask";
-  if (a.tool !== "jevsec" && a.files === 0) return "Add a folder or a locate command to the shelf";
+  if (a.tool !== "jevsec" && a.files.length === 0) return "Add a folder or a locate command to the shelf";
   return invalid(a.tool, a.options) ?? (a.cacheWhy ? "The ranking cache can't run" : undefined);
 }
 
@@ -51,8 +53,8 @@ type Props = {
   /** A line to show under the question, like what "ask again" restored. */
   note?: string;
   onDismissNote: () => void;
-  /** A new one moves the cursor into the question, selecting `select` in it when given. */
-  focus: { n: number; select?: string };
+  /** A new one moves the cursor into the question, selecting `select` in it when given, or all of it for true. */
+  focus: { n: number; select?: string | true };
   /** Why the chosen ranking cache cannot run, when it cannot. */
   cacheWhy?: string;
   onCacheOffOnce: () => void;
@@ -71,7 +73,7 @@ export function Ask(props: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const diff = changed(tool, options);
   const mode = MODES.find((m) => m.tool === tool)!;
-  const blocked = whyBlocked({ tool, question, options, pdf, files: files.length, cacheWhy, offline });
+  const blocked = whyBlocked({ tool, question, options, pdf, files, cacheWhy, offline });
   const command = commandFor(tool, options, question.trim(), { pdf, sources: folders });
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export function Ask(props: Props) {
     const el = box.current;
     if (!focus.n || !el) return;
     el.focus();
+    if (focus.select === true) return el.select();
     const at = focus.select ? el.value.indexOf(focus.select) : -1;
     if (at >= 0) el.setSelectionRange(at, at + focus.select!.length);
   }, [focus]);

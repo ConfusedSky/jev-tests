@@ -3,16 +3,28 @@ import { KINDS as CLI_KINDS } from "../answer";
 import { CACHE_MODELS } from "../cache";
 import { parseFlags, readDefaults, readFlags } from "../cli";
 import { findDefaults } from "../shelf";
-import { argsFor, CACHES, commandFor, DEFAULTS, invalid, KINDS, SPECS, type Options } from "./options";
+import { argsFor, CACHE_BARS, CACHES, commandFor, DEFAULTS, invalid, KINDS, SPECS, weakMatch, type Options } from "./options";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
 };
 
 describe("the UI's options", () => {
-  test("name the CLI's kinds and cache models", () => {
+  test("name the CLI's kinds and cache models, and the models' bars", () => {
     expect([...KINDS]).toEqual([...CLI_KINDS]);
     expect<string[]>([...CACHES]).toEqual([...Object.keys(CACHE_MODELS), "off"]);
+    expect<unknown>(CACHE_BARS).toEqual(Object.fromEntries(Object.values(CACHE_MODELS).map((m) => [m.id, { whole: m.whole, subject: m.subject }])));
+  });
+
+  test("call a cached ranking's match weak only near or under its bar", () => {
+    expect(weakMatch("qwen3-4b", 0.55)).toBe(true);
+    expect(weakMatch("qwen3-4b", 0.4)).toBe(true);
+    expect(weakMatch("qwen3-4b", 0.89)).toBe(false);
+    expect(weakMatch("off", 0.1)).toBe(false);
+  });
+
+  test("every option has a spec", () => {
+    expect(SPECS.map((s) => s.key).sort()).toEqual(Object.keys(DEFAULTS).sort() as (keyof Options)[]);
   });
 
   test("default to what the CLI defaults to", () => {

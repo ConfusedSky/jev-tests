@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { PRICE, spentOver, TOOL_LABEL, type Ledger } from "../labels";
 import { THEME_LABEL, THEMES, type Theme } from "../theme";
 import type { Health } from "../types";
@@ -63,6 +63,8 @@ type Props = {
   theme: Theme;
   onTheme: (t: Theme) => void;
   onPalette: () => void;
+  /** Leaves the run on screen for the welcome page, with the question ready to type. */
+  onHome: () => void;
   notify: boolean;
   onNotify: (on: boolean) => void;
   /** Out of reach while the sidebar covers the page as a drawer. */
@@ -73,7 +75,7 @@ const iconButton = "flex h-8 w-8 items-center justify-center rounded-lg text-sto
 
 type Menu = "status" | "spend" | "theme";
 
-export function Header({ health, cache, spend, live, budget, onBudget, onRefresh, onResetSpend, sidebar, onSidebar, theme, onTheme, onPalette, notify, onNotify, inert }: Props) {
+export function Header({ health, cache, spend, live, budget, onBudget, onRefresh, onResetSpend, sidebar, onSidebar, theme, onTheme, onPalette, onHome, notify, onNotify, inert }: Props) {
   // One popover at a time; opening one closes the other.
   const [menu, setMenu] = useState<Menu>();
   const opener = useRef<HTMLElement | null>(null);
@@ -94,6 +96,11 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [menu]);
+  // A popover closes once focus moves on past it, so Tab does not leave it open over the page; back to its own button keeps it.
+  const leave = (e: FocusEvent<HTMLElement>) => {
+    const to = e.relatedTarget;
+    if (to instanceof Node && !e.currentTarget.contains(to) && to !== opener.current) setMenu(undefined);
+  };
   const open = menu === "status";
   const ledger = menu === "spend";
   const down = health === "down";
@@ -115,6 +122,10 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
       </div>
 
       <div className="ml-auto flex items-center gap-1">
+        <button onClick={onHome} aria-label="New question" title="New question (n)" className={cx(iconButton, "md:w-auto md:gap-1.5 md:px-2.5 md:text-xs md:font-medium md:text-stone-600")}>
+          <Icon name="plus" size={16} />
+          <span className="hidden md:inline">New question</span>
+        </button>
         <button onClick={onPalette} title={`Command palette (${MOD}+K)`} className="hidden items-center gap-1.5 rounded-lg border border-stone-200 px-2.5 py-1 text-xs text-stone-500 hover:bg-stone-50 md:flex">
           Search
           <kbd className="rounded bg-stone-100 px-1 font-mono text-[10px]">{MOD === "⌘" ? "⌘K" : "Ctrl K"}</kbd>
@@ -127,7 +138,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
             <ThemeIcon theme={theme} />
           </button>
           {menu === "theme" && (
-            <div role="group" aria-label="Theme" className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
+            <div role="group" aria-label="Theme" onBlur={leave} className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
               {THEMES.map((t) => (
                 // A click picks and closes, picking itself since the menu is gone before the radio would hear of it; arrow keys (a click of detail 0) move through the choices and leave it open.
                 <label
@@ -161,7 +172,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           <span className={cx("hidden whitespace-nowrap lg:inline", down && "text-rose-700")}>{status}</span>
         </button>
         {open && down && (
-          <div className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-rose-800">The UI server is not running</div>
             <p className="leading-relaxed">
               This page cannot reach it, so nothing can be asked. Start it again from the repo with <code className="rounded bg-stone-100 px-1 font-mono text-[11px] text-stone-700">bun run ui</code>; the page checks every few seconds and picks up where it was.
@@ -172,7 +183,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </div>
         )}
         {open && health && !down && (
-          <div className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
+          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">What the tools need</span>
               <button onClick={onRefresh} className="text-xs text-teal-700 hover:underline">
@@ -218,26 +229,26 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </span>
         </button>
         {ledger && (
-          <div className="absolute right-0 top-9 z-20 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-stone-800">What this browser has spent</div>
             <p className="leading-relaxed">
               {dollars(spend.dollars)} over {spend.runs} run{spend.runs === 1 ? "" : "s"}, {spend.in.toLocaleString("en-US")} tokens in{live ? `, and ${dollars(live.dollars)} so far on the run going now` : ""}.
             </p>
             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg bg-stone-50 px-3 py-2">
-              <dt className="text-stone-500">today</dt>
+              <dt className="whitespace-nowrap text-stone-500">today</dt>
               <dd className={cx("font-mono tabular-nums", over ? "font-semibold text-amber-800" : "text-stone-800")}>
                 {dollars(today)}
-                {budget > 0 && <span className="font-sans font-normal text-stone-500"> of {dollars(budget)} a day</span>}
+                {/* Kept whole: it wraps as one piece if it must, never "a day" alone. */}
+                {budget > 0 && <span className="font-sans font-normal whitespace-nowrap text-stone-500"> of {dollars(budget)} a day</span>}
               </dd>
-              <dt className="text-stone-500">last 7 days</dt>
+              <dt className="whitespace-nowrap text-stone-500">last 7 days</dt>
               <dd className="font-mono tabular-nums text-stone-800">{dollars(spentOver(spend, 7).dollars + (live?.dollars ?? 0))}</dd>
-              <dt className="text-stone-500">last 30, by mode</dt>
-              <dd className="text-stone-800">
+              <dt className="whitespace-nowrap text-stone-500">last 30, by mode</dt>
+              <dd className="flex flex-wrap gap-x-3 text-stone-800">
                 {(() => {
                   const t = spentOver(spend, 30).tools;
-                  return (["jevfind", "jevsec", "jevgrep"] as const).map((k, i) => (
-                    <span key={k}>
-                      {i > 0 && " · "}
+                  return (["jevfind", "jevsec", "jevgrep"] as const).map((k) => (
+                    <span key={k} className="whitespace-nowrap">
                       {TOOL_LABEL[k]} <span className="font-mono tabular-nums">{dollars(t[k])}</span>
                     </span>
                   ));
