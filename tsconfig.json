@@ -28,5 +28,6 @@
     "noPropertyAccessFromIndexSignature": false
   },
   // One-off measurement scripts, some needing a patch applied; see experiments/.
-  "exclude": ["node_modules", "experiments"]
+  // ui/ runs in a browser too and has its own tsconfig with the DOM types.
+  "exclude": ["node_modules", "experiments", "ui"]
 }

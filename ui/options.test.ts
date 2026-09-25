@@ -1,0 +1,60 @@
+import { describe, expect, test } from "bun:test";
+import { KINDS as CLI_KINDS } from "../answer";
+import { CACHE_MODELS } from "../cache";
+import { parseFlags, readDefaults, readFlags } from "../cli";
+import { findDefaults } from "../shelf";
+import { argsFor, CACHES, commandFor, DEFAULTS, KINDS, SPECS, type Options } from "./options";
+
+const usage = (code: number): never => {
+  throw new Error(`usage ${code}`);
+};
+
+describe("the UI's options", () => {
+  test("name the CLI's kinds and cache models", () => {
+    expect([...KINDS]).toEqual([...CLI_KINDS]);
+    expect([...CACHES]).toEqual([...Object.keys(CACHE_MODELS), "off"]);
+  });
+
+  test("default to what the CLI defaults to", () => {
+    const cli = findDefaults();
+    for (const key of ["hits", "cache", "highlight", "threshold", "answerFloor", "search", "max", "maxAnswers", "titleFloor", "fileFloor", "maxFiles", "chars", "batch"] as const)
+      expect([key, DEFAULTS[key]]).toEqual([key, cli[key]]);
+    expect(DEFAULTS.toc).toBe(!readDefaults().noToc);
+    expect(DEFAULTS.wholeWindows).toBe(!readDefaults().perPage);
+  });
+
+  test("pass no flags at their defaults", () => {
+    expect(argsFor("jevsec", DEFAULTS)).toEqual([]);
+    expect(argsFor("jevfind", DEFAULTS)).toEqual([]);
+    expect(argsFor("jevgrep", DEFAULTS)).toEqual([]);
+  });
+
+  // Every flag the UI can send must be one the CLI takes, or the run stops on usage.
+  test("send only flags the CLI parses, to the values chosen", () => {
+    const every: Options = { ...DEFAULTS, kind: "count", hits: 3, cache: "off", highlight: false, across: "on", threshold: 0.5, answerFloor: 0.6, search: false, toc: false, wholeWindows: true, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" };
+    const o = { ...findDefaults(), across: undefined as boolean | undefined };
+    const flags = { ...readFlags(), "--file-floor": (x: typeof o, next: () => string) => (x.fileFloor = Number(next())), "--max-files": (x: typeof o, next: () => string) => (x.maxFiles = Number(next())), "--across": (x: typeof o) => (x.across = true), "--no-across": (x: typeof o) => (x.across = false) };
+    expect(parseFlags(argsFor("jevfind", every), o, flags, usage)).toEqual([]);
+    expect(o).toMatchObject({ kind: "count", hits: 3, cache: "off", highlight: false, across: true, threshold: 0.5, answerFloor: 0.6, search: false, noToc: true, perPage: false, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" });
+  });
+
+  test("keep jevgrep's own -n and -t apart from the readers'", () => {
+    const o = { ...DEFAULTS, top: 5, nameFloor: 2, hits: 3, threshold: 0.5 };
+    expect(argsFor("jevgrep", o)).toEqual(["-n", "5", "-t", "2"]);
+    expect(argsFor("jevsec", o)).toEqual(["-n", "3", "-t", "0.5"]);
+  });
+
+  test("every spec's key is an option", () => {
+    for (const s of SPECS) expect(Object.keys(DEFAULTS)).toContain(s.key);
+  });
+});
+
+describe("commandFor", () => {
+  test("quotes what the shell would split", () => {
+    expect(commandFor("jevsec", { ...DEFAULTS, hits: 2 }, "How do I start?", { pdf: "/books/My Book.pdf" })).toBe("bun jevsec.ts -n 2 '/books/My Book.pdf' 'How do I start?'");
+  });
+
+  test("feeds the shelf's folders to a shelf tool", () => {
+    expect(commandFor("jevfind", DEFAULTS, "what's in it", { folders: ["/a", "/b c"] })).toBe(`find /a '/b c' -iname '*.pdf' | bun jevfind.ts 'what'\\''s in it'`);
+  });
+});

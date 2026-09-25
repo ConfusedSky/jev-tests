@@ -39,7 +39,8 @@ export type Outcome = { hit?: Hit; hits: Hit[]; tried: Tried[]; rejected: Candid
 export type Ui = { log: (line: string) => void; trying: (line: string) => void; clear: () => void };
 
 export function makeUi(quiet: boolean): Ui {
-  const live = !quiet && process.stderr.isTTY;
+  // JEV_PROGRESS=1 keeps the \r-ended progress line on a pipe, for a reader like ui/server.ts.
+  const live = !quiet && (process.stderr.isTTY || process.env.JEV_PROGRESS === "1");
   return {
     log: (line) => {
       if (!quiet) console.error(line);

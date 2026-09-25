@@ -1,0 +1,260 @@
+import { useEffect, useRef, useState } from "react";
+import { changed, commandFor, DEFAULTS, SPECS, type Options, type Spec, type Tool } from "../options";
+import { basename, copy, cx } from "../util";
+
+const MODES: { tool: Tool; label: string; asks: string; cost: string }[] = [
+  { tool: "jevfind", label: "Whole shelf", asks: "Which page of which PDF answers it?", cost: "ranks the paths, then reads the best files" },
+  { tool: "jevsec", label: "One PDF", asks: "Which page of this PDF answers it?", cost: "ranks its sections, then reads the best pages" },
+  { tool: "jevgrep", label: "File names", asks: "Which filenames could answer it?", cost: "names only, one call, reads no file" },
+];
+
+/** How the wording picks the kind of answer; jev reads it, --kind forces it. */
+export const KIND_HINTS = [
+  { kind: "count", says: "How many … are there?", gives: "a number, counted off the list" },
+  { kind: "number", says: "How much does … cost?", gives: "a figure read off the page" },
+  { kind: "truth", says: "A statement to check", gives: "true or false" },
+  { kind: "passage", says: "How do I …?", gives: "the sentences that answer" },
+  { kind: "table", says: "Make a table of … with …", gives: "a table built to the question" },
+] as const;
+
+type Props = {
+  tool: Tool;
+  setTool: (t: Tool) => void;
+  question: string;
+  setQuestion: (q: string) => void;
+  options: Options;
+  setOptions: (o: Options) => void;
+  pdf?: string;
+  folders: string[];
+  files: number;
+  running: boolean;
+  onAsk: () => void;
+  onStop: () => void;
+};
+
+export function Ask({ tool, setTool, question, setQuestion, options, setOptions, pdf, folders, files, running, onAsk, onStop }: Props) {
+  const [showOptions, setShowOptions] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const diff = changed(tool, options);
+  const mode = MODES.find((m) => m.tool === tool)!;
+  const blocked = !question.trim() ? "Type a question" : tool === "jevsec" ? (pdf ? undefined : "Pick a PDF on the shelf") : files === 0 ? "Add a folder of PDFs to the shelf" : undefined;
+  const command = commandFor(tool, options, question.trim(), { pdf, folders });
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [question]);
+
+  useEffect(() => {
+    const focus = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        box.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", focus);
+    return () => window.removeEventListener("keydown", focus);
+  }, []);
+
+  return (
+    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 pt-3 pb-3">
+        <div role="tablist" aria-label="What to search" className="flex rounded-xl bg-stone-100 p-1">
+          {MODES.map((m) => (
+            <button
+              key={m.tool}
+              role="tab"
+              aria-selected={m.tool === tool}
+              onClick={() => setTool(m.tool)}
+              className={cx("rounded-lg px-3 py-1.5 text-sm font-medium transition", m.tool === tool ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-800")}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="min-w-0 text-xs leading-snug text-stone-500">
+          <div className="font-medium text-stone-700">{mode.asks}</div>
+          <div>
+            {tool === "jevsec" ? (
+              pdf ? (
+                <span>
+                  in <span className="font-medium text-teal-800">{basename(pdf)}</span>; {mode.cost}
+                </span>
+              ) : (
+                <span className="text-amber-700">Pick a PDF on the shelf to ask it alone</span>
+              )
+            ) : (
+              <span>
+                {files} PDF{files === 1 ? "" : "s"} on the shelf; {mode.cost}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 pt-3">
+        <textarea
+          ref={box}
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (!running && !blocked) onAsk();
+            }
+            if (e.key === "Escape" && running) onStop();
+          }}
+          rows={2}
+          placeholder={tool === "jevgrep" ? "What are you looking for? jev ranks the filenames against it" : "Ask a question, or state something to check"}
+          aria-label="Question"
+          className="w-full resize-none border-0 bg-transparent font-serif text-lg leading-snug text-stone-900 placeholder:text-stone-400 focus:outline-none"
+        />
+      </div>
+
+      {tool !== "jevgrep" && (
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">the wording picks the answer</span>
+          {KIND_HINTS.map((k) => (
+            <span
+              key={k.kind}
+              title={`${k.says} → ${k.gives}`}
+              className={cx(
+                "rounded-full px-2 py-0.5 text-[11px] ring-1",
+                options.kind === k.kind ? "bg-teal-700 text-white ring-teal-700" : "bg-stone-50 text-stone-600 ring-stone-200",
+              )}
+            >
+              <span className="font-semibold">{k.kind}</span> <span className={options.kind === k.kind ? "text-teal-100" : "text-stone-400"}>{k.says}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 border-t border-stone-100 px-4 py-2.5">
+        <button
+          onClick={() => setShowOptions((s) => !s)}
+          aria-expanded={showOptions}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-stone-600 hover:bg-stone-100"
+        >
+          <span className={cx("text-[10px] text-stone-400 transition-transform", showOptions && "rotate-90")}>▶</span>
+          Options
+          {diff.length > 0 && <span className="rounded-full bg-teal-100 px-1.5 text-[11px] font-semibold text-teal-800">{diff.length} changed</span>}
+        </button>
+        {diff.length > 0 && !showOptions && (
+          <div className="hidden min-w-0 flex-1 truncate text-xs text-stone-400 lg:block">{diff.map((s) => `${s.label}: ${String(options[s.key])}`).join(" · ")}</div>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          {!running && blocked && <span className="text-xs text-stone-400">{blocked}</span>}
+          {running ? (
+            <button onClick={onStop} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-500">
+              Stop <kbd className="ml-1 text-[10px] font-normal text-rose-200">esc</kbd>
+            </button>
+          ) : (
+            <button
+              onClick={onAsk}
+              disabled={!!blocked}
+              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-stone-300"
+            >
+              Ask <kbd className="ml-1 text-[10px] font-normal text-teal-200">⏎</kbd>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showOptions && <OptionsPanel tool={tool} options={options} setOptions={setOptions} />}
+
+      <div className="flex items-center gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-4 py-2">
+        <span className="shrink-0 font-mono text-[11px] text-stone-400">$</span>
+        <code className="scroll-thin min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-[11px] text-stone-600" title="The same run from a terminal in the repo">
+          {command}
+        </code>
+        <button
+          onClick={async () => {
+            setCopied(await copy(command));
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="shrink-0 rounded-md px-2 py-0.5 text-[11px] text-stone-500 hover:bg-stone-200"
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function OptionsPanel({ tool, options, setOptions }: { tool: Tool; options: Options; setOptions: (o: Options) => void }) {
+  const specs = SPECS.filter((s) => s.tools.includes(tool));
+  const set = (key: keyof Options, v: Options[keyof Options]) => setOptions({ ...options, [key]: v });
+  const groups = [
+    { title: "Common", specs: specs.filter((s) => !s.advanced) },
+    { title: "Walk and floors", specs: specs.filter((s) => s.advanced) },
+  ].filter((g) => g.specs.length);
+  return (
+    <div className="border-t border-stone-100 bg-stone-50/60 px-4 py-3">
+      {groups.map((g) => (
+        <div key={g.title} className="mb-3 last:mb-0">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-stone-400">{g.title}</div>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
+            {g.specs.map((s) => (
+              <Field key={s.key} spec={s} value={options[s.key]} onChange={(v) => set(s.key, v)} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <button onClick={() => setOptions({ ...DEFAULTS })} className="mt-1 text-xs text-teal-700 hover:underline">
+        Reset every option to its default
+      </button>
+    </div>
+  );
+}
+
+function Field({ spec, value, onChange }: { spec: Spec; value: Options[keyof Options]; onChange: (v: Options[keyof Options]) => void }) {
+  const isDefault = value === DEFAULTS[spec.key];
+  const input = "rounded-md border border-stone-200 bg-white px-2 py-1 text-xs focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15";
+  return (
+    <label className="flex items-start gap-3 rounded-lg py-1" title={spec.help}>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-stone-700">
+          {spec.label}
+          {!isDefault && <span className="h-1.5 w-1.5 rounded-full bg-teal-600" title="changed from the default" />}
+        </div>
+        <div className="text-[11px] leading-snug text-stone-400">{spec.help}</div>
+      </div>
+      <div className="shrink-0 pt-0.5">
+        {spec.type === "toggle" ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!value}
+            onClick={() => onChange(!value)}
+            className={cx("relative h-5 w-9 rounded-full transition", value ? "bg-teal-600" : "bg-stone-300")}
+          >
+            <span className={cx("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", value ? "left-4.5" : "left-0.5")} />
+          </button>
+        ) : spec.type === "select" ? (
+          <select value={String(value)} onChange={(e) => onChange(e.target.value as Options[keyof Options])} className={input}>
+            {spec.values.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        ) : spec.type === "number" ? (
+          <input
+            type="number"
+            min={spec.min}
+            max={spec.max}
+            step={spec.step}
+            value={Number(value)}
+            onChange={(e) => onChange(e.target.value === "" ? DEFAULTS[spec.key] : Number(e.target.value))}
+            className={cx(input, "w-24 tabular-nums")}
+          />
+        ) : (
+          <input value={String(value)} placeholder={spec.placeholder} onChange={(e) => onChange(e.target.value)} className={cx(input, "w-44 font-mono")} />
+        )}
+      </div>
+    </label>
+  );
+}

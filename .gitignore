@@ -45,3 +45,6 @@ experiments/ranking-cache/.venv/
 
 # Page embeddings the embedding experiment writes; its scripts make them again.
 experiments/embed/cache/
+
+# Screenshots and logs the Playwright MCP writes.
+.playwright-mcp/

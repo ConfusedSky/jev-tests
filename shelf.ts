@@ -5,12 +5,12 @@
  */
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { normalize, STOPWORDS, wordsOf, type Answer, type Kind, type Word } from "./answer";
-import { answerLayer, highlightAll, hitLine, readDefaults, renderPassage, type ReadOpts } from "./cli";
+import { answerLayer, highlightAll, hitLine, jsonHit, readDefaults, renderPassage, type JsonReport, type ReadOpts } from "./cli";
 import { composeTable, NA, namesBy } from "./compose";
 import { rowText, type Para, type Row } from "./layout";
 import { openAt, pageUrl, searchPdf, textFile, type Candidate, type Hit, type Outcome, type Tried, type Ui } from "./pdf";
 import { excerpts, type Excerpt } from "./search";
-import { rank, snapshot, split, timed, type Snapshot } from "./shared";
+import { rank, snapshot, spentSince, split, timed, type Snapshot } from "./shared";
 
 export type FindOpts = ReadOpts & { fileFloor: number; maxFiles: number };
 export const findDefaults = (): FindOpts => ({ ...readDefaults(), fileFloor: 1.5, maxFiles: 5 });
@@ -283,12 +283,23 @@ export async function reportAcross(tool: string, t: Across, o: FindOpts, ui: Ui,
   ui.log(`total ${split(since)}`);
   const tty = process.stdout.isTTY;
   const paras: Para[] = acrossRows(t).map((row) => ({ heading: false, text: rowText(row), style: "", lines: [], table: row }));
-  console.log(renderPassage(paras, process.stdout.columns, tty, o.tsv));
+  if (!o.json) console.log(renderPassage(paras, process.stdout.columns, tty, o.tsv));
   // Piped as TSV, stdout is the table alone.
   const out = o.tsv && !tty ? console.error : console.log;
   const flat = t.cells.flatMap((line, i) => line.map((cell, j) => ({ cell, name: `${t.rows[i]}, ${t.columns[j]}` })));
   const found = flat.filter(({ cell }) => cell.hit && cell.answer);
   const marked = new Map((await highlightAll(found.map(({ cell }) => cell.hit!), o)).map((hit, i) => [found[i]!.cell, hit]));
+  const answered = t.cells.flat().some((c) => !c.why);
+  if (o.json) {
+    const cells = t.cells.map((line) =>
+      line.map((c) => ({ text: c.text, kind: c.kind, why: c.why, hit: c.hit && c.answer ? jsonHit({ ...c.hit, answer: c.answer }, marked.get(c)?.pdf) : undefined })),
+    );
+    const message = answered ? undefined : "no cell answered";
+    if (message) console.error(`${tool}: ${message}`);
+    const report: JsonReport = { kind: "table", status: answered ? "answered" : "unanswered", hits: [], message, table: { rows: t.rows, columns: t.columns, cells }, spent: spentSince(since) };
+    console.log(JSON.stringify(report));
+    process.exit(answered ? 0 : 1);
+  }
   if (tty) out("");
   for (const { cell, name } of flat) {
     const hit = marked.get(cell);
@@ -304,7 +315,7 @@ export async function reportAcross(tool: string, t: Across, o: FindOpts, ui: Ui,
     const hit = marked.get(first.cell)!;
     await openAt(pageUrl(hit.pdf, hit.page));
   }
-  if (!t.cells.flat().some((c) => !c.why)) {
+  if (!answered) {
     console.error(`${tool}: no cell answered`);
     process.exit(1);
   }

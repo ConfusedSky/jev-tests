@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { num, parseFlags, readDefaults, readFlags, renderPassage, tsvRows } from "./cli";
+import { jsonHit, num, parseFlags, readDefaults, readFlags, renderPassage, tsvRows } from "./cli";
 import type { Para } from "./layout";
 
 const usage = (code: number): never => {
@@ -141,5 +141,25 @@ describe("tsvRows", () => {
     const heads = ["Weapon", "Damage"];
     const row = (cells: string[]): Para => ({ heading: false, text: JSON.stringify(cells), style: "", lines: [], table: { heads, cells } });
     expect(renderPassage([row(["SMG", "2d6"]), row(["Shotgun", "5d6"])], 80, false, true)).toBe("Weapon\tDamage\nSMG\t2d6\nShotgun\t5d6");
+  });
+});
+
+describe("jsonHit", () => {
+  const box = { page: 3, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 4 };
+  const hit = { pdf: "/b/book.pdf", section: "A > B", page: 3, p: 0.9, text: "", answer: { text: "Skills", p: 0.8, passage: [{ heading: true, text: "Skills", style: "bbbbbb", lines: [box] }] } };
+
+  test("keeps the passage's text and weights, not its boxes", () => {
+    expect(jsonHit(hit, "/cache/x-book.pdf")).toEqual({
+      pdf: "/b/book.pdf",
+      view: "/cache/x-book.pdf",
+      page: 3,
+      section: "A > B",
+      found: 0.9,
+      answer: { text: "Skills", p: 0.8, pages: undefined, passage: [{ heading: true, text: "Skills", style: "bbbbbb" }] },
+    });
+  });
+
+  test("views the book itself when there is no highlighted copy", () => {
+    expect(jsonHit({ ...hit, answer: undefined }).view).toBe("/b/book.pdf");
   });
 });
