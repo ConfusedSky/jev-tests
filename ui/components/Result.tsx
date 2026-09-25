@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { acrossGrid, answerText, citation, fileStem, sourceLine } from "../export";
-import { columnsOf, errorText, factsOf, withoutCost, type Facts } from "../log";
-import { clampOption, weakMatch, type Options, type Tool } from "../options";
+import { columnsOf, errorText, factsOf, withoutCost, type Facts, type Line } from "../log";
+import { clampOption, offerAfresh, type Options, type Tool } from "../options";
 import { OFFLINE, type Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
 import { AFRESH, inFlight, PER_MILLION } from "../labels";
@@ -306,12 +306,12 @@ function Short({ got, f, o, tool, onRetry, onEdit }: { got: number; f: Facts; o:
   );
 }
 
-/** A retry ranking afresh, offered when nothing answered off a ranking the cache matched to an earlier question only weakly. */
-function Afresh({ f, o, onRetry }: { f: Facts; o: Options; onRetry: (patch: Partial<Options>) => void }) {
-  if (!f.cache || !weakMatch(o.cache, f.cache.whole)) return null;
+/** A retry ranking afresh, offered when nothing answered off a cached ranking and the walk stopped with some of it unread. */
+function Afresh({ f, o, lines, onRetry }: { f: Facts; o: Options; lines: Line[]; onRetry: (patch: Partial<Options>) => void }) {
+  if (!f.cache || !offerAfresh(o, f.mostSections, lines.filter((l) => l.verb === "keep").length)) return null;
   return (
     <div className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-stone-800 ring-1 ring-violet-600/20">
-      The sections were ranked for an earlier question, “{f.cache.question}”, reused from the cache on a weak match ({f.cache.score}), so the walk may have read that question's sections rather than this one's. Ranking afresh costs up to about {AFRESH.toLocaleString("en-US")} tokens ({dollars((AFRESH * PER_MILLION) / 1e6)}) a PDF with a long outline.
+      The sections were ranked for an earlier question, “{f.cache.question}”, and reused from the cache ({f.cache.score}). The walk stopped before the end of that ranking; ranked for this question, other sections may come first. Ranking afresh costs up to about {AFRESH.toLocaleString("en-US")} tokens ({dollars((AFRESH * PER_MILLION) / 1e6)}) a PDF with a long outline.
       <button onClick={() => onRetry({ cache: "off" })} className="mt-2 block rounded-lg bg-stone-800 px-3 py-1.5 font-semibold text-white hover:bg-stone-700">
         Ask again with the ranking made afresh
       </button>
@@ -486,7 +486,7 @@ export function Result({ run, reader, onPick, onRetry, onEdit }: { run: Run; rea
           Try rewording, a lower page threshold or answer floor in Options, or {run.request.tool === "jevsec" ? "the whole shelf" : "a larger max files"}. The log shows every page that was read and how it scored.
         </div>
         {f.noText?.length ? <div className="mt-2 text-xs">Skipped for having no text layer (scanned pages?): {f.noText.map(basename).join(", ")}.</div> : null}
-        <Afresh f={f} o={o} onRetry={onRetry} />
+        <Afresh f={f} o={o} lines={run.lines} onRetry={onRetry} />
       </Notice>
     );
   }
@@ -496,7 +496,7 @@ export function Result({ run, reader, onPick, onRetry, onEdit }: { run: Run; rea
       {r.status === "below" && (
         <Notice tone="amber" title={`No answer reached the answer floor of ${o.answerFloor}`}>
           The best one read is below; treat it as a lead, not an answer.
-          <Afresh f={f} o={o} onRetry={onRetry} />
+          <Afresh f={f} o={o} lines={run.lines} onRetry={onRetry} />
         </Notice>
       )}
       {short && <Short got={r.hits.length} f={f} o={o} tool={run.request.tool} onRetry={onRetry} onEdit={onEdit} />}

@@ -3,24 +3,27 @@ import { KINDS as CLI_KINDS } from "../answer";
 import { CACHE_MODELS } from "../cache";
 import { parseFlags, readDefaults, readFlags } from "../cli";
 import { findDefaults } from "../shelf";
-import { argsFor, CACHE_BARS, CACHES, clampOption, commandFor, DEFAULTS, invalid, KINDS, SPECS, weakMatch, type Options } from "./options";
+import { argsFor, CACHES, clampOption, commandFor, DEFAULTS, invalid, KINDS, offerAfresh, SPECS, type Options } from "./options";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
 };
 
 describe("the UI's options", () => {
-  test("name the CLI's kinds and cache models, and the models' bars", () => {
+  test("name the CLI's kinds and cache models", () => {
     expect([...KINDS]).toEqual([...CLI_KINDS]);
     expect<string[]>([...CACHES]).toEqual([...Object.keys(CACHE_MODELS), "off"]);
-    expect<unknown>(CACHE_BARS).toEqual(Object.fromEntries(Object.values(CACHE_MODELS).map((m) => [m.id, { whole: m.whole, subject: m.subject }])));
   });
 
-  test("call a cached ranking's match weak only near or under its bar", () => {
-    expect(weakMatch("qwen3-4b", 0.55)).toBe(true);
-    expect(weakMatch("qwen3-4b", 0.4)).toBe(true);
-    expect(weakMatch("qwen3-4b", 0.89)).toBe(false);
-    expect(weakMatch("off", 0.1)).toBe(false);
+  test("offer a ranking made afresh only when the walk stopped with some of its ranking unread", () => {
+    const o = { cache: "qwen3-4b", max: 12, maxAnswers: 5 } as const;
+    expect(offerAfresh(o, 12, 0)).toBe(true);
+    expect(offerAfresh(o, 2, 5)).toBe(true);
+    // A one-section outline read whole: ranking it again reorders the same section.
+    expect(offerAfresh(o, 1, 0)).toBe(false);
+    expect(offerAfresh(o, 1, 4)).toBe(false);
+    expect(offerAfresh(o, undefined, 0)).toBe(false);
+    expect(offerAfresh({ ...o, cache: "off" }, 12, 5)).toBe(false);
   });
 
   test("every option has a spec", () => {
