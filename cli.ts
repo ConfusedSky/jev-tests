@@ -182,11 +182,10 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
   // Reading the question is a call of its own, so it says what it spent.
   ui.log(`${o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`}  in ${split(asked)}`);
   // A count, number or statement has one answer; only a passage question has
-  // several places worth reading.
-  if (o.hits > 1 && kind !== "passage") {
-    console.error(`--hits ${o.hits} only applies to a passage question; this is a ${kind} question`);
-    process.exit(2);
-  }
+  // several places worth reading. The kind is known only once the reading is
+  // paid for, so a stray -n costs a note, not the run.
+  const hits = kind === "passage" ? o.hits : 1;
+  if (hits < o.hits) ui.log(`-n ${o.hits} applies to passage questions only; one ${kind} answer`);
   // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
   const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
@@ -255,7 +254,7 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
   const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
   const m = CACHE_MODELS[o.cache];
   const rankingCache = m && rankingCacheFor(m, o.question, read.subject);
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
+  return { ...o, hits, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
 }
 
 export const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>

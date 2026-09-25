@@ -21,6 +21,12 @@ describe("parseLine", () => {
     expect(lines[4]!.header).toBe(true);
   });
 
+  test("takes yes and no as verdicts only before a probability", () => {
+    expect(parseLine("  no   0.04  Equipment p.99").verb).toBe("no");
+    expect(parseLine("no outline: scanning 1 of 1 windows in page order…").verb).toBeUndefined();
+    expect(parseLine("  --  no outline and no extractable text  a.pdf").verb).toBe("--");
+  });
+
   test("marks a tool's own message", () => {
     expect(parseLine("jevsec: no answer reached p=0.7 in 2 windows; best follows").message).toBe(true);
   });
@@ -57,6 +63,11 @@ describe("spendOf", () => {
 describe("factsOf", () => {
   test("reads what jev made of the question", () => {
     expect(factsOf(lines)).toMatchObject({ kind: "count", forced: false, counts: "skills", searches: "skills, vault dweller", sections: 1 });
+  });
+
+  test("reads the question's own kind, not a cell's", () => {
+    const f = factsOf([parseLine("question looks like a table question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s)"), parseLine("  question looks like a count question  in 0.3s (jev 0.3s, read 0.0s, other 0.0s)")]);
+    expect(f.kind).toBe("table");
   });
 
   test("reads a ranking taken from the cache and a shelf walk's totals", () => {

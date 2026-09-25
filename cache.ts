@@ -10,7 +10,7 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Excerpt } from "./search";
-import type { Ranked } from "./shared";
+import { timed, type Ranked } from "./shared";
 
 export type CacheModel = {
   id: string;
@@ -44,6 +44,11 @@ const OLLAMA = process.env.OLLAMA_HOST ? `http://${process.env.OLLAMA_HOST.repla
 
 /** Embeds through the model's provider. */
 export function embedder(m: CacheModel, fetchFn: typeof fetch = fetch): Embed {
+  const embed = embedWith(m, fetchFn);
+  return (input) => timed("embed", () => embed(input));
+}
+
+function embedWith(m: CacheModel, fetchFn: typeof fetch): Embed {
   if (m.provider === "ollama")
     return async (input) => {
       const r = await fetchFn(`${OLLAMA}/api/embed`, { method: "POST", body: JSON.stringify({ model: m.name, input }) });

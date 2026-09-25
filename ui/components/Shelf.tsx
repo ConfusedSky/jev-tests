@@ -6,7 +6,7 @@ type Props = {
   folders: string[];
   scans: Record<string, Scan | undefined>;
   picked?: string;
-  onAdd: (dir: string) => void;
+  onAdd: (dir: string) => Promise<string | undefined>;
   onRemove: (dir: string) => void;
   onRescan: (dir: string) => void;
   onPick: (path: string) => void;
@@ -14,13 +14,19 @@ type Props = {
 
 export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPick }: Props) {
   const [dir, setDir] = useState("");
+  const [problem, setProblem] = useState<string>();
+  const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
   const total = folders.reduce((n, f) => n + (scans[f]?.files.length ?? 0), 0);
   const needle = filter.trim().toLowerCase();
 
-  const add = () => {
-    if (dir.trim()) onAdd(dir.trim());
-    setDir("");
+  const add = async () => {
+    if (!dir.trim()) return;
+    setAdding(true);
+    const why = await onAdd(dir.trim());
+    setAdding(false);
+    setProblem(why);
+    if (!why || / holds no PDFs$/.test(why)) setDir("");
   };
 
   return (
@@ -34,15 +40,23 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
       >
         <input
           value={dir}
-          onChange={(e) => setDir(e.target.value)}
+          onChange={(e) => {
+            setDir(e.target.value);
+            setProblem(undefined);
+          }}
           placeholder="Add a folder, e.g. ~/Documents/books"
           aria-label="Folder of PDFs to add"
           className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-xs placeholder:font-sans placeholder:text-stone-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15"
         />
-        <button type="submit" disabled={!dir.trim()} className="rounded-lg bg-stone-800 px-2.5 text-xs font-medium text-white hover:bg-stone-700 disabled:opacity-30">
-          Add
+        <button type="submit" disabled={!dir.trim() || adding} className="rounded-lg bg-stone-800 px-2.5 text-xs font-medium text-white hover:bg-stone-700 disabled:opacity-30">
+          {adding ? "…" : "Add"}
         </button>
       </form>
+      {problem && (
+        <div role="alert" className="mx-3 mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] break-all text-amber-800 ring-1 ring-amber-600/20">
+          {problem}
+        </div>
+      )}
 
       {total > 8 && (
         <div className="px-3 pt-2">

@@ -22,6 +22,8 @@ export function Confidence({ p, floor, label }: { p: number; floor?: number; lab
 
 function Source({ hit }: { hit: JsonHit }) {
   const parts = hit.section.split(" > ");
+  // A book without an outline names its windows by page, which the page already says.
+  const named = !/^p\.\d+(-\d+)?$/.test(hit.section);
   return (
     <div className="min-w-0 text-xs text-stone-500">
       <span className="font-medium text-stone-700" title={hit.pdf}>
@@ -29,11 +31,15 @@ function Source({ hit }: { hit: JsonHit }) {
       </span>
       <span className="mx-1.5 text-stone-300">/</span>
       <span className="font-medium text-stone-700">p.{hit.page}</span>
-      <span className="mx-1.5 text-stone-300">/</span>
-      <span title={hit.section}>
-        {parts.length > 2 && <span className="text-stone-400">{parts.slice(0, -1).join(" › ")} › </span>}
-        {parts[parts.length - 1]}
-      </span>
+      {named && (
+        <>
+          <span className="mx-1.5 text-stone-300">/</span>
+          <span title={hit.section}>
+            {parts.length > 2 && <span className="text-stone-400">{parts.slice(0, -1).join(" › ")} › </span>}
+            {parts[parts.length - 1]}
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -59,7 +65,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below }: { hit: JsonHi
           <Confidence p={hit.found} label="page" />
         </div>
       </div>
-      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_220px]")}>
         <div className="min-w-0">
           {!a ? (
             <p className="text-sm text-stone-500">This page passed the gate; nothing was read off it.</p>
@@ -139,8 +145,16 @@ function Across({ table, floor, stamp }: { table: NonNullable<JsonReport["table"
   );
 }
 
-function Names({ ranked, floor, onPick }: { ranked: Ranked[]; floor: number; onPick: (path: string) => void }) {
-  if (ranked.length === 0) return <Notice tone="stone" title="No name reached the score floor">Lower the score floor in Options, or reword the question.</Notice>;
+function Names({ ranked, floor, onPick, onAll }: { ranked: Ranked[]; floor: number; onPick: (path: string) => void; onAll: () => void }) {
+  if (ranked.length === 0)
+    return (
+      <Notice tone="stone" title={`No name reached the score floor of ${floor}`}>
+        Reword the question, or see how every name scored.
+        <button onClick={onAll} className="mt-3 block rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
+          Rank every name, floor 0 (one call)
+        </button>
+      </Notice>
+    );
   return (
     <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
       <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 border-b border-stone-100 bg-stone-50 px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-stone-400">
@@ -189,7 +203,7 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
   const e = run.end;
   const o = run.request.options;
   if (!e) return null;
-  if (e.ranked) return <Names ranked={e.ranked} floor={o.nameFloor} onPick={onPick} />;
+  if (e.ranked) return <Names ranked={e.ranked} floor={o.nameFloor} onPick={onPick} onAll={() => onRetry({ nameFloor: 0 })} />;
   const r = e.report;
   if (!r) {
     if (e.error === "stopped") return <Notice tone="stone" title="Stopped">The run was stopped; what it spent up to then is in the log.</Notice>;

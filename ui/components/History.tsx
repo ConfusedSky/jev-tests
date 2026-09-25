@@ -12,7 +12,7 @@ export const OUTCOME: Record<Outcome, { label: string; dot: string; tone: string
   stopped: { label: "Stopped", dot: "bg-stone-400", tone: "text-stone-700 bg-stone-100 ring-stone-500/20" },
 };
 
-export const TOOL_LABEL = { jevfind: "Shelf", jevsec: "One PDF", jevgrep: "Names" } as const;
+export const TOOL_LABEL = { jevfind: "Shelf", jevsec: "PDF", jevgrep: "Names" } as const;
 
 export const runSpend = (r: Run) => r.end?.report?.spent.dollars ?? spendOf(r.lines).dollars;
 
@@ -28,14 +28,12 @@ export function History({ runs, current, onOpen, onClear }: { runs: Run[]; curre
             <li key={r.id}>
               <button onClick={() => onOpen(r)} className={cx("w-full rounded-lg px-2.5 py-2 text-left", r.id === current ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-100")}>
                 <div className="line-clamp-2 text-[13px] leading-snug text-stone-800">{r.request.question}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-stone-400">
-                  <span className={cx("h-1.5 w-1.5 rounded-full", o.dot)} />
-                  <span>{o.label}</span>
-                  <span>·</span>
-                  <span>{TOOL_LABEL[r.request.tool]}</span>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] whitespace-nowrap text-stone-400" title={`${o.label} · ${TOOL_LABEL[r.request.tool]} · ${new Date(r.at).toLocaleString()}`}>
+                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", o.dot)} />
+                  <span className="truncate">{o.label}</span>
+                  <span className="rounded bg-stone-200/60 px-1 text-stone-500">{TOOL_LABEL[r.request.tool]}</span>
                   <span className="ml-auto tabular-nums">{dollars(runSpend(r))}</span>
-                  <span>·</span>
-                  <span>{ago(r.at)}</span>
+                  <span className="text-stone-300">{ago(r.at)}</span>
                 </div>
               </button>
             </li>

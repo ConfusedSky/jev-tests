@@ -6,7 +6,9 @@
 export type Cost = { in: number; out: number; dollars: number };
 export type Line = { t: number; depth: number; text: string; header: boolean; verb?: string; cost?: Cost; secs?: number; message: boolean };
 
-const VERBS = new Set(["take", "keep", "drop", "yes", "no", "toc", "excerpt", "section", "file", "--", "total", "ranked", "gated"]);
+/** The verdict or step a line opens with; "no" only before a probability, so "no outline: …" is not a verdict. */
+const verbOf = (text: string) =>
+  /^(take|keep|drop|toc)\s{2}/.exec(text)?.[1] ?? /^(yes|no)\s+\d\.\d\d/.exec(text)?.[1] ?? /^(excerpt|section|file|total|ranked|gated)\b/.exec(text)?.[1] ?? (/^--\s/.test(text) ? "--" : undefined);
 const COST = /([\d,]+) tokens in, ([\d,]+) out, \$([\d.]+)/;
 const num = (s: string) => Number(s.replace(/,/g, ""));
 
@@ -14,13 +16,12 @@ export function parseLine(raw: string, t = 0): Line {
   const text = raw.trimStart();
   const c = COST.exec(text);
   const secs = /(\d+(?:\.\d+)?)s \(jev /.exec(text);
-  const first = text.split(/\s+/)[0] ?? "";
   return {
     t,
     depth: Math.floor((raw.length - text.length) / 2),
     text,
     header: text.endsWith("…"),
-    verb: VERBS.has(first) ? first : undefined,
+    verb: verbOf(text),
     cost: c ? { in: num(c[1]!), out: num(c[2]!), dollars: Number(c[3]) } : undefined,
     secs: secs ? Number(secs[1]) : undefined,
     message: /^(jev|jevsec|jevfind|jevgrep): /.test(text),
@@ -52,11 +53,13 @@ export function tree(lines: Line[]): Node[] {
  * Tokens spent so far. A cost line sums the deeper cost lines since the last
  * line at its depth or shallower, so it replaces them; `total` is the whole.
  */
+export const isTotal = (l: Line) => l.depth === 0 && l.text.startsWith("total ");
+
 export function spendOf(lines: Line[]): Cost {
   const counted: { depth: number; cost: Cost }[] = [];
   for (const l of lines) {
     if (!l.cost) continue;
-    if (l.depth === 0 && l.text.startsWith("total ")) return l.cost;
+    if (isTotal(l)) return l.cost;
     while (counted.length && counted[counted.length - 1]!.depth > l.depth) counted.pop();
     counted.push({ depth: l.depth, cost: l.cost });
   }
@@ -76,16 +79,20 @@ export type Facts = {
   files?: number;
   windows?: number;
   sections?: number;
+  /** -n asked for this many passages of a question that has one answer. */
+  onlyOne?: number;
 };
 
 export function factsOf(lines: Line[]): Facts {
   const f: Facts = {};
   let m: RegExpExecArray | null;
-  for (const { text } of lines) {
-    if ((m = /^question (looks like|treated as) an? (\w+) question/.exec(text))) [f.kind, f.forced] = [m[2], m[1] === "treated as"];
-    else if ((m = /^asks for (.+)$/.exec(text))) f.asks = m[1];
-    else if ((m = /^counts (.+)$/.exec(text))) f.counts = m[1];
-    else if ((m = /^searches for (.+)$/.exec(text))) f.searches = m[1];
+  for (const { text, depth } of lines) {
+    // A table across the shelf reads each cell's question too, a level down; the facts are the question's own.
+    if (depth === 0 && (m = /^question (looks like|treated as) an? (\w+) question/.exec(text))) [f.kind, f.forced] = [m[2], m[1] === "treated as"];
+    else if (depth === 0 && (m = /^asks for (.+)$/.exec(text))) f.asks = m[1];
+    else if (depth === 0 && (m = /^counts (.+)$/.exec(text))) f.counts = m[1];
+    else if (depth === 0 && (m = /^searches for (.+)$/.exec(text))) f.searches = m[1];
+    else if (depth === 0 && (m = /^-n (\d+) applies to passage questions only/.exec(text))) f.onlyOne = Number(m[1]);
     else if ((m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache ??= { question: m[1]!, score: m[2]! };
     else if ((m = /^embedding (\d+) pages of (.+), once/.exec(text))) f.embedding = `${m[1]} pages of ${m[2]}`;
     else if ((m = /^rows name documents \(p=[\d.]+\): (.+?); asks (.+?)  in /.exec(text))) f.across = { rows: m[1]!, columns: m[2]! };

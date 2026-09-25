@@ -30,9 +30,18 @@ type Props = {
   running: boolean;
   onAsk: () => void;
   onStop: () => void;
+  /** A line to show under the question, like what "ask again" restored. */
+  note?: string;
+  onDismissNote: () => void;
+  /** Bumped to move the cursor into the question. */
+  focus: number;
+  /** Why the chosen ranking cache cannot run, when it cannot. */
+  cacheWhy?: string;
+  onCacheOffOnce: () => void;
 };
 
-export function Ask({ tool, setTool, question, setQuestion, options, setOptions, pdf, folders, files, running, onAsk, onStop }: Props) {
+export function Ask(props: Props) {
+  const { tool, setTool, question, setQuestion, options, setOptions, pdf, folders, files, running, onAsk, onStop, note, onDismissNote, focus, cacheWhy, onCacheOffOnce } = props;
   const [showOptions, setShowOptions] = useState(false);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -48,15 +57,24 @@ export function Ask({ tool, setTool, question, setQuestion, options, setOptions,
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [question]);
 
+  // Asking puts the answer in view, so the options fold away.
   useEffect(() => {
-    const focus = (e: KeyboardEvent) => {
+    if (running) setShowOptions(false);
+  }, [running]);
+
+  useEffect(() => {
+    if (focus) box.current?.focus();
+  }, [focus]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
         e.preventDefault();
         box.current?.focus();
       }
     };
-    window.addEventListener("keydown", focus);
-    return () => window.removeEventListener("keydown", focus);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   return (
@@ -116,7 +134,7 @@ export function Ask({ tool, setTool, question, setQuestion, options, setOptions,
 
       {tool !== "jevgrep" && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
-          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">the wording picks the answer</span>
+          <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">{options.kind === "auto" ? "the wording picks the answer" : "kind forced in Options"}</span>
           {KIND_HINTS.map((k) => (
             <span
               key={k.kind}
@@ -126,9 +144,34 @@ export function Ask({ tool, setTool, question, setQuestion, options, setOptions,
                 options.kind === k.kind ? "bg-teal-700 text-white ring-teal-700" : "bg-stone-50 text-stone-600 ring-stone-200",
               )}
             >
-              <span className="font-semibold">{k.kind}</span> <span className={options.kind === k.kind ? "text-teal-100" : "text-stone-400"}>{k.says}</span>
+              <span className="font-semibold">{k.kind}</span> <span className={cx("hidden 2xl:inline", options.kind === k.kind ? "text-teal-100" : "text-stone-400")}>{k.says}</span>
             </span>
           ))}
+        </div>
+      )}
+
+      {note && (
+        <div className="mx-4 mb-2 flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-1.5 text-xs text-sky-900 ring-1 ring-sky-600/20">
+          <span className="flex-1">{note}</span>
+          <button onClick={onDismissNote} aria-label="Dismiss" className="text-sky-500 hover:text-sky-800">
+            ×
+          </button>
+        </div>
+      )}
+
+      {cacheWhy && (
+        <div role="alert" className="mx-4 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">
+          <div>
+            <span className="font-semibold">The ranking cache can't run, so the tool would refuse this question.</span> {cacheWhy.replace(/^the ranking cache \(--cache [^)]+\) /, "It ")}
+          </div>
+          <div className="mt-1.5 flex gap-2">
+            <button onClick={onCacheOffOnce} disabled={running || !question.trim()} className="rounded-md bg-amber-700 px-2 py-1 font-semibold text-white hover:bg-amber-600 disabled:opacity-40">
+              Ask once with the cache off
+            </button>
+            <button onClick={() => setOptions({ ...options, cache: "off" })} className="rounded-md px-2 py-1 font-medium text-amber-800 ring-1 ring-amber-600/30 hover:bg-amber-100">
+              Turn the cache off
+            </button>
+          </div>
         </div>
       )}
 
@@ -165,9 +208,9 @@ export function Ask({ tool, setTool, question, setQuestion, options, setOptions,
 
       {showOptions && <OptionsPanel tool={tool} options={options} setOptions={setOptions} />}
 
-      <div className="flex items-center gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-4 py-2">
+      <div className="flex items-start gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-4 py-2">
         <span className="shrink-0 font-mono text-[11px] text-stone-400">$</span>
-        <code className="scroll-thin min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-[11px] text-stone-600" title="The same run from a terminal in the repo">
+        <code className="min-w-0 flex-1 font-mono text-[11px] [overflow-wrap:anywhere] text-stone-600" title="The same run from a terminal in the repo">
           {command}
         </code>
         <button

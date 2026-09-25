@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ask, KIND_HINTS } from "./components/Ask";
 import { Header } from "./components/Header";
 import { History, runSpend } from "./components/History";
 import { RunView } from "./components/RunView";
 import { Shelf } from "./components/Shelf";
-import { commandFor, DEFAULTS, type Options, type Tool } from "./options";
+import { spendOf } from "./log";
+import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
 import { useRun, type Run } from "./run";
 import type { Config, Health, RunRequest, Scan } from "./types";
 import { cx, useStored } from "./util";
@@ -15,6 +16,9 @@ async function scanOf(dir: string): Promise<Scan> {
   const r = await fetch(`/api/scan?dir=${encodeURIComponent(dir)}`);
   return (await r.json()) as Scan;
 }
+
+const ledgerOf = (runs: Run[]) =>
+  runs.reduce((a, r) => ({ dollars: a.dollars + runSpend(r), in: a.in + (r.end?.report?.spent.in ?? spendOf(r.lines).in), runs: a.runs + 1 }), { dollars: 0, in: 0, runs: 0 });
 
 export function App() {
   const [health, setHealth] = useState<Health>();
@@ -27,7 +31,18 @@ export function App() {
   const [history, setHistory] = useStored<Run[]>("jev.history", []);
   const [side, setSide] = useState<"shelf" | "history">("shelf");
   const [viewing, setViewing] = useState<Run>();
-  const { run, start, stop } = useRun((r) => setHistory((h) => [r, ...h.filter((x) => x.id !== r.id)].slice(0, HISTORY)));
+  // What this browser's runs have spent, kept apart from the history so clearing one keeps the other.
+  const [ledger, setLedger] = useStored("jev.ledger", ledgerOf(history));
+  const [note, setNote] = useState<string>();
+  const [focus, setFocus] = useState(0);
+  const main = useRef<HTMLElement>(null);
+  const { run, start, stop } = useRun((r) => {
+    setHistory((h) => [r, ...h.filter((x) => x.id !== r.id)].slice(0, HISTORY));
+    setLedger((l) => {
+      const add = ledgerOf([r]);
+      return { dollars: l.dollars + add.dollars, in: l.in + add.in, runs: l.runs + 1 };
+    });
+  });
 
   const checkHealth = useCallback(() => {
     fetch("/api/health")
@@ -57,22 +72,21 @@ export function App() {
     return folders.flatMap((f) => scans[f]?.files ?? []).filter((f) => !seen.has(f.path) && seen.set(f.path, true));
   }, [folders, scans]);
 
-  const spend = useMemo(
-    () => history.reduce((a, r) => ({ dollars: a.dollars + runSpend(r), in: a.in + (r.end?.report?.spent.in ?? 0), runs: a.runs + 1 }), { dollars: 0, in: 0, runs: 0 }),
-    [history],
-  );
-
   const ask = (request: RunRequest) => {
     setViewing(undefined);
+    setNote(undefined);
     start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, folders }));
   };
   const askNow = () =>
     ask({ tool, question: question.trim(), options, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) });
 
-  const addFolder = async (input: string) => {
+  /** Adds the folder, or says why not: a path that is not a folder never goes on the shelf. */
+  const addFolder = async (input: string): Promise<string | undefined> => {
     const scan = await scanOf(input);
+    if (scan.error) return scan.error === "not a folder" ? `${scan.dir} is not a folder` : /ENOENT/.test(scan.error) ? `${scan.dir} does not exist` : scan.error;
     setScans((s) => ({ ...s, [scan.dir]: scan }));
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
+    if (scan.files.length === 0) return `${scan.dir} holds no PDFs`;
   };
 
   const pick = (path: string) => {
@@ -82,12 +96,13 @@ export function App() {
 
   const shown = viewing ?? run;
   const live = run?.status === "running";
+  const cacheWhy = tool !== "jevgrep" && options.cache !== "off" ? health?.cache[options.cache] : null;
 
   return (
     <div className="flex h-full flex-col">
-      <Header health={health} cache={options.cache} spend={spend} onRefresh={checkHealth} />
+      <Header health={health} cache={options.cache} spend={ledger} onRefresh={checkHealth} onResetSpend={() => setLedger({ dollars: 0, in: 0, runs: 0 })} />
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-80 shrink-0 flex-col border-r border-stone-200 bg-stone-50">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-50 xl:w-80">
           <div role="tablist" className="flex gap-1 border-b border-stone-200 px-3 pt-2">
             {(["shelf", "history"] as const).map((s) => (
               <button
@@ -117,8 +132,8 @@ export function App() {
           )}
         </aside>
 
-        <main className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
+        <main ref={main} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 xl:px-6 xl:py-6">
             <Ask
               tool={tool}
               setTool={setTool}
@@ -132,6 +147,11 @@ export function App() {
               running={live}
               onAsk={askNow}
               onStop={stop}
+              note={note}
+              onDismissNote={() => setNote(undefined)}
+              focus={focus}
+              cacheWhy={cacheWhy ?? undefined}
+              onCacheOffOnce={() => ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) })}
             />
             {viewing && live && (
               <button onClick={() => setViewing(undefined)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
@@ -143,18 +163,19 @@ export function App() {
                 run={shown}
                 onStop={stop}
                 onPick={pick}
-                onRetry={(patch) => {
-                  const next = { ...shown.request.options, ...patch };
-                  setOptions(next);
-                  ask({ ...shown.request, options: next });
-                }}
+                // A retry changes this run only; the saved options stay as they are.
+                onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
                 onEdit={() => {
                   const r = shown.request;
+                  const restored = { ...DEFAULTS, ...r.options };
+                  const diff = changed(r.tool, restored);
                   setTool(r.tool);
                   setQuestion(r.question);
-                  setOptions({ ...DEFAULTS, ...r.options });
+                  setOptions(restored);
                   if (r.pdf) setPdf(r.pdf);
-                  window.scrollTo({ top: 0 });
+                  setNote(`Restored from that run: ${diff.length ? diff.map((d) => `${d.label} ${String(restored[d.key])}`).join(", ") : "every option at its default"}.`);
+                  main.current?.scrollTo({ top: 0, behavior: "smooth" });
+                  setFocus((n) => n + 1);
                 }}
               />
             ) : (
