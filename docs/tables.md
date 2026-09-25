@@ -140,9 +140,26 @@ jev is sure of them and carry one on where it half believes them, since
 "guns" of "small guns" sits either side of even odds from one reading to
 the next.
 
-When the rows' passage holds several tables, jev picks the one with a row
-for each of the things; a heading or prose between two tables with the
+A request can keep the book's own columns and add to them: "Show me the
+standard weapon table. In addition to the normal columns add the extended
+magazine size" reads `keep` in the same call that reads the words, and the
+rows' table's columns (those some row fills) go before the named ones; a
+named column the table already holds is not repeated.
+
+When the rows' passage holds several tables, jev picks the one the question
+asks for, with a row for each of the things as the question names them: the
+rows' name alone loses "standard" in some readings, and CPR's p.95 passage
+runs on to the exotic weapons; a heading or prose between two tables with the
 same heads keeps them apart.
+
+Measured with `experiments/compose/` on 2026-09-25: `keep` read true 6 of
+6 times on the request above and 3 of 3 on "with all its columns", false
+12 of 12 on four requests that name every column. The prompt's example is
+the request above, so the last two are the evidence it generalises. Asked
+"which table has a row for each of the weapon", jev took the exotic table
+10 of 10 times, and 5 of 5 with "standard weapon" when the exotic table
+was offered first; asked for the table the question asks for, it took the
+standard one 20 of 20 times. The bench showed no case falling.
 
 The table prints, pipes and highlights as a passage's rows do, each cell
 marked on the page it came from. A table request that names no columns

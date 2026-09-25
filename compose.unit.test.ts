@@ -111,6 +111,7 @@ describe("readRequest", () => {
   const q = "Give me each of the standard ranged weapons as a row with rate of fire, standard magazine size and ammo type";
   /** Says yes to the listed words as rows or columns, the "standard" of the rows' name as both. */
   const client = stub((key) => {
+    if (key === "keep") return { type: "noul", noul: 0.1 };
     const i = Number(key.slice(1));
     const word = q.split(" ")[i]!.replace(/,$/, "");
     const rows = ["each", "standard", "ranged", "weapons"].includes(word) && i < 8;
@@ -120,7 +121,7 @@ describe("readRequest", () => {
 
   test("with no word naming the rows, there are none, and every column word stays a column", async () => {
     const none = stub((key) => ({ type: "noul", noul: key[0] === "c" && key !== "c0" ? 0.9 : 0.1 }));
-    expect(await readRequest(none, "Columns damage, cost")).toEqual({ things: "", columns: ["damage", "cost"], annotated: [] });
+    expect(await readRequest(none, "Columns damage, cost")).toEqual({ things: "", columns: ["damage", "cost"], annotated: [], keep: false });
   });
 
   test("the rows are the first name, without its each; its words are not columns; an of between column words stays", async () => {
@@ -128,6 +129,7 @@ describe("readRequest", () => {
       things: "standard ranged weapons",
       columns: ["rate of fire", "standard magazine size", "ammo type"],
       annotated: [],
+      keep: false,
     });
   });
 });
@@ -317,7 +319,7 @@ describe("readRequest's instruction", () => {
   });
 
   test("what to add is read apart from the columns, which keep their half-sure words, and it goes on the columns it names", async () => {
-    expect(await readRequest(client, q)).toEqual({ things: "small guns", columns: ["Damage", "Sight Mods"], add: "cost", annotated: [1] });
+    expect(await readRequest(client, q)).toEqual({ things: "small guns", columns: ["Damage", "Sight Mods"], add: "cost", annotated: [1], keep: false });
   });
 });
 
