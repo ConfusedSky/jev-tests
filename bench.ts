@@ -80,7 +80,13 @@ const CASES: Case[] = [
     page: 97,
   },
   { book: "fallout", question: "What is the cost, weight and damage rating of a hunting rifle?", truth: "cost 55, weight 10, damage rating 6", page: 97 },
-  { book: "litm", question: "How many theme types are there?", truth: 20, page: 75 },
+  {
+    book: "litm",
+    question: "How many theme types are there?",
+    truth: 20,
+    page: 75,
+    known: "some runs miss p.75 and count 1 to 6 on p.104 or p.125, or find nothing (issue #14)",
+  },
   { book: "litm", question: "How many theme kits are there?", truth: 153, page: 76, known: "the second page sits at the answer floor and is counted one run, refused the next" },
   { book: "litm", question: "How many tropes are there?", truth: 30, page: 78, known: "the contents list the ten trope groups" },
   {
