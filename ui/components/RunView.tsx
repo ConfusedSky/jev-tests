@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { fileStem, runJson } from "../export";
 import { AFRESH, inFlight, OUTCOME, PER_MILLION, PRICE, TOOL_LABEL } from "../labels";
-import { factsOf, flowOf, gaugesOf, spendOf, walkOf, type Facts, type Gauge, type Line, type Read } from "../log";
+import { factsOf, flowOf, gaugesOf, spendOf, stateOf, walkOf, type Facts, type Gauge, type Line } from "../log";
 import { changed } from "../options";
 import { outcomeOf, type Run } from "../run";
 import type { JsonReport } from "../types";
 import { hashFor } from "../url";
-import { basename, copy, cx, dollars, download, secs, tokens, useTick } from "../util";
+import { basename, copy, cx, dollars, download, plural, secs, tokens, useTick } from "../util";
 import { Action, Actions, Icon } from "./Icon";
 import { Log } from "./Log";
 import { MiddlePath } from "./Path";
@@ -57,8 +57,8 @@ function FactLine({ f, kind }: { f: Facts; kind?: string }) {
       : []),
     ...(f.embedding ? [{ tone: "reused" as const, label: "embedding once", short: `embedding ${f.embedding}`, body: `${f.embedding}, kept for later questions` }] : []),
     ...(f.onlyOne ? [{ tone: "walk" as const, label: "passages", short: `one answer, not ${f.onlyOne}`, body: `asked for ${f.onlyOne}; a ${kind} question has one answer` }] : []),
-    ...(f.sections !== undefined ? [{ tone: "walk" as const, label: "sections read", short: `${f.sections} section${f.sections === 1 ? "" : "s"} read`, body: String(f.sections) }] : []),
-    ...(f.files !== undefined ? [{ tone: "walk" as const, label: "walked", short: `${f.files} files, ${f.windows} windows`, body: `${f.files} files, ${f.windows} windows` }] : []),
+    ...(f.sections !== undefined ? [{ tone: "walk" as const, label: "sections read", short: `${plural(f.sections, "section")} read`, body: String(f.sections) }] : []),
+    ...(f.files !== undefined ? [{ tone: "walk" as const, label: "walked", short: `${plural(f.files, "file")}, ${plural(f.windows ?? 0, "window")}`, body: `${plural(f.files, "file")}, ${plural(f.windows ?? 0, "window")}` }] : []),
   ];
   if (facts.length === 0) return null;
   const tones = (Object.keys(TONE) as (keyof typeof TONE)[]).filter((t) => facts.some((x) => x.tone === t));
@@ -98,19 +98,25 @@ function FactLine({ f, kind }: { f: Facts; kind?: string }) {
   );
 }
 
-const VERDICT: Record<NonNullable<Read["verdict"]>, string> = {
-  take: "bg-emerald-100 text-emerald-800",
-  keep: "bg-amber-100 text-amber-800",
-  drop: "bg-rose-100 text-rose-700",
+const STATE: Record<ReturnType<typeof stateOf>, { tone: string; says: string }> = {
+  take: { tone: "bg-emerald-100 text-emerald-800", says: "taken: its answer was kept" },
+  keep: { tone: "bg-amber-100 text-amber-800", says: "kept: read, below the answer floor" },
+  drop: { tone: "bg-rose-100 text-rose-700", says: "dropped: read, and it did not answer" },
+  yes: { tone: "bg-emerald-50 text-emerald-700", says: "passed the gate, but the run ended before it was read out" },
+  no: { tone: "text-stone-500", says: "the gate passed over it" },
+  "reading…": { tone: "animate-pulse bg-sky-100 text-sky-800", says: "passed the gate or not gated yet; being read now" },
+  "–": { tone: "text-stone-400", says: "the run ended before the gate reached it" },
 };
 
-/** The walk in a line, then each file opened and what was read in it with how it scored. */
-function Walked({ lines }: { lines: Line[] }) {
+/** The walk in a line, then each file opened and what was read in it with how it scored; while `live`, the read under way says so. */
+function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
   const [all, setAll] = useState(false);
   const w = walkOf(lines);
-  const flow = flowOf(w);
+  // Nothing is "taken" yet while the walk may still take something.
+  const flow = flowOf(w).filter((step) => !(live && step === "took nothing"));
   if (flow.length === 0) return null;
   const reads = w.files.reduce((n, f) => n + f.reads.length, 0);
+  const last = w.files[w.files.length - 1]?.reads.at(-1);
   const shown = all ? Infinity : 8;
   let left = shown;
   return (
@@ -133,6 +139,8 @@ function Walked({ lines }: { lines: Line[] }) {
             left -= rows.length;
             return (
               <li key={i}>
+                {/* A table across the shelf opens files a cell at a time. */}
+                {f.under && f.under !== w.files[i - 1]?.under && <div className="mt-1 mb-0.5 text-[11px] font-semibold text-stone-600">{f.under}</div>}
                 {f.path && (
                   <div className="flex min-w-0 items-center gap-2 text-xs">
                     <MiddlePath path={f.path} className="font-medium text-stone-800" />
@@ -141,17 +149,22 @@ function Walked({ lines }: { lines: Line[] }) {
                 )}
                 {rows.length > 0 && (
                   <ul className={cx("divide-y divide-stone-100", f.path && "mt-0.5 border-l border-stone-200 pl-3")}>
-                    {rows.map((r, j) => (
-                      <li key={j} className="flex min-w-0 items-baseline gap-2 py-1 text-xs">
-                        <span className={cx("w-10 shrink-0 rounded px-1 text-center text-[10px] font-semibold", r.verdict ? VERDICT[r.verdict] : "text-stone-500")}>{r.verdict ?? "no"}</span>
-                        <span className="w-14 shrink-0 text-[11px] text-stone-500">{r.kind === "excerpt" ? "excerpt" : r.kind}</span>
-                        <span className="min-w-0 flex-1 truncate text-stone-700" title={r.answer ? `${r.name}: ${r.answer}` : r.name}>
-                          {r.name}
-                          {r.answer && <span className="text-stone-500"> — “{r.answer}”</span>}
-                        </span>
-                        {r.p !== undefined && <span className="shrink-0 font-mono text-[11px] tabular-nums text-stone-500">p={r.p.toFixed(2)}</span>}
-                      </li>
-                    ))}
+                    {rows.map((r, j) => {
+                      const state = stateOf(r, live && r === last);
+                      return (
+                        <li key={j} className="flex min-w-0 items-baseline gap-2 py-1 text-xs">
+                          <span title={STATE[state].says} className={cx("w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold", STATE[state].tone)}>
+                            {state}
+                          </span>
+                          <span className="w-14 shrink-0 text-[11px] text-stone-500">{r.kind === "excerpt" ? "excerpt" : r.kind}</span>
+                          <span className="min-w-0 flex-1 truncate text-stone-700" title={r.answer ? `${r.name}: ${r.answer}` : r.name}>
+                            {r.name}
+                            {r.answer && <span className="text-stone-500"> — “{r.answer}”</span>}
+                          </span>
+                          {r.p !== undefined && <span className="shrink-0 font-mono text-[11px] tabular-nums text-stone-500">p={r.p.toFixed(2)}</span>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </li>
@@ -168,17 +181,30 @@ function Walked({ lines }: { lines: Line[] }) {
   );
 }
 
-/** Bars for what a live run's log can measure; the looping bar only while it can measure nothing. */
+/**
+ * A bar for a step the log can measure; the looping bar while there is
+ * none. What counts against a cap is said in words, since a run that
+ * answers early never fills it.
+ */
 function Progress({ gauges, trying }: { gauges: Gauge[]; trying: string }) {
+  const bars = gauges.filter((g) => !g.cap);
+  const caps = gauges.filter((g) => g.cap);
   return (
     <div className="space-y-2 rounded-2xl border border-sky-600/20 bg-sky-50/60 px-4 py-3">
-      {gauges.length === 0 ? (
+      {caps.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-sky-900">
+          {caps.map((g) => (
+            <span key={g.label}>{g.label}</span>
+          ))}
+        </div>
+      )}
+      {bars.length === 0 ? (
         <div className="relative h-1 overflow-hidden rounded-full bg-sky-100">
           <div className="absolute inset-y-0 w-1/3 animate-[slide_1.2s_ease-in-out_infinite] rounded-full bg-sky-500" />
         </div>
       ) : (
         <div className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
-          {gauges.map((g) => (
+          {bars.map((g) => (
             <div key={g.label}>
               <div className="mb-1 flex justify-between gap-2 text-[11px] text-sky-900">
                 <span>{g.label}</span>
@@ -379,7 +405,7 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
 
       {!live && <Result run={run} onPick={onPick} onRetry={onRetry} onEdit={onEdit} />}
       <FactLine f={f} kind={kind} />
-      <Walked lines={run.lines} />
+      <Walked lines={run.lines} live={live} />
       {!live && run.end?.report && <Timing spent={run.end.report.spent} />}
       <Log key={run.id} lines={run.lines} live={live} trying={run.trying} failed={outcome === "error"} />
     </div>

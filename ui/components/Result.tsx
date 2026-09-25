@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { acrossGrid, answerText, citation, fileStem, sourceLine } from "../export";
-import { columnsOf, errorText, factsOf, withoutCost, type Facts } from "../log";
-import type { Options, Tool } from "../options";
+import { columnsOf, errorText, factsOf, walkOf, withoutCost, type Facts } from "../log";
+import { weakMatch, type Options, type Tool } from "../options";
 import { OFFLINE, type Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
-import { inFlight } from "../labels";
+import { AFRESH, inFlight, PER_MILLION } from "../labels";
 import { basename, copy, cx, dollars } from "../util";
 import { GridExport } from "./GridExport";
 import { Action } from "./Icon";
@@ -51,12 +51,17 @@ function Source({ hit }: { hit: JsonHit }) {
   );
 }
 
-function Value({ kind, text }: { kind?: string; text: string }) {
-  if (kind === "truth") {
-    const yes = text.trim().toLowerCase() === "true";
-    return <span className={cx("font-serif text-5xl font-semibold tracking-tight", yes ? "text-emerald-700" : "text-rose-700")}>{yes ? "True" : text === "false" ? "False" : text}</span>;
-  }
-  return <span className="font-serif text-5xl font-semibold tracking-tight break-words text-stone-900">{text}</span>;
+/** A figure or verdict at full size; a `lead` (found before a stop, or under the floor) smaller, and `muted` when nothing vouches for it. */
+function Value({ kind, text, lead, muted }: { kind?: string; text: string; lead?: string; muted?: boolean }) {
+  const yes = text.trim().toLowerCase() === "true";
+  const shown = kind === "truth" ? (yes ? "True" : text === "false" ? "False" : text) : text;
+  const tone = muted ? "text-stone-500" : kind === "truth" ? (yes ? "text-emerald-700" : "text-rose-700") : "text-stone-900";
+  return (
+    <div>
+      {lead && <div className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">{lead}</div>}
+      <span className={cx("font-serif font-semibold tracking-tight break-words", lead ? "text-3xl" : "text-5xl", tone)}>{shown}</span>
+    </div>
+  );
 }
 
 const MARKED: Record<string, string> = {
@@ -132,6 +137,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading, conten
       </div>
       <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_200px]")}>
         <div className="min-w-0">
+          {below && long && a && <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700">lead, below the floor</div>}
           {!a ? (
             <p className="text-sm text-stone-500">This page passed the gate; nothing was read off it.</p>
           ) : long && a.passage ? (
@@ -140,7 +146,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading, conten
             <p className="font-serif text-[15px] leading-relaxed whitespace-pre-wrap text-stone-800">{a.text}</p>
           ) : (
             <div>
-              <Value kind={kind} text={a.text} />
+              <Value kind={kind} text={a.text} lead={below ? "lead, below the floor" : undefined} muted={below} />
               <div className="mt-1 mb-4 text-sm text-stone-500">
                 {(contents ? FROM.contents : FROM.page)[kind ?? ""] ?? ""}
                 {a.pages && a.pages.length > 1 ? ` across pages ${a.pages.join(", ")}` : ""}
@@ -278,6 +284,60 @@ function Short({ got, f, o, tool, onRetry, onEdit }: { got: number; f: Facts; o:
   );
 }
 
+/** A retry ranking afresh, offered when nothing answered off a ranking the cache matched to an earlier question only weakly. */
+function Afresh({ f, o, onRetry }: { f: Facts; o: Options; onRetry: (patch: Partial<Options>) => void }) {
+  if (!f.cache || !weakMatch(o.cache, f.cache.whole)) return null;
+  return (
+    <div className="mt-3 rounded-lg bg-violet-50 px-3 py-2 text-xs text-stone-800 ring-1 ring-violet-600/20">
+      The sections were ranked for an earlier question, “{f.cache.question}”, reused from the cache on a weak match ({f.cache.score}), so the walk may have read that question's sections rather than this one's. Ranking afresh costs up to about {AFRESH.toLocaleString("en-US")} tokens ({dollars((AFRESH * PER_MILLION) / 1e6)}) a PDF with a long outline.
+      <button onClick={() => onRetry({ cache: "off" })} className="mt-2 block rounded-lg bg-stone-800 px-3 py-1.5 font-semibold text-white hover:bg-stone-700">
+        Ask again with the ranking made afresh
+      </button>
+    </div>
+  );
+}
+
+/** What a stopped walk had taken before the stop: the last answer read and where it stands, marked as never weighed against the rest of the walk. */
+function Lead({ run }: { run: Run }) {
+  const w = walkOf(run.lines);
+  const took = w.files.flatMap((f) => f.reads.filter((r) => r.verdict === "take").map((r) => ({ pdf: f.path ?? run.request.pdf, r }))).at(-1);
+  if (!took) return null;
+  const { pdf, r } = took;
+  const page = pdf && r.page ? r.page : undefined;
+  const f = factsOf(run.lines);
+  // A cell of a table across the shelf is a question of its own kind, so its answer goes by its shape: the log clips a long one.
+  const kind = f.across ? undefined : f.kind;
+  const long = f.across ? !!r.answer?.endsWith("…") : kind === "passage" || kind === "table";
+  return (
+    <article className="overflow-hidden rounded-2xl border border-dashed border-amber-300 bg-white">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-stone-100 px-5 py-3 text-xs text-stone-500">
+        <span className="font-medium text-stone-700">{pdf ? basename(pdf) : "the PDF"}</span>
+        <span>{r.kind === "contents" ? "the table of contents" : r.page ? `p.${r.page}` : ""}</span>
+        <span className="min-w-0 truncate" title={r.name}>
+          {r.name}
+        </span>
+        {r.sure !== undefined && <Confidence p={r.sure} floor={run.request.options.answerFloor} label="answer" />}
+      </div>
+      <div className={cx("grid gap-6 p-5", page !== undefined && "md:grid-cols-[minmax(0,1fr)_200px]")}>
+        <div className="min-w-0">
+          {long ? (
+            <>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">found before the stop</div>
+              <p className="font-serif text-[15px] leading-relaxed text-stone-800">“{r.answer}”</p>
+            </>
+          ) : (
+            <Value kind={kind} text={r.answer ?? ""} lead="found before the stop" />
+          )}
+          <p className="mt-3 text-xs leading-relaxed text-stone-500">
+            The walk had taken this when it was stopped. It never finished, so this was not weighed against what the rest of the walk would have read, and nothing is marked on the page. Ask again to have it answered in full.
+          </p>
+        </div>
+        {pdf && page !== undefined && <PagePreview view={pdf} pdf={pdf} page={page} stamp={run.id} compact />}
+      </div>
+    </article>
+  );
+}
+
 function Names({ ranked, total, floor, onPick, onAll }: { ranked: Ranked[]; total: number; floor: number; onPick: (path: string) => void; onAll: () => void }) {
   if (ranked.length === 0)
     return (
@@ -358,10 +418,13 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
   if (!r) {
     if (e.error === "stopped")
       return (
-        <Notice tone="stone" title={run.left ? "Stopped: the page was closed or reloaded while it ran" : "Stopped"}>
-          The log counts every call that finished before the stop. A call still in flight is billed by OpenRouter but never reported back, so it is not in that count
-          {flying?.in ? `: about one call's worth, some ${flying.in.toLocaleString("en-US")} tokens (${dollars(flying.dollars ?? 0)}) going by the calls before it` : flying ? ": most likely one call" : ""}.
-        </Notice>
+        <div className="space-y-4">
+          <Notice tone="stone" title={run.left ? "Stopped: the page was closed or reloaded while it ran" : "Stopped"}>
+            The log counts every call that finished before the stop. A call still in flight is billed by OpenRouter but never reported back, so it is not in that count
+            {flying?.in ? `: about one call's worth, some ${flying.in.toLocaleString("en-US")} tokens (${dollars(flying.dollars ?? 0)}) going by the calls before it` : flying ? ": most likely one call" : ""}.
+          </Notice>
+          <Lead run={run} />
+        </div>
       );
     if (run.unsent === "offline" || e.error === OFFLINE)
       return (
@@ -400,6 +463,7 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
           Try rewording, a lower page threshold or answer floor in Options, or {run.request.tool === "jevsec" ? "the whole shelf" : "a larger max files"}. The log shows every page that was read and how it scored.
         </div>
         {f.noText?.length ? <div className="mt-2 text-xs">Skipped for having no text layer (scanned pages?): {f.noText.map(basename).join(", ")}.</div> : null}
+        <Afresh f={f} o={o} onRetry={onRetry} />
       </Notice>
     );
   }
@@ -409,6 +473,7 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
       {r.status === "below" && (
         <Notice tone="amber" title={`No answer reached the answer floor of ${o.answerFloor}`}>
           The best one read is below; treat it as a lead, not an answer. A lead is not highlighted on its page.
+          <Afresh f={f} o={o} onRetry={onRetry} />
         </Notice>
       )}
       {short && <Short got={r.hits.length} f={f} o={o} tool={run.request.tool} onRetry={onRetry} onEdit={onEdit} />}

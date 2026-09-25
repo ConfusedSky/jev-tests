@@ -11,6 +11,19 @@ export const KINDS = ["count", "number", "truth", "passage", "table"] as const;
 export type Kind = (typeof KINDS)[number];
 export const CACHES = ["qwen3-4b", "qwen3-0.6b", "3-small", "off"] as const;
 
+/** Each cache model's bars, as cache.ts sets them: an earlier ranking is reused when the whole question scores `whole` against it, or its subject `subject`. */
+export const CACHE_BARS: Record<Exclude<(typeof CACHES)[number], "off">, { whole: number; subject: number }> = {
+  "qwen3-4b": { whole: 0.53, subject: 0.8 },
+  "qwen3-0.6b": { whole: 0.6, subject: 0.86 },
+  "3-small": { whole: 0.56, subject: 0.7 },
+};
+
+/** How far above its bar a question's match still counts as weak. */
+const WEAK = 0.1;
+
+/** Whether a ranking reused from the cache was matched on a question only weakly like this one: within WEAK of the bar, or under it with the subject carrying the match. */
+export const weakMatch = (model: Options["cache"], whole: number) => model !== "off" && whole < CACHE_BARS[model].whole + WEAK;
+
 export type Options = {
   kind: "auto" | Kind;
   hits: number;

@@ -22,6 +22,9 @@ export function ago(at: number, now = Date.now()): string {
   return new Date(at).toLocaleDateString();
 }
 
+/** "1 file", "2 files". */
+export const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
 export const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(" ");
 
 /** `key`'s value in localStorage, or `initial` when there is none or it cannot be read. */

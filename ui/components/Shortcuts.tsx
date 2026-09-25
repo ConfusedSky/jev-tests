@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 
 export const SHORTCUTS: { keys: string[]; does: string }[] = [
   { keys: ["/"], does: "Type a question" },
+  { keys: ["n"], does: "New question: the welcome page, the question box ready" },
   { keys: ["⏎"], does: "Ask; ⇧⏎ for a new line" },
   { keys: ["↓"], does: "From the question, to the questions asked before" },
   { keys: ["esc"], does: "Close this, a menu or the sidebar drawer; else stop the run" },

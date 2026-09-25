@@ -9,13 +9,27 @@ const logged = [parseLine("question looks like a count question  in 0.4s (jev 0.
 
 describe("charge", () => {
   test("adds a run's spend and counts it, under its day and mode", () => {
-    expect(charge({ dollars: 0.001, in: 100, runs: 1 }, { ...base, status: "done", lines: logged })).toEqual({ dollars: 0.001 + 0.00008, in: 2100, runs: 2, days: { [dayOf(base.at)]: { jevsec: 0.00008 } } });
+    expect(charge({ dollars: 0.001, in: 100, runs: 1 }, { ...base, status: "done", lines: logged })).toMatchObject({ dollars: 0.001 + 0.00008, in: 2100, runs: 2, days: { [dayOf(base.at)]: { jevsec: 0.00008 } } });
+  });
+
+  test("never counts a run twice, and charges only what it spent since it was counted", () => {
+    const zero = { dollars: 0, in: 0, runs: 0 };
+    const done: Run = { ...base, status: "done", lines: [...logged, parseLine("section 0.5s (jev 0.5s; 1,000 tokens in, 10 out, $0.00004)  A")] };
+    const once = charge(zero, done);
+    expect(charge(once, done)).toEqual(once);
+    // A page that saved its run on leaving, then came back to see it end.
+    const left = charge(zero, leftRun({ ...base, lines: logged }, 4000));
+    const ended = charge(left, done);
+    expect(ended).toMatchObject({ in: 3000, runs: 1 });
+    expect(ended.dollars).toBeCloseTo(0.00012, 10);
+    expect(ended.days![dayOf(base.at)]!.jevsec).toBeCloseTo(0.00012, 10);
+    expect(ledgerOf([done, done]).runs).toBe(1);
   });
 
   test("sums a span of days by mode, leaving out days before it", () => {
     const now = new Date(2026, 8, 25, 12).getTime();
     const day = 86_400_000;
-    const run = (at: number, tool: Run["request"]["tool"]): Run => ({ ...base, at, status: "done", request: { ...base.request, tool }, lines: logged });
+    const run = (at: number, tool: Run["request"]["tool"]): Run => ({ ...base, id: `r${at}`, at, status: "done", request: { ...base.request, tool }, lines: logged });
     const l = [run(now, "jevsec"), run(now - day, "jevfind"), run(now - 10 * day, "jevfind")].reduce(charge, { dollars: 0, in: 0, runs: 0 });
     expect(spentOver(l, 1, now).tools).toEqual({ jevfind: 0, jevsec: 0.00008, jevgrep: 0 });
     expect(spentOver(l, 7, now).dollars).toBeCloseTo(0.00016, 10);

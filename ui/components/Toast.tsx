@@ -26,17 +26,19 @@ export function Toasts({ children }: { children: ReactNode }) {
   };
 
   // The newest undo is a keystroke away, outside a text field, whose own undo it would steal.
-  const undoable = [...list].reverse().find((t) => t.action);
+  const undoable = useRef<Toast>(undefined);
+  undoable.current = list.findLast((t) => t.action);
   useEffect(() => {
-    if (!undoable) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== "z" || typing(e.target)) return;
+      const t = undoable.current;
+      if (!t || e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== "z" || typing(e.target)) return;
       e.preventDefault();
-      act(undoable);
+      drop(t.id);
+      t.action?.run();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [drop]);
 
   return (
     <Ctx.Provider value={show}>

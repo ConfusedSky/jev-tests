@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { columnsOf, drain, errorText, factsOf, flowOf, gaugesOf, isTotal, parseLine, spendOf, tree, walkOf, withoutCost } from "./log";
+import { columnsOf, drain, errorText, factsOf, flowOf, gaugesOf, isFrame, isTotal, parseLine, spendOf, stateOf, tree, walkOf, withoutCost } from "./log";
 
 const LOG = `question looks like a count question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)
 counts skills
@@ -90,7 +90,8 @@ describe("factsOf", () => {
       parseLine(`  ranked from cache in 3.8s (jev 0.0s, read 0.0s, other 3.8s): "How is radiation treated?" (question 0.53, subject 0.85)`),
       parseLine("total 52.1s (jev 1.8s, read 0.2s, stdin 50.1s, other 0.0s), 1 files opened, 2 windows read"),
     ]);
-    expect(f.cache).toEqual({ question: "How is radiation treated?", score: "question 0.53, subject 0.85", count: 1 });
+    expect(f.cache).toEqual({ question: "How is radiation treated?", score: "question 0.53, subject 0.85", whole: 0.53, subject: 0.85, count: 1 });
+    expect(factsOf([parseLine(`ranked from cache in 0.1s (jev 0.0s): "q" (question 0.61, subject –)`)]).cache).toMatchObject({ whole: 0.61, subject: undefined });
     expect([f.files, f.windows]).toEqual([1, 2]);
   });
 
@@ -164,9 +165,9 @@ ranked 25 paths and 23 excerpts in 0.5s (jev 0.4s; 8,044 tokens in, 796 out, $0.
 file 2.3s (jev 1.0s; 36,871 tokens in, 3,894 out, $0.00155)  2 windows read
 total 3.0s (jev 1.6s; 48,084 tokens in, 5,441 out, $0.00202), 1 files opened, 2 windows read`),
     );
-    expect(w.paths).toEqual({ ranked: 25, above: 1, floor: "1.5" });
+    expect(w.paths).toEqual({ ranked: 25, above: 1, floor: "1.5", times: 1 });
     expect(w.files).toEqual([
-      { path: "/books/Guide.pdf", score: 2.7, ranked: "169 sections and 20 excerpts", reads: [{ kind: "section", name: "Part I > Getting Started p.136-137", p: 0.78, verdict: "take", answer: "Open the box…", page: 136 }] },
+      { path: "/books/Guide.pdf", score: 2.7, ranked: "169 sections and 20 excerpts", reads: [{ kind: "section", name: "Part I > Getting Started p.136-137", p: 0.78, gate: "yes", verdict: "take", answer: "Open the box…", sure: 0.76, page: 136 }] },
     ]);
     expect(flowOf(w)).toEqual(["ranked 25 paths", "opened 1 of 25 (1 above the file floor 1.5)", "read 1 section", "took p.136"]);
   });
@@ -181,8 +182,8 @@ excerpt  yes  0.99  Catalogue p.24 (excerpt)…
 excerpt 0.3s (jev 0.2s; 1,593 tokens in, 168 out, $0.00007)  Catalogue p.24 (excerpt)`),
     );
     expect(w.files[0]!.reads).toEqual([
-      { kind: "excerpt", name: "Catalogue p.20", p: 0.1 },
-      { kind: "excerpt", name: "Catalogue p.24", p: 0.99, verdict: "take", answer: "410", page: 24 },
+      { kind: "excerpt", name: "Catalogue p.20", p: 0.1, gate: "no" },
+      { kind: "excerpt", name: "Catalogue p.24", p: 0.99, gate: "yes", verdict: "take", answer: "410", sure: 1, page: 24 },
     ]);
     expect(flowOf(w)).toEqual(["ranked from the cache", "read 2 excerpt pages", "took p.24"]);
     // A PDF without an outline names an excerpt by its page twice over.
@@ -205,6 +206,56 @@ no outline 0.4s (jev 0.4s; 900 tokens in, 20 out, $0.00004)`),
     ]);
     expect(flowOf(w)).toEqual(["ranked 0 sections", "read 2 windows", "took nothing"]);
     expect(flowOf(walkOf(parse("ranked 9 names in 0.3s (jev 0.3s; 1,317 tokens in, 148 out, $0.00006)")))).toEqual(["ranked 9 names"]);
+  });
+
+  // A table across the shelf ranks the paths once a cell, a level down, and each cell opens its own files there.
+  test("follow a table across the shelf file by file, each under its cell", () => {
+    const w = walkOf(
+      parse(`question looks like a table question  in 0.6s (jev 0.6s, read 0.0s, other 0.0s; 5,784 tokens in, 1,470 out, $0.00024)
+rows name documents (p=0.76): Heart, Vault Operations Manual; asks how many skills are there  in 0.3s (jev 0.3s, read 0.0s, other 0.0s; 3,163 tokens in, 721 out, $0.00013)
+Heart: how many skills are there…
+  question looks like a count question  in 0.2s (jev 0.2s, read 0.0s, other 0.0s; 2,377 tokens in, 546 out, $0.00010)
+  ranked 9 paths and 0 excerpts in 0.2s (jev 0.2s, read 0.0s, other 0.0s; 1,319 tokens in, 148 out, $0.00006), 1 above file floor 1.5 (8 below)
+  2.94  /shelf/heart.pdf…
+    no outline: scanning 1 of 1 windows in page order…
+      gated 1 pages (batch 1/1), 0.2s jev, 0 yes
+      no   0.45  p.1 (window 1/1)
+    no outline 0.2s (jev 0.2s, read 0.0s, other 0.0s; 468 tokens in, 23 out, $0.00002)
+  file 2.5s (jev 0.2s, read 0.0s, embed 2.2s, other 0.0s; 468 tokens in, 23 out, $0.00002)  1 windows read
+Heart: how many skills are there: N/A (1 file opened, none answered)  in 2.9s (jev 0.7s, read 0.0s, embed 2.2s, other 0.0s; 4,164 tokens in, 717 out, $0.00017)
+Vault Operations Manual: how many skills are there…
+  question looks like a count question  in 0.3s (jev 0.3s, read 0.0s, other 0.0s; 2,895 tokens in, 682 out, $0.00012)
+  ranked 9 paths and 0 excerpts in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 1,321 tokens in, 148 out, $0.00006), 3 above file floor 1.5 (6 below)
+  2.61  /shelf/manual.pdf…
+    ranked from cache in 0.1s (jev 0.0s, read 0.0s, embed 0.1s, other 0.0s): "how many classes are there in Vault Operations Manual?" (question 0.69, subject 0.84)
+    section Chapter I: Skills  p.1-1…
+      gated 1 pages (batch 1/1), 0.2s jev, 1 yes  Chapter I: Skills
+      yes  0.81  Chapter I: Skills p.1
+      take  7 (p=1.00)  Chapter I: Skills p.1
+    section 0.5s (jev 0.5s, read 0.0s, other 0.0s; 2,898 tokens in, 287 out, $0.00012)  Chapter I: Skills
+  file 0.6s (jev 0.5s, read 0.0s, embed 0.1s, other 0.0s; 2,898 tokens in, 287 out, $0.00012)  1 windows read
+Vault Operations Manual: how many skills are there: 7 (p=1.00)  in 1.3s (jev 1.2s, read 0.0s, embed 0.1s, other 0.0s; 7,114 tokens in, 1,117 out, $0.00030)
+total 5.1s (jev 2.8s, read 0.1s, embed 2.3s, other 0.0s; 20,225 tokens in, 4,025 out, $0.00085)`),
+    );
+    expect(w.files.map((f) => [f.path, f.under, f.reads.map((r) => [r.kind, r.name, r.verdict])])).toEqual([
+      ["/shelf/heart.pdf", "Heart: how many skills are there", [["window", "p.1 (window 1/1)", undefined]]],
+      ["/shelf/manual.pdf", "Vault Operations Manual: how many skills are there", [["section", "Chapter I: Skills p.1", "take"]]],
+    ]);
+    expect(flowOf(w)).toEqual(["ranked 9 paths for each of 2 cells", "opened 2 files", "read 1 section and 1 window", "took manual.pdf p.1"]);
+  });
+
+  test("say what became of each read: the verdict, else the gate's, and the one under way while the run goes on", () => {
+    const w = walkOf(
+      parse(`section A  p.1-1…
+  no   0.10  A p.1
+section B  p.2-2…
+  yes  0.97  B p.2
+section C  p.3-3…`),
+    );
+    const [a, b, c] = w.files[0]!.reads;
+    expect([stateOf(a!, true), stateOf(b!, true), stateOf(c!, true)]).toEqual(["no", "reading…", "reading…"]);
+    expect([stateOf(a!, false), stateOf(b!, false), stateOf(c!, false)]).toEqual(["no", "yes", "–"]);
+    expect(stateOf({ kind: "section", name: "D", gate: "yes", verdict: "drop" }, true)).toBe("drop");
   });
 });
 
@@ -237,14 +288,35 @@ describe("gaugesOf", () => {
 
   test("measure the files a shelf walk may open, the sections a file may read, and the step under way", () => {
     expect(gaugesOf(lines, "Rules 4 pages (batch 2/3)", { max: 12, maxFiles: 5 })).toEqual([
-      { label: "files opened", done: 1, of: 5 },
-      { label: "sections read in this file", done: 2, of: 12 },
+      { label: "1 file opened, up to 5", done: 1, of: 5, cap: true },
+      { label: "2 sections read in this file, up to 12", done: 2, of: 12, cap: true },
       { label: "batch 2 of 3 in this step", done: 1, of: 3 },
     ]);
   });
 
   test("say nothing before the log does", () => {
     expect(gaugesOf([], undefined, { max: 12 })).toEqual([]);
+  });
+
+  test("count a cell's own files in a table across the shelf, and windows in a book without an outline", () => {
+    const across = `Heart: skills…
+  ranked 9 paths and 0 excerpts in 0.2s (jev 0.2s; 1,319 tokens in, 148 out, $0.00006), 1 above file floor 1.5 (8 below)
+  2.94  /shelf/heart.pdf…
+    no outline: scanning 1 of 1 windows in page order…
+      no   0.45  p.1 (window 1/1)
+  file 2.5s (jev 0.2s; 468 tokens in, 23 out, $0.00002)  1 windows read
+Heart: skills: N/A (1 file opened, none answered)  in 2.9s (jev 0.7s; 4,164 tokens in, 717 out, $0.00017)
+Manual: skills…
+  ranked 9 paths and 0 excerpts in 0.4s (jev 0.4s; 1,321 tokens in, 148 out, $0.00006), 3 above file floor 1.5 (6 below)`
+      .split("\n")
+      .map((l) => parseLine(l));
+    expect(gaugesOf(across, undefined, { max: 12, maxFiles: 5 })).toEqual([
+      { label: "0 files opened for this cell, up to 5", done: 0, of: 5, cap: true },
+    ]);
+    expect(gaugesOf(across.slice(0, 5), undefined, { max: 12, maxFiles: 5 })).toEqual([
+      { label: "1 file opened, up to 5", done: 1, of: 5, cap: true },
+      { label: "1 window read in this file, up to 12", done: 1, of: 12, cap: true },
+    ]);
   });
 });
 
@@ -275,6 +347,18 @@ Bun v1.4.2 (Linux x64)`.split("\n");
     expect(errorText(["searches for tax", "jevsec: the ranking cache can't run", "start Ollama, or pass --cache off"])).toBe("searches for tax\njevsec: the ranking cache can't run\nstart Ollama, or pass --cache off");
     expect(errorText(["a", "b", "c", "d"], 2)).toBe("c\nd");
     expect(errorText(["    at x (y.ts:1:1)", "Bun v1.4.2 (Linux x64)"])).toBe("");
+  });
+
+  test("knows a crash's frames from the lines the tool said", () => {
+    expect(crash.filter((l) => !isFrame(parseLine(l).text)).map((l) => l.trim())).toEqual([
+      "question looks like a number question  in 0.5s (jev 0.5s, read 0.0s, other 0.0s; 1,859 tokens in, 410 out, $0.00008)",
+      "searches for tax",
+      "error: mutool failed: format error: cannot find version marker",
+      "warning: trying to repair broken xref",
+      "warning: repairing PDF document",
+      "Error: no objects found",
+      "",
+    ]);
   });
 
   test("reads the same again, so a stored error can be shown through it", () => {
