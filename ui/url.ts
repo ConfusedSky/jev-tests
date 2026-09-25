@@ -3,3 +3,6 @@ export const runInHash = (hash: string): string | undefined => /^#run=([\w-]+)$/
 
 /** The hash for a run, or none for the welcome page. */
 export const hashFor = (id: string | undefined): string => (id ? `#run=${id}` : "");
+
+/** Whether going to `url` from `href` changes the address, so a history entry is worth pushing. */
+export const moves = (url: string, href: string) => new URL(url, href).href !== href;

@@ -27,6 +27,10 @@ if (!(await Bun.file(pdf).exists())) {
   console.error(`jevsec: no such file: ${pdf}`);
   process.exit(2);
 }
+if (Bun.file(pdf).size === 0) {
+  console.error(`jevsec: empty file, nothing to read: ${pdf}`);
+  process.exit(2);
+}
 
 const client = await makeClient(opts.model);
 const ui = makeUi(opts.quiet);

@@ -54,7 +54,9 @@ Each prints its progress to stderr and the answer to stdout; `--help` lists
 the flags. The link opens a copy of the PDF with the answer highlighted
 (`--no-highlight` links to the PDF itself). Commonly used: `--open`, `-n N`
 (several passages), `--kind K` (force a kind of question), `--tsv` (tables
-as tab-separated rows), `--cache MODEL|off`.
+as tab-separated rows), `--cache MODEL|off`, `--json` (the outcome as one
+JSON document, each hit with the boxes its answer highlights and their
+pages' sizes, see [docs/pages.md](docs/pages.md#the-highlight-as-data)).
 
 ## Kinds of question
 
@@ -114,7 +116,7 @@ $ bun jevsec.ts fallout.pdf "Show me a table of the small guns with columns Dama
 | `shared.ts` | client, token counts, the ranking call, timing |
 | `format.ts` | column alignment and path elision |
 | `bench.ts` | the benchmark over real rulebooks |
-| `outline.js`, `highlight.js` | mutool scripts: the outline, the highlight |
+| `outline.js`, `highlight.js`, `sizes.js` | mutool scripts: the outline, the highlight, page sizes |
 | `experiments/` | one-off measurement scripts behind `docs/` |
 
 Tests and the benchmark are described in `CLAUDE.md`; `bun test` is offline

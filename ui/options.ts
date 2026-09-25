@@ -28,7 +28,6 @@ export type Options = {
   kind: "auto" | Kind;
   hits: number;
   cache: (typeof CACHES)[number];
-  highlight: boolean;
   across: "auto" | "on" | "off";
   threshold: number;
   answerFloor: number;
@@ -51,7 +50,6 @@ export const DEFAULTS: Options = {
   kind: "auto",
   hits: 1,
   cache: "qwen3-4b",
-  highlight: true,
   across: "auto",
   threshold: 0.7,
   answerFloor: 0.7,
@@ -86,7 +84,6 @@ export const SPECS: Spec[] = [
   { key: "kind", label: "Kind", type: "select", values: ["auto", ...KINDS], flag: (v) => ["--kind", v], tools: READ, help: "jev reads the kind off the wording; force one instead" },
   { key: "hits", label: "Passages", type: "number", min: 1, max: 10, step: 1, flag: "-n", tools: READ, help: "keep walking until this many passages pass; passage questions only" },
   { key: "cache", label: "Ranking cache", type: "select", values: CACHES, flag: (v) => ["--cache", v], tools: READ, help: "reuse the ranking of an earlier, similar question; off ranks every book afresh" },
-  { key: "highlight", label: "Highlight the answer", type: "toggle", flag: (on) => (on ? [] : ["--no-highlight"]), tools: READ, help: "mark the answer in a copy of the PDF, which the page preview shows" },
   { key: "across", label: "Table across the shelf", type: "select", values: ["auto", "on", "off"], flag: (v) => [v === "on" ? "--across" : "--no-across"], tools: ["jevfind"], help: "a row per document the question names, a column per question; auto asks jev" },
   { key: "threshold", label: "Page threshold", type: "number", min: 0, max: 1, step: 0.05, flag: "-t", tools: READ, advanced: true, help: "yes-probability a page needs before it is read for the answer" },
   { key: "answerFloor", label: "Answer floor", type: "number", min: 0, max: 1, step: 0.05, flag: "--answer-floor", tools: READ, advanced: true, help: "confidence an answer read off a page must reach" },
@@ -117,13 +114,21 @@ export function argsFor(tool: Tool, o: Options): string[] {
   });
 }
 
-/** Why `tool` cannot run with these options (a number outside its range), or undefined. */
+/** Why `tool` cannot run with these options (a number outside its range, or a fraction where a count goes), or undefined. */
 export function invalid(tool: Tool, o: Options): string | undefined {
   for (const s of SPECS) {
     const v = o[s.key];
     if (s.type !== "number" || !s.tools.includes(tool)) continue;
     if (typeof v !== "number" || !Number.isFinite(v) || v < s.min || v > s.max) return `${s.label} must be between ${s.min} and ${s.max}`;
+    // A count taken as a fraction, -n 1.5, runs as some other count.
+    if (s.step === 1 && !Number.isInteger(v)) return `${s.label} must be a whole number`;
   }
+}
+
+/** `v` held within the range of the number option `key`. */
+export function clampOption(key: keyof Options, v: number): number {
+  const s = SPECS.find((x) => x.key === key);
+  return s?.type === "number" ? Math.min(s.max, Math.max(s.min, v)) : v;
 }
 
 /** The specs that apply to `tool` and differ from the defaults. */

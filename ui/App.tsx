@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ask, KIND_HINTS, whyBlocked } from "./components/Ask";
+import { Dialog } from "./components/Dialog";
 import { Header } from "./components/Header";
 import { History } from "./components/History";
 import { Icon } from "./components/Icon";
 import { Palette } from "./components/Palette";
-import { Notice } from "./components/Result";
+import type { Served } from "./components/Page";
+import { Notice, type Reader } from "./components/Result";
 import { RunView } from "./components/RunView";
 import { Shelf } from "./components/Shelf";
 import { Shortcuts } from "./components/Shortcuts";
+import { SplitHandle } from "./components/SplitHandle";
 import { useToast } from "./components/Toast";
+import { Viewer } from "./components/Viewer";
 import { Welcome } from "./components/Welcome";
 import { fileStem, runJson } from "./export";
 import { useFocusInside, useTabTrap } from "./focus";
@@ -21,8 +25,9 @@ import { leftRun, OFFLINE, outcomeOf, useRun, type Run } from "./run";
 import { isLocate, locateHint, sourceKey } from "./sources";
 import { THEME_LABEL, THEMES, useTheme } from "./theme";
 import type { Config, Health, RunRequest, Scan } from "./types";
-import { hashFor, runInHash } from "./url";
+import { hashFor, moves, runInHash } from "./url";
 import { basename, copy, cx, dirname, dollars, download, plural, readStored, secs, useMediaQuery, useStored, writeStored } from "./util";
+import { spotsOf } from "./viewer";
 
 const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
@@ -60,6 +65,8 @@ export function App() {
   const [scans, setScans] = useState<Record<string, Scan | undefined>>({});
   const scansNow = useRef(scans);
   scansNow.current = scans;
+  // Counts the shelf's listings, each of which may make more PDFs servable; a page refused before is asked for again after.
+  const [listed, setListed] = useState(0);
   const [tool, setTool] = useStored<Tool>("jev.tool", "jevfind");
   const [question, setQuestion] = useStored("jev.question", "");
   const [options, setOptions] = useStored<Options>("jev.options", DEFAULTS);
@@ -100,7 +107,8 @@ export function App() {
   const view = useCallback((id: string | null, push = true) => {
     setViewingId(id);
     const url = hashFor(id ?? undefined) || location.pathname;
-    if (push) window.history.pushState(null, "", url);
+    // Going where the page already is, as `n` on the welcome page does, is no step back to take.
+    if (push && moves(url, location.href)) window.history.pushState(null, "", url);
     else window.history.replaceState(null, "", url);
   }, []);
 
@@ -142,6 +150,7 @@ export function App() {
     if (scan.error === OFFLINE) checkHealth();
     const kept = scan.error && before?.files.length ? { ...before, error: undefined, warning: `could not refresh (${scan.error}); showing the list from before` } : scan;
     setScans((s) => ({ ...s, [dir]: kept }));
+    setListed((n) => n + 1);
   }, [checkHealth]);
 
   // Runs once: the address is made to say what is shown, and the server's sources not seen before go on the shelf.
@@ -274,6 +283,33 @@ export function App() {
   };
 
   const shown = viewingId === null ? undefined : run?.id === viewingId ? run : history.find((r) => r.id === viewingId);
+
+  // The run's highlighted pages: beside the answer on a wide window, over it on a narrower one.
+  const wide = useMediaQuery("(min-width: 1280px)");
+  const spots = useMemo(() => (shown && shown.status !== "running" ? spotsOf(shown) : []), [shown]);
+  // `n` counts the asks, so asking again for the highlight shown scrolls back to it.
+  const [spotAt, setSpotAt] = useState({ i: 0, n: 0 });
+  const [reading, setReading] = useState(false);
+  const [paneOff, setPaneOff] = useState(false);
+  const [split, setSplit] = useStored("jev.split", 0.5);
+  const splitBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setSpotAt((s) => ({ i: 0, n: s.n + 1 }));
+    setReading(false);
+  }, [shown?.id]);
+  const pane = wide && spots.length > 0 && !paneOff;
+  const serving: Served = { boot: health && health !== "down" ? health.boot : undefined, listed, pending: folders.some((f) => scans[f] === undefined), down: health === "down" };
+  const showAt = (i: number) => setSpotAt((s) => ({ i: Math.max(0, Math.min(spots.length - 1, i)), n: s.n + 1 }));
+  /** Shows the pages of the answer `key` names (see Spot): in the pane beside it, or over the page. */
+  const showSpot = (key: string) => {
+    const i = spots.findIndex((s) => s.key === key);
+    if (i < 0) return;
+    showAt(i);
+    if (wide) setPaneOff(false);
+    else setReading(true);
+  };
+  const reader: Reader = { spots, wide, served: serving, show: showSpot, current: pane ? spots[spotAt.i]?.key : undefined };
+  const viewer = (onClose: () => void, closeLabel: string) => <Viewer spots={spots} at={spotAt.i} seq={spotAt.n} onAt={showAt} served={serving} onClose={onClose} closeLabel={closeLabel} />;
   // The address names a run this browser does not have: another's link, or one deleted since.
   const missing = viewingId !== null && !shown;
   // Word of a finished run goes once it is on screen, or gone from the history.
@@ -290,7 +326,8 @@ export function App() {
 
   const cacheWhy = tool !== "jevgrep" && options.cache !== "off" && health && health !== "down" ? health.cache[options.cache] : null;
   const offline = health === "down";
-  const target = () => (tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) });
+  // An empty file has nothing in it to read, so it goes to no tool; the shelf says so.
+  const target = () => (tool === "jevsec" ? { pdf } : { paths: files.filter((f) => f.size > 0).map((f) => f.path) });
   const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files, cacheWhy: cacheWhy ?? undefined, offline });
   const askNow = () => {
     if (live || blocked) return;
@@ -308,6 +345,7 @@ export function App() {
       return `${scan.dir} lists no PDFs that exist, so it stays off the shelf${hint ? `: ${hint}` : ""}`;
     }
     setScans((s) => ({ ...s, [scan.dir]: scan }));
+    setListed((n) => n + 1);
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
     toast(`${plural(scan.files.length, "PDF")} on the shelf from ${scan.dir}`);
   };
@@ -469,6 +507,14 @@ export function App() {
   useFocusInside(aside, covered);
   useTabTrap(aside, covered && !dialog);
 
+  /** Shows the pages at highlight `i`, with the cursor in them. */
+  const showPages = (i: number) => {
+    showAt(i);
+    if (!wide) return setReading(true);
+    setPaneOff(false);
+    requestAnimationFrame(() => document.getElementById("viewer-pages")?.focus());
+  };
+
   const items = (): Item[] => {
     const act = (id: string, label: string, run: () => void, extra: Partial<Item> = {}): Item => ({ id, group: "Actions", label, run, ...extra });
     const modes: { tool: Tool; label: string }[] = [
@@ -481,6 +527,13 @@ export function App() {
       live ? act("stop", "Stop the run", stop, { shortcut: "esc" }) : act("ask", "Ask", askNow, { hint: `“${question.trim()}”`, disabled: blocked, shortcut: "⏎" }),
       act("home", "New question", home, { shortcut: "n", hint: shown || missing ? "leaves this run for the welcome page" : undefined, keywords: "home welcome start fresh" }),
       act("focus", "Type a question", () => focusQuestion(), { shortcut: "/" }),
+      ...(spots.length > 0
+        ? [
+            act("pages", wide ? "Show the pages beside the answer" : "Read the answer on its pages", () => showPages(spotAt.i), { keywords: "viewer pdf page highlight read document" }),
+            act("next-mark", "Next highlight", () => showPages(spotAt.i + 1), { shortcut: "n", hint: "in the pages", disabled: spotAt.i >= spots.length - 1 ? "the one shown is the last" : undefined }),
+            act("prev-mark", "Previous highlight", () => showPages(spotAt.i - 1), { shortcut: "p", hint: "in the pages", disabled: spotAt.i === 0 ? "the one shown is the first" : undefined }),
+          ]
+        : []),
       ...(shown && shown.status !== "running"
         ? [
             act("again", "Ask again, with that run's question and options", () => edit(shown)),
@@ -610,95 +663,111 @@ export function App() {
           </div>
         </aside>
 
-        <main ref={main} inert={covered} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl space-y-5 px-3 py-4 md:px-4 md:py-5 xl:px-6 xl:py-6">
-            <Ask
-              tool={tool}
-              setTool={setTool}
-              question={question}
-              setQuestion={setQuestion}
-              options={options}
-              setOptions={setOptions}
-              pdf={pdf || undefined}
-              onPickPdf={pick}
-              onShowShelf={showShelf}
-              folders={folders}
-              files={files}
-              running={live}
-              offline={offline}
-              onAsk={askNow}
-              onStop={stop}
-              note={note}
-              onDismissNote={() => setNote(undefined)}
-              focus={focus}
-              cacheWhy={cacheWhy ?? undefined}
-              onCacheOffOnce={() => {
-                // The cache is the one thing turned off here; anything else that blocks the question still does.
-                const why = whyBlocked({ tool, question, options: { ...options, cache: "off" }, pdf: pdf || undefined, files, offline });
-                if (why) toast(why, "warn");
-                else ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() });
-              }}
-              suggestions={recentQuestions(history, question)}
-              onExample={example}
-            />
-            {live && run && shown?.id !== run.id && (
-              <button onClick={() => open(run)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
-                A question is still running. Show it →
-              </button>
-            )}
-            {endedShown && (
-              <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
-                <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(endedShown)].dot)} />
-                <span className="min-w-0 flex-1 truncate text-stone-700">
-                  Finished: <span className="font-medium">{OUTCOME[outcomeOf(endedShown)].label}</span> · {dollars(runSpend(endedShown))} · “{endedShown.request.question}”
-                </span>
-                <button onClick={() => open(endedShown)} className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">
-                  Show it →
+        <div ref={splitBox} className="flex min-w-0 flex-1">
+          <main ref={main} inert={covered} style={pane ? { flex: `${1 - split} 1 0` } : undefined} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-5xl space-y-5 px-3 py-4 md:px-4 md:py-5 xl:px-6 xl:py-6">
+              <Ask
+                tool={tool}
+                setTool={setTool}
+                question={question}
+                setQuestion={setQuestion}
+                options={options}
+                setOptions={setOptions}
+                pdf={pdf || undefined}
+                onPickPdf={pick}
+                onShowShelf={showShelf}
+                folders={folders}
+                files={files}
+                running={live}
+                offline={offline}
+                onAsk={askNow}
+                onStop={stop}
+                note={note}
+                onDismissNote={() => setNote(undefined)}
+                focus={focus}
+                cacheWhy={cacheWhy ?? undefined}
+                onCacheOffOnce={() => {
+                  // The cache is the one thing turned off here; anything else that blocks the question still does.
+                  const why = whyBlocked({ tool, question, options: { ...options, cache: "off" }, pdf: pdf || undefined, files, offline });
+                  if (why) toast(why, "warn");
+                  else ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() });
+                }}
+                suggestions={recentQuestions(history, question)}
+                onExample={example}
+              />
+              {live && run && shown?.id !== run.id && (
+                <button onClick={() => open(run)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
+                  A question is still running. Show it →
                 </button>
-                <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-500 hover:text-stone-700">
-                  <Icon name="close" size={14} />
-                </button>
-              </div>
-            )}
-            {shown ? (
-              <div ref={runView}>
-                <RunView
-                  // Each run opens with its own details folded.
-                  key={shown.id}
-                  run={shown}
-                  onStop={stop}
-                  onPick={(p) => {
-                    pick(p);
-                    main.current?.scrollTo({ top: 0, behavior: "smooth" });
-                    focusQuestion();
-                  }}
-                  // A retry changes this run only; the saved options stay as they are.
-                  onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
-                  onEdit={() => edit(shown)}
-                />
-              </div>
-            ) : missing ? (
-              <Notice tone="amber" title="That run isn't in this browser's history">
-                A run's link opens only in the browser that asked it, since each browser keeps its own history. It may also have been deleted, or have fallen off the end of the history, which keeps the last {HISTORY} unpinned runs.
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {history.length > 0 && (
-                    <button onClick={() => open(byTime(history)[0]!)} className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
-                      Show the latest run
-                    </button>
-                  )}
-                  <button onClick={home} className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/40 hover:bg-amber-100">
-                    Start a new question
+              )}
+              {endedShown && (
+                <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
+                  <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(endedShown)].dot)} />
+                  <span className="min-w-0 flex-1 truncate text-stone-700">
+                    Finished: <span className="font-medium">{OUTCOME[outcomeOf(endedShown)].label}</span> · {dollars(runSpend(endedShown))} · “{endedShown.request.question}”
+                  </span>
+                  <button onClick={() => open(endedShown)} className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">
+                    Show it →
+                  </button>
+                  <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-500 hover:text-stone-700">
+                    <Icon name="close" size={14} />
                   </button>
                 </div>
-              </Notice>
-            ) : (
-              <Welcome onExample={example} />
-            )}
-          </div>
-        </main>
+              )}
+              {shown ? (
+                <div ref={runView}>
+                  <RunView
+                    // Each run opens with its own details folded.
+                    key={shown.id}
+                    run={shown}
+                    reader={reader}
+                    onStop={stop}
+                    onPick={(p) => {
+                      pick(p);
+                      main.current?.scrollTo({ top: 0, behavior: "smooth" });
+                      focusQuestion();
+                    }}
+                    // A retry changes this run only; the saved options stay as they are.
+                    onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
+                    onEdit={() => edit(shown)}
+                  />
+                </div>
+              ) : missing ? (
+                <Notice tone="amber" title="That run isn't in this browser's history">
+                  A run's link opens only in the browser that asked it, since each browser keeps its own history. It may also have been deleted, or have fallen off the end of the history, which keeps the last {HISTORY} unpinned runs.
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {history.length > 0 && (
+                      <button onClick={() => open(byTime(history)[0]!)} className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
+                        Show the latest run
+                      </button>
+                    )}
+                    <button onClick={home} className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/40 hover:bg-amber-100">
+                      Start a new question
+                    </button>
+                  </div>
+                </Notice>
+              ) : (
+                <Welcome onExample={example} />
+              )}
+            </div>
+          </main>
+          {pane && (
+            <>
+              <SplitHandle box={splitBox} ratio={split} onRatio={setSplit} />
+              <section aria-label="The answer's pages" style={{ flex: `${split} 1 0` }} className="flex min-w-0 flex-col">
+                {viewer(() => setPaneOff(true), "Hide the pages")}
+              </section>
+            </>
+          )}
+        </div>
       </div>
       {dialog === "palette" && <Palette items={items()} onClose={closeDialog} />}
       {dialog === "shortcuts" && <Shortcuts onClose={closeDialog} />}
+      {reading && !wide && spots.length > 0 && (
+        <Dialog title={`The pages of ${basename(spots[Math.min(spotAt.i, spots.length - 1)]!.pdf)}`} onClose={() => setReading(false)} size="full">
+          {viewer(() => setReading(false), "Close the pages")}
+        </Dialog>
+      )}
     </div>
   );
 }

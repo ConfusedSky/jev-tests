@@ -161,3 +161,24 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * A highlight over a drawn page. The page is paper in either theme, so these
+ * are fixed colours, not the palette's, and multiply keeps the ink dark.
+ */
+.mark {
+  position: absolute;
+  border-radius: 1px;
+  background: rgb(250 204 21 / 0.28);
+  mix-blend-mode: multiply;
+}
+.mark-now {
+  background: rgb(250 190 21 / 0.62);
+}
+.mark-bar {
+  position: absolute;
+  left: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgb(217 119 6);
+}

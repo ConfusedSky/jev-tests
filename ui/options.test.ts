@@ -3,7 +3,7 @@ import { KINDS as CLI_KINDS } from "../answer";
 import { CACHE_MODELS } from "../cache";
 import { parseFlags, readDefaults, readFlags } from "../cli";
 import { findDefaults } from "../shelf";
-import { argsFor, CACHE_BARS, CACHES, commandFor, DEFAULTS, invalid, KINDS, SPECS, weakMatch, type Options } from "./options";
+import { argsFor, CACHE_BARS, CACHES, clampOption, commandFor, DEFAULTS, invalid, KINDS, SPECS, weakMatch, type Options } from "./options";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
@@ -29,7 +29,7 @@ describe("the UI's options", () => {
 
   test("default to what the CLI defaults to", () => {
     const cli = findDefaults();
-    for (const key of ["hits", "cache", "highlight", "threshold", "answerFloor", "search", "max", "maxAnswers", "titleFloor", "fileFloor", "maxFiles", "chars", "batch"] as const)
+    for (const key of ["hits", "cache", "threshold", "answerFloor", "search", "max", "maxAnswers", "titleFloor", "fileFloor", "maxFiles", "chars", "batch"] as const)
       expect<unknown[]>([key, DEFAULTS[key]]).toEqual([key, cli[key]]);
     expect(DEFAULTS.toc).toBe(!readDefaults().noToc);
     expect(DEFAULTS.wholeWindows).toBe(!readDefaults().perPage);
@@ -43,11 +43,11 @@ describe("the UI's options", () => {
 
   // Every flag the UI can send must be one the CLI takes, or the run stops on usage.
   test("send only flags the CLI parses, to the values chosen", () => {
-    const every: Options = { ...DEFAULTS, kind: "count", hits: 3, cache: "off", highlight: false, across: "on", threshold: 0.5, answerFloor: 0.6, search: false, toc: false, wholeWindows: true, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" };
+    const every: Options = { ...DEFAULTS, kind: "count", hits: 3, cache: "off", across: "on", threshold: 0.5, answerFloor: 0.6, search: false, toc: false, wholeWindows: true, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" };
     const o = { ...findDefaults(), across: undefined as boolean | undefined };
     const flags = { ...readFlags(), "--file-floor": (x: typeof o, next: () => string) => (x.fileFloor = Number(next())), "--max-files": (x: typeof o, next: () => string) => (x.maxFiles = Number(next())), "--across": (x: typeof o) => (x.across = true), "--no-across": (x: typeof o) => (x.across = false) };
     expect(parseFlags(argsFor("jevfind", every), o, flags, usage)).toEqual([]);
-    expect(o).toMatchObject({ kind: "count", hits: 3, cache: "off", highlight: false, across: true, threshold: 0.5, answerFloor: 0.6, search: false, noToc: true, perPage: false, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" });
+    expect(o).toMatchObject({ kind: "count", hits: 3, cache: "off", across: true, threshold: 0.5, answerFloor: 0.6, search: false, noToc: true, perPage: false, max: 20, maxAnswers: 7, titleFloor: 0.5, fileFloor: 1, maxFiles: 9, chars: 12000, batch: 20, model: "semif" });
   });
 
   test("keep jevgrep's own -n and -t apart from the readers'", () => {
@@ -67,6 +67,22 @@ describe("invalid", () => {
     expect(invalid("jevsec", { ...DEFAULTS, threshold: 5 })).toBe("Page threshold must be between 0 and 1");
     // jevgrep has no page threshold, so it does not stop on one.
     expect(invalid("jevgrep", { ...DEFAULTS, threshold: 5 })).toBeUndefined();
+  });
+
+  test("takes only whole numbers where the option counts something", () => {
+    expect(invalid("jevsec", { ...DEFAULTS, hits: 1.5 })).toBe("Passages must be a whole number");
+    expect(invalid("jevfind", { ...DEFAULTS, maxFiles: 2.5 })).toBe("Max files must be a whole number");
+    expect(invalid("jevsec", { ...DEFAULTS, threshold: 0.55 })).toBeUndefined();
+  });
+});
+
+describe("clampOption", () => {
+  test("holds a number within its option's range", () => {
+    const max = SPECS.find((s) => s.key === "max");
+    if (max?.type !== "number") throw new Error("max is a number option");
+    expect(clampOption("max", max.max * 2)).toBe(max.max);
+    expect(clampOption("max", 24)).toBe(24);
+    expect(clampOption("hits", 0)).toBe(1);
   });
 });
 

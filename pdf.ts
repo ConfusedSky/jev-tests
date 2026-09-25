@@ -172,13 +172,37 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
   return windows(pdf, { path: "", start: 1, end: pages }, chars);
 }
 
+/** A box to highlight, in PDF points from its page's top left, where stext puts it. */
+export type Mark = Pick<Box, "page" | "x0" | "y0" | "x1" | "y1">;
+export type PageSize = { width: number; height: number };
+
+/**
+ * The size of each of `pages`, or of every page when none are named, in the
+ * space stext reports positions in and mutool draws, so a mark scales onto a
+ * page rendered at any width.
+ */
+export async function pageSizes(pdf: string, pages?: number[]): Promise<Record<number, PageSize>> {
+  if (pages?.length === 0) return {};
+  const script = Bun.fileURLToPath(new URL("sizes.js", import.meta.url));
+  const out = await run(["mutool", "run", script, pdf, ...(pages ?? []).map(String)]);
+  return Object.fromEntries(
+    out
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        const [page, width, height] = l.split("\t").map(Number) as [number, number, number];
+        return [page, { width, height }];
+      }),
+  );
+}
+
 /**
  * A copy of the PDF with the passage's lines highlighted on its page, in the
  * cache, for a link to land on the answer rather than the page. Every run
  * copies afresh, since a highlight saved into the copy stays there; several
  * hits in one file each add theirs to the same copy.
  */
-export async function highlighted(pdf: string, lines: Box[], fresh = true): Promise<string> {
+export async function highlighted(pdf: string, lines: Mark[], fresh = true): Promise<string> {
   // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
   const copy = `${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
   if (fresh) await timed("highlight", () => Bun.write(copy, Bun.file(pdf)));
@@ -195,7 +219,7 @@ export async function highlighted(pdf: string, lines: Box[], fresh = true): Prom
  * uses one mod's cost cell for every gun that takes the mod, and a viewer
  * blends overlapping highlights, so repeats would darken it by use.
  */
-export function quadsOn(lines: Box[], page: number): number[][] {
+export function quadsOn(lines: Mark[], page: number): number[][] {
   const seen = new Set<string>();
   return lines.flatMap((l) => {
     const key = `${l.x0} ${l.y0} ${l.x1} ${l.y1}`;

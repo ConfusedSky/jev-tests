@@ -38,6 +38,8 @@ const PATHS = {
   chevron: <path d="m9 6 6 6-6 6" />,
   down: <path d="m6 9 6 6 6-6" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
+  list: <path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

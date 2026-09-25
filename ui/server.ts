@@ -7,19 +7,19 @@
  *                                  "plocate '*.pdf'", to put on the shelf at first
  */
 import { realpathSync } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { CACHE_MODELS, unready } from "../cache";
 import { keyFromScriptEnv } from "../shared";
-import { cacheDir, openAt, pageUrl } from "../pdf";
+import { cacheDir, highlighted, openAt, pageSizes, pageUrl } from "../pdf";
 import index from "./index.html";
 import { foreign, local } from "./guard";
 import { drain, errorText } from "./log";
 import { argsFor } from "./options";
-import { checkRequest } from "./request";
+import { checkMarks, checkRequest } from "./request";
 import { isLocate, locateArgs, sourceKey } from "./sources";
-import type { Config, Health, RunEvent, RunRequest, Scan } from "./types";
+import type { Config, DocInfo, Health, RunEvent, RunRequest, Scan } from "./types";
 
 const ROOT = resolve(import.meta.dir, "..");
 const SCAN_LIMIT = 5000;
@@ -37,8 +37,8 @@ const real = (p: string) => {
   }
 };
 
-// Only PDFs the UI was shown or given, and the tools' highlighted copies, are
-// served, each checked by its real path so ".." and links cannot reach others.
+// Only PDFs the UI was shown are served, each checked by its real path so
+// ".." and links cannot reach others.
 const known = new Set<string>();
 const know = (p: string) => {
   const r = real(p);
@@ -46,9 +46,7 @@ const know = (p: string) => {
 };
 function servable(p: string | null | undefined): string | undefined {
   const r = p ? real(p) : undefined;
-  if (!r || !/\.pdf$/i.test(r)) return undefined;
-  const cache = real(cacheDir());
-  return known.has(r) || (cache && r.startsWith(`${cache}/`)) ? r : undefined;
+  return r && /\.pdf$/i.test(r) && known.has(r) ? r : undefined;
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -149,7 +147,9 @@ function unrunnable(r: RunRequest): string | undefined {
 }
 
 function run(req: Request, r: RunRequest): Response {
-  const args = [...argsFor(r.tool, r.options), "--json", ...(r.tool === "jevsec" ? [r.pdf!] : []), r.question.trim()];
+  // The UI draws each run's marks itself, from the JSON, so no run copies a book to mark it.
+  const own = r.tool === "jevgrep" ? ["--json"] : ["--json", "--no-highlight"];
+  const args = [...argsFor(r.tool, r.options), ...own, ...(r.tool === "jevsec" ? [r.pdf!] : []), r.question.trim()];
   const proc = Bun.spawn([process.execPath, `${ROOT}/${r.tool}.ts`, ...args], {
     cwd: ROOT,
     env: { ...process.env, JEV_PROGRESS: "1" },
@@ -193,10 +193,7 @@ function run(req: Request, r: RunRequest): Response {
       try {
         const parsed = out ? JSON.parse(out) : undefined;
         if (Array.isArray(parsed)) end.ranked = parsed;
-        else if (parsed) {
-          end.report = parsed;
-          for (const h of [...parsed.hits, ...(parsed.table?.cells.flat().flatMap((c: { hit?: { view: string } }) => (c.hit ? [c.hit] : [])) ?? [])]) know(h.view);
-        }
+        else if (parsed) end.report = parsed;
       } catch {
         end.error = out;
       }
@@ -211,37 +208,71 @@ function run(req: Request, r: RunRequest): Response {
   return new Response(stream, { headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" } });
 }
 
-/** How many pages a PDF has, off its page tree, or undefined when that cannot be read; mutool draws a page past the end without complaint. */
-const pageCounts = new Map<string, number | undefined>();
-async function pageCount(pdf: string, mtimeMs: number): Promise<number | undefined> {
+/** Every page's size, per file and mtime: a reader lays out a whole book before it draws any of it. */
+const docs = new Map<string, Promise<DocInfo>>();
+async function docOf(pdf: string): Promise<DocInfo> {
+  const { mtimeMs } = await stat(pdf);
   const key = `${pdf}\0${mtimeMs}`;
-  if (!pageCounts.has(key)) {
-    const p = Bun.spawn(["mutool", "show", pdf, "trailer/Root/Pages/Count"], { stdout: "pipe", stderr: "ignore" });
-    const out = await new Response(p.stdout).text();
-    await p.exited;
-    const n = Number(out.trim().split("\n").pop());
-    pageCounts.set(key, Number.isInteger(n) && n > 0 ? n : undefined);
+  let doc = docs.get(key);
+  if (!doc) {
+    doc = pageSizes(pdf).then((sizes) => ({ mtime: mtimeMs, pages: Object.values(sizes).map((z): [number, number] => [z.width, z.height]) }));
+    docs.set(key, doc);
+    doc.catch(() => docs.delete(key));
   }
-  return pageCounts.get(key);
+  return doc;
 }
 
-/** A page of a PDF as PNG, highlights and all, kept in the cache until the PDF changes. */
-async function page(url: URL): Promise<Response> {
+/** Pages mutool draws at once; scrolling through a book asks for many, and a page scrolled past is no longer wanted. */
+const DRAWS = 4;
+let drawing = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(work: () => Promise<T>): Promise<T> {
+  // A slot freed goes straight to the next in line, so no newcomer slips in before it.
+  if (drawing < DRAWS) drawing++;
+  else await new Promise<void>((go) => waiting.push(go));
+  try {
+    return await work();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else drawing--;
+  }
+}
+
+/** A page of a PDF as PNG, kept in the cache until the PDF changes; its address names the file's mtime, so the browser may keep it too. */
+async function page(req: Request): Promise<Response> {
+  const url = new URL(req.url);
   const pdf = servable(url.searchParams.get("pdf"));
   const n = Math.max(1, Math.floor(Number(url.searchParams.get("page")) || 1));
   const w = Math.min(2000, Math.max(200, Math.floor(Number(url.searchParams.get("w")) || 900)));
   if (!pdf) return new Response("not on the shelf", { status: 403 });
-  const { mtimeMs } = await stat(pdf);
-  const count = await pageCount(pdf, mtimeMs);
-  if (count !== undefined && n > count) return new Response(`no page ${n}: the PDF has ${count}`, { status: 404 });
-  const dir = `${cacheDir()}/ui-pages`;
-  const png = `${dir}/${Bun.hash(`${pdf}\0${mtimeMs}\0${n}\0${w}`).toString(36)}.png`;
-  if (!(await Bun.file(png).exists())) {
-    await mkdir(dir, { recursive: true });
-    const p = Bun.spawn(["mutool", "draw", "-q", "-F", "png", "-w", String(w), "-o", png, pdf, String(n)], { stdout: "ignore", stderr: "pipe" });
-    if ((await p.exited) !== 0) return new Response(await new Response(p.stderr).text(), { status: 500 });
+  let doc: DocInfo;
+  try {
+    doc = await docOf(pdf);
+  } catch (e) {
+    return new Response(e instanceof Error ? e.message : String(e), { status: 500 });
   }
-  return new Response(Bun.file(png), { headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } });
+  // mutool draws a page past the end without complaint.
+  if (n > doc.pages.length) return new Response(`no page ${n}: the PDF has ${doc.pages.length}`, { status: 404 });
+  const dir = `${cacheDir()}/ui-pages`;
+  const png = `${dir}/${Bun.hash(`${pdf}\0${doc.mtime}\0${n}\0${w}`).toString(36)}.png`;
+  if (!(await Bun.file(png).exists())) {
+    const drawn = await slot(async () => {
+      if (req.signal.aborted) return "gone";
+      await mkdir(dir, { recursive: true });
+      // Drawn aside and moved in place, so a request that comes while it is drawn never reads half a file.
+      const part = `${png}.${crypto.randomUUID()}.part`;
+      const p = Bun.spawn(["mutool", "draw", "-q", "-F", "png", "-w", String(w), "-o", part, pdf, String(n)], { stdout: "ignore", stderr: "pipe" });
+      if ((await p.exited) !== 0) {
+        await rm(part, { force: true });
+        return new Response(await new Response(p.stderr).text(), { status: 500 });
+      }
+      await rename(part, png);
+    });
+    if (drawn === "gone") return new Response(null, { status: 499 });
+    if (drawn) return drawn;
+  }
+  return new Response(Bun.file(png), { headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=86400" } });
 }
 
 const server = Bun.serve({
@@ -282,7 +313,16 @@ const server = Bun.serve({
         return why ? json({ error: why }, 400) : run(req, checked.request);
       },
     },
-    "/api/page": own((req) => page(new URL(req.url))),
+    "/api/page": own(page),
+    "/api/doc": own(async (req) => {
+      const pdf = servable(new URL(req.url).searchParams.get("pdf"));
+      if (!pdf) return json({ error: "not on the shelf" }, 403);
+      try {
+        return json(await docOf(pdf));
+      } catch (e) {
+        return json({ error: `mutool could not read its pages: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` }, 500);
+      }
+    }),
     "/api/pdf": own((req) => {
       const path = servable(new URL(req.url).searchParams.get("path"));
       if (!path) return new Response("not on the shelf", { status: 403 });
@@ -291,15 +331,26 @@ const server = Bun.serve({
     "/api/open": {
       POST: async (req) => {
         if (foreign(req, PORT)) return refused();
-        const body = (await req.json().catch(() => null)) as { path?: string; page?: number } | null;
+        const body = (await req.json().catch(() => null)) as { path?: string; page?: number; marks?: unknown } | null;
         const path = servable(body?.path);
         if (!path) return json({ error: "not on the shelf" }, 403);
+        const checked = checkMarks(body?.marks);
+        if ("error" in checked) return json({ error: checked.error }, 400);
+        // A desktop viewer draws annotations, not these marks, so a copy is marked with them; only now, since a book can run to hundreds of megabytes.
+        let view = path;
+        if (checked.marks.length > 0) {
+          try {
+            view = await highlighted(path, checked.marks);
+          } catch (e) {
+            return json({ error: `could not mark a copy: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` }, 500);
+          }
+        }
         try {
-          await openAt(pageUrl(path, Math.max(1, Math.floor(Number(body?.page)) || 1)));
+          await openAt(pageUrl(view, Math.max(1, Math.floor(Number(body?.page)) || 1)));
         } catch (e) {
           return json({ error: `no PDF viewer could be started: ${e instanceof Error ? e.message : String(e)}` }, 500);
         }
-        return json({ ok: true });
+        return json({ ok: true, copy: view !== path });
       },
     },
   },
