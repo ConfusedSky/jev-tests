@@ -42,6 +42,20 @@ variants; `PROBE=` prints the near-miss table), `grid.ts`, `sgrid.ts`
 `bun experiments/ranking-cache/combo.ts ollama_qwen3-embedding-4b 0.49,0.59`),
 `ortx.ts` (fixed OR rules and the Fallout→CPR check).
 
+When to offer ranking afresh after a miss off a cached ranking:
+
+- `margin.ts`: good and bad pairs by distance over the adopted OR rule, in
+  sample and with the bars refitted without each question or on the other
+  book. Free.
+- `trace.ts`: a preload that logs every ranking-cache lookup and store of a
+  run to `$JEV_TRACE`, since the bench runs quiet:
+  `JEV_TRACE=/tmp/on.jsonl bun --preload ./experiments/ranking-cache/trace.ts bench.ts --cache qwen3-4b --no-save`.
+  `afresh.ts TRACE ON.out OFF.out` joins that run's stdout with runs
+  ranking afresh, case by case.
+- `walks.ts`: each labelled pair near or over the rule walked afresh and on
+  the partner's kept ranking (~$0.13), kept in `walks.json`; with no
+  argument it prints the outcomes by distance over the rule.
+
 ## choice-ranking
 
 `choice-ranking.patch` applies to commit 8416595 (`git apply`); it adds
