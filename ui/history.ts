@@ -47,7 +47,7 @@ export function successor(list: Run[], id: string): Run | undefined {
 }
 
 /** A hit's answer as one line of text: a figure as it stands, a passage's paragraphs and rows run together. */
-const hitText = (h: JsonHit) => {
+export const hitText = (h: JsonHit) => {
   const a = h.answer;
   if (!a) return "";
   const text = a.passage ? a.passage.map((p) => (p.table ? p.table.cells.filter(Boolean).join(" ") : p.text)).join(" ") : a.text;

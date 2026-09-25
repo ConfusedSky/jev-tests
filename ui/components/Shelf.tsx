@@ -21,6 +21,7 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
   const total = new Set(folders.flatMap((f) => scans[f]?.files.map((x) => x.path) ?? [])).size;
+  const empty = new Set(folders.flatMap((f) => scans[f]?.files.filter((x) => x.size === 0).map((x) => x.path) ?? [])).size;
   const needle = filter.trim().toLowerCase();
 
   const add = async () => {
@@ -78,6 +79,12 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
             className="w-full rounded-lg border border-transparent bg-stone-100 px-2.5 py-1.5 text-xs placeholder:text-stone-500 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-600/15"
           />
         </div>
+      )}
+
+      {empty > 0 && (
+        <p className="mx-3 mt-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-900 ring-1 ring-amber-600/15">
+          {empty === 1 ? "1 PDF is empty" : `${empty} PDFs are empty`}, with nothing in {empty === 1 ? "it" : "them"} to read, so {empty === 1 ? "it is" : "they are"} left out of questions to the whole shelf.
+        </p>
       )}
 
       <div className="scroll-thin mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -168,7 +175,7 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
                   <span className="min-w-0 flex-1">
                     <span className={cx("block truncate text-[13px]", on ? "font-medium text-teal-900" : "text-stone-700")}>{f.name}</span>
                     {sub && <MiddlePath path={sub} className="text-[11px] text-stone-500" />}
-                    {f.size === 0 && <span className="block text-[11px] font-medium text-amber-700">empty: nothing in it to ask</span>}
+                    {f.size === 0 && <span className="block text-[11px] font-medium text-amber-700">empty: left out, nothing in it to ask</span>}
                   </span>
                   {f.size > 0 && <span className="shrink-0 text-[11px] tabular-nums text-stone-500">{bytes(f.size)}</span>}
                 </button>

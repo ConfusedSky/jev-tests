@@ -77,7 +77,7 @@ describe("successor", () => {
 
 const answered = (id: string, question: string, report: Partial<JsonReport>): Run =>
   run(id, question, 1, { end: { type: "end", code: 0, ms: 1, report: { ...run("x", "", 0).end!.report!, ...report } } });
-const hit = (answer: NonNullable<JsonReport["hits"][number]["answer"]>) => ({ pdf: "/b/Guide.pdf", view: "/b/Guide.pdf", page: 3, section: "Start", found: 0.9, answer });
+const hit = (answer: NonNullable<JsonReport["hits"][number]["answer"]>) => ({ pdf: "/b/Guide.pdf", view: "/b/Guide.pdf", page: 3, section: "Start", found: 0.9, answer, marks: [], pages: {} });
 
 describe("answerOf", () => {
   test("is the figure, True or False, or a passage's opening", () => {

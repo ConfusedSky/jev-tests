@@ -4,7 +4,7 @@ import { parseLine } from "./log";
 import type { Run } from "./run";
 import type { JsonHit } from "./types";
 
-const hit: JsonHit = { pdf: "/books/My Book.pdf", view: "/cache/x.pdf", page: 12, section: "Rules > Combat", found: 0.9, answer: { text: "7", p: 0.95 } };
+const hit: JsonHit = { pdf: "/books/My Book.pdf", view: "/cache/x.pdf", page: 12, section: "Rules > Combat", found: 0.9, answer: { text: "7", p: 0.95 }, marks: [], pages: {} };
 
 describe("citation", () => {
   test("names the book, the page and the section, unless the section is only the page", () => {

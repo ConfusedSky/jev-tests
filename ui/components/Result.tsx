@@ -1,16 +1,31 @@
 import { useState } from "react";
 import { acrossGrid, answerText, citation, fileStem, sourceLine } from "../export";
-import { columnsOf, errorText, factsOf, walkOf, withoutCost, type Facts } from "../log";
-import { weakMatch, type Options, type Tool } from "../options";
+import { columnsOf, errorText, factsOf, withoutCost, type Facts } from "../log";
+import { clampOption, weakMatch, type Options, type Tool } from "../options";
 import { OFFLINE, type Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
 import { AFRESH, inFlight, PER_MILLION } from "../labels";
-import { basename, copy, cx, dollars } from "../util";
+import { basename, copy, cx, dollars, plural } from "../util";
+import { leadOf, type Spot } from "../viewer";
 import { GridExport } from "./GridExport";
 import { Action } from "./Icon";
-import { PagePreview } from "./PagePreview";
+import { PageThumb, type Served } from "./Page";
 import { Passage } from "./Passage";
 import { useToast } from "./Toast";
+
+/**
+ * How an answer points at its pages: the run's highlighted pages, whether
+ * the viewer stands beside the answer or opens over it, and how to show
+ * the pages of the answer `key` names (see Spot).
+ */
+export type Reader = { spots: Spot[]; wide: boolean; served: Served; show: (key: string) => void; current?: string };
+
+/** An answer's first page small beside it, opening the pages; none when the pages already stand beside the answer. */
+function OnThePage({ reader, spotKey }: { reader: Reader; spotKey: string }) {
+  const spot = reader.spots.find((s) => s.key === spotKey);
+  if (!spot || reader.wide) return null;
+  return <PageThumb spot={spot} served={reader.served} onOpen={() => reader.show(spotKey)} />;
+}
 
 /** A probability as a bar and its figure, green once it clears `floor`. */
 export function Confidence({ p, floor, label }: { p: number; floor?: number; label: string }) {
@@ -67,7 +82,6 @@ function Value({ kind, text, lead, muted }: { kind?: string; text: string; lead?
 const MARKED: Record<string, string> = {
   count: "each name counted is marked on its page",
   number: "the figure is marked where it stands",
-  truth: "a statement rests on no single line, so nothing is marked",
 };
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -83,7 +97,6 @@ type Card = {
   hit: JsonHit;
   kind?: string;
   floor: number;
-  stamp: string;
   index: number;
   count: number;
   below?: boolean;
@@ -91,20 +104,12 @@ type Card = {
   contents?: boolean;
   stem?: string;
   question: string;
-  /** Whether the run asked for the answer to be highlighted. */
-  highlight: boolean;
   /** Where each column of a table built to order was read from. */
   columns?: Record<string, string>;
+  reader: Reader;
+  /** The answer's key among the reader's spots. */
+  spotKey: string;
 };
-
-/** Why the page shown has nothing marked on it. */
-function unmarked(c: Pick<Card, "kind" | "below" | "contents" | "highlight">): string {
-  if (c.contents) return "nothing is marked: the contents list the section's entries, and the page shown is where the section starts";
-  if (c.kind === "truth") return MARKED.truth!;
-  if (c.below) return "not marked: a lead below the floor is not highlighted";
-  if (!c.highlight) return "not marked: highlighting was off for this run";
-  return "not marked: the answer's text was not found on the page's lines";
-}
 
 /** Where a count or figure came from: the page it stands on, or the table of contents, which lists the entries without a page to mark. */
 const FROM = {
@@ -112,11 +117,14 @@ const FROM = {
   contents: { count: "counted off the table of contents", number: "read off the table of contents" } as Record<string, string>,
 };
 
-function HitCard({ hit, kind, floor, stamp, index, count, below, reading, contents, stem, question, highlight, columns }: Card) {
+function HitCard({ hit, kind, floor, index, count, below, reading, contents, stem, question, columns, reader, spotKey }: Card) {
   const a = hit.answer;
   const toast = useToast();
   const long = kind === "passage" || kind === "table";
   const source = sourceLine(question, citation(hit));
+  const spots = reader.spots.filter((s) => s.key === spotKey);
+  const marks = spots.reduce((n, s) => n + s.marks.length, 0);
+  const beside = reader.wide && spots.length > 0;
   return (
     <article className={cx("overflow-hidden rounded-2xl border bg-white shadow-md shadow-stone-900/5", below ? "border-amber-300" : "border-stone-200")}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-stone-100 px-5 py-3">
@@ -125,6 +133,14 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading, conten
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
           {a && <Confidence p={a.p} floor={floor} label="answer" />}
           <Confidence p={hit.found} label="page" />
+          {beside && (
+            <Action
+              icon="zoom"
+              label={reader.current === spotKey ? "shown on the page" : "show on the page"}
+              title={marks ? `Show it in the pages beside: ${plural(marks, "mark")} on ${plural(spots.length, "page")}` : "Show its page beside, unmarked"}
+              onClick={() => reader.show(spotKey)}
+            />
+          )}
           {a && (
             <Action
               icon="copy"
@@ -135,7 +151,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading, conten
           )}
         </div>
       </div>
-      <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_200px]")}>
+      <div className={cx("grid gap-6 p-5", !beside && (long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_200px]"))}>
         <div className="min-w-0">
           {below && long && a && <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-700">lead, below the floor</div>}
           {!a ? (
@@ -160,18 +176,18 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading, conten
                 <Detail label="how sure">
                   answer p={a.p.toFixed(2)} {a.p >= floor ? `clears the answer floor ${floor}` : `is under the answer floor ${floor}`}; the page passed the gate at p={hit.found.toFixed(2)}
                 </Detail>
-                <Detail label="on the page">{!contents && hit.view !== hit.pdf ? (MARKED[kind ?? ""] ?? "marked in a copy") : unmarked({ kind, below, contents, highlight })}</Detail>
+                <Detail label="on the page">{marks ? (MARKED[kind ?? ""] ?? "marked where it stands") : (spots[0]?.unmarked ?? "nothing is marked")}</Detail>
               </dl>
             </div>
           )}
         </div>
-        <PagePreview view={hit.view} pdf={hit.pdf} page={hit.page} stamp={stamp} compact />
+        <OnThePage reader={reader} spotKey={spotKey} />
       </div>
     </article>
   );
 }
 
-function Across({ table, floor, stamp, stem, contents, question, highlight }: { table: NonNullable<JsonReport["table"]>; floor: number; stamp: string; stem: string; contents: (hit: JsonHit) => boolean; question: string; highlight: boolean }) {
+function Across({ table, floor, stem, contents, question, reader }: { table: NonNullable<JsonReport["table"]>; floor: number; stem: string; contents: (hit: JsonHit) => boolean; question: string; reader: Reader }) {
   const [at, setAt] = useState<[number, number] | undefined>(() => {
     for (let i = 0; i < table.rows.length; i++) for (let j = 0; j < table.columns.length; j++) if (table.cells[i]![j]!.hit) return [i, j];
   });
@@ -208,7 +224,11 @@ function Across({ table, floor, stamp, stem, contents, question, highlight }: { 
                   return (
                     <td key={c} className="border-b border-stone-100 p-1">
                       <button
-                        onClick={() => setAt([i, j])}
+                        onClick={() => {
+                          setAt([i, j]);
+                          // Beside the answer, the pages follow the cell picked; over it, the card below opens them.
+                          if (reader.wide && x.hit) reader.show(`c${i}-${j}`);
+                        }}
                         title={x.why ?? `p=${x.hit?.answer?.p.toFixed(2)}`}
                         className={cx("w-full rounded-lg px-3 py-1.5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/30" : "hover:bg-stone-50", x.why ? "text-stone-500" : "text-stone-900")}
                       >
@@ -228,7 +248,7 @@ function Across({ table, floor, stamp, stem, contents, question, highlight }: { 
           <div className="mb-2 text-xs text-stone-500">
             Where <span className="font-medium text-stone-700">{table.rows[at![0]]}</span> × <span className="font-medium text-stone-700">{table.columns[at![1]]}</span> was read, as a {cell.kind} question:
           </div>
-          <HitCard hit={cell.hit} kind={cell.kind} floor={floor} stamp={stamp} index={0} count={1} below={!!cell.why} contents={contents(cell.hit)} stem={stem} question={`${table.rows[at![0]]}: ${table.columns[at![1]]}`} highlight={highlight} />
+          <HitCard hit={cell.hit} kind={cell.kind} floor={floor} index={0} count={1} below={!!cell.why} contents={contents(cell.hit)} stem={stem} question={`${table.rows[at![0]]}: ${table.columns[at![1]]}`} reader={reader} spotKey={`c${at![0]}-${at![1]}`} />
         </div>
       )}
     </div>
@@ -241,6 +261,8 @@ const list = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -
 /** Fewer passages than asked for: what the walk read, what stopped it, and a retry that would go on, each read off the log; rewording is always offered. */
 function Short({ got, f, o, tool, onRetry, onEdit }: { got: number; f: Facts; o: Options; tool: Tool; onRetry: (patch: Partial<Options>) => void; onEdit: () => void }) {
   const atMax = (f.mostSections ?? 0) >= o.max || (f.scan !== undefined && f.scan.read >= o.max && f.scan.of > f.scan.read);
+  // Twice as far, as far as the option goes.
+  const further = clampOption("max", o.max * 2);
   const n = (k: number, what: string) => `${k} ${what}${k === 1 ? "" : "s"}`;
   const read = list([f.sections ? n(f.sections, "section") : "", f.excerpts ? n(f.excerpts, "excerpt page") : "", f.scan ? n(f.scan.read, "window") : ""].filter(Boolean));
   const files = tool === "jevfind" && f.filesBelow ? f.filesBelow : 0;
@@ -256,9 +278,9 @@ function Short({ got, f, o, tool, onRetry, onEdit }: { got: number; f: Facts; o:
       {files ? ` ${n(files, "file")} scored below the file floor ${o.fileFloor} and stayed shut.` : ""}
       {threshold !== undefined && ` Pages scoring under the page threshold ${o.threshold} were passed over.`}
       <div className="mt-3 flex flex-wrap gap-2">
-        {atMax && (
-          <button onClick={() => onRetry({ max: o.max * 2 })} className={button}>
-            Ask again, reading up to {o.max * 2} sections
+        {atMax && further > o.max && (
+          <button onClick={() => onRetry({ max: further })} className={button}>
+            Ask again, reading up to {further} sections
           </button>
         )}
         {titles ? (
@@ -298,12 +320,12 @@ function Afresh({ f, o, onRetry }: { f: Facts; o: Options; onRetry: (patch: Part
 }
 
 /** What a stopped walk had taken before the stop: the last answer read and where it stands, marked as never weighed against the rest of the walk. */
-function Lead({ run }: { run: Run }) {
-  const w = walkOf(run.lines);
-  const took = w.files.flatMap((f) => f.reads.filter((r) => r.verdict === "take").map((r) => ({ pdf: f.path ?? run.request.pdf, r }))).at(-1);
+function Lead({ run, reader }: { run: Run; reader: Reader }) {
+  const took = leadOf(run);
   if (!took) return null;
-  const { pdf, r } = took;
+  const { pdf, read: r } = took;
   const page = pdf && r.page ? r.page : undefined;
+  const beside = reader.wide && reader.spots.some((s) => s.key === "lead");
   const f = factsOf(run.lines);
   // A cell of a table across the shelf is a question of its own kind, so its answer goes by its shape: the log clips a long one.
   const kind = f.across ? undefined : f.kind;
@@ -317,8 +339,9 @@ function Lead({ run }: { run: Run }) {
           {r.name}
         </span>
         {r.sure !== undefined && <Confidence p={r.sure} floor={run.request.options.answerFloor} label="answer" />}
+        {beside && <Action icon="zoom" label="show on the page" title="Show its page beside, unmarked" onClick={() => reader.show("lead")} />}
       </div>
-      <div className={cx("grid gap-6 p-5", page !== undefined && "md:grid-cols-[minmax(0,1fr)_200px]")}>
+      <div className={cx("grid gap-6 p-5", page !== undefined && !beside && "md:grid-cols-[minmax(0,1fr)_200px]")}>
         <div className="min-w-0">
           {long ? (
             <>
@@ -332,7 +355,7 @@ function Lead({ run }: { run: Run }) {
             The walk had taken this when it was stopped. It never finished, so this was not weighed against what the rest of the walk would have read, and nothing is marked on the page. Ask again to have it answered in full.
           </p>
         </div>
-        {pdf && page !== undefined && <PagePreview view={pdf} pdf={pdf} page={page} stamp={run.id} compact />}
+        <OnThePage reader={reader} spotKey="lead" />
       </div>
     </article>
   );
@@ -402,7 +425,7 @@ export function Notice({ tone, title, children }: { tone: "amber" | "rose" | "st
   );
 }
 
-export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (path: string) => void; onRetry: (patch: Partial<Run["request"]["options"]>) => void; onEdit: () => void }) {
+export function Result({ run, reader, onPick, onRetry, onEdit }: { run: Run; reader: Reader; onPick: (path: string) => void; onRetry: (patch: Partial<Run["request"]["options"]>) => void; onEdit: () => void }) {
   const e = run.end;
   const o = run.request.options;
   if (!e) return null;
@@ -423,7 +446,7 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
             The log counts every call that finished before the stop. A call still in flight is billed by OpenRouter but never reported back, so it is not in that count
             {flying?.in ? `: about one call's worth, some ${flying.in.toLocaleString("en-US")} tokens (${dollars(flying.dollars ?? 0)}) going by the calls before it` : flying ? ": most likely one call" : ""}.
           </Notice>
-          <Lead run={run} />
+          <Lead run={run} reader={reader} />
         </div>
       );
     if (run.unsent === "offline" || e.error === OFFLINE)
@@ -448,7 +471,7 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
       </Notice>
     );
   }
-  if (r.table) return <Across table={r.table} floor={o.answerFloor} stamp={run.id} stem={stem} contents={contents} question={question} highlight={o.highlight} />;
+  if (r.table) return <Across table={r.table} floor={o.answerFloor} stem={stem} contents={contents} question={question} reader={reader} />;
   if (r.status === "unanswered") {
     if (run.request.tool === "jevsec" && f.noText?.length)
       return (
@@ -472,13 +495,13 @@ export function Result({ run, onPick, onRetry, onEdit }: { run: Run; onPick: (pa
     <div className="space-y-4">
       {r.status === "below" && (
         <Notice tone="amber" title={`No answer reached the answer floor of ${o.answerFloor}`}>
-          The best one read is below; treat it as a lead, not an answer. A lead is not highlighted on its page.
+          The best one read is below; treat it as a lead, not an answer.
           <Afresh f={f} o={o} onRetry={onRetry} />
         </Notice>
       )}
       {short && <Short got={r.hits.length} f={f} o={o} tool={run.request.tool} onRetry={onRetry} onEdit={onEdit} />}
       {r.hits.map((h, i) => (
-        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} stamp={run.id} index={i} count={r.hits.length} below={r.status === "below"} reading={reading} contents={contents(h)} stem={stem} question={question} highlight={o.highlight} columns={r.kind === "table" ? columnsOf(run.lines) : undefined} />
+        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} index={i} count={r.hits.length} below={r.status === "below"} reading={reading} contents={contents(h)} stem={stem} question={question} columns={r.kind === "table" ? columnsOf(run.lines) : undefined} reader={reader} spotKey={`h${i}`} />
       ))}
     </div>
   );

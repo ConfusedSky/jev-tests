@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { fileStem, runJson } from "../export";
 import { AFRESH, inFlight, OUTCOME, PER_MILLION, PRICE, TOOL_LABEL } from "../labels";
-import { factsOf, flowOf, gaugesOf, spendOf, stateOf, walkOf, type Facts, type Gauge, type Line } from "../log";
+import { factsOf, flowOf, gaugesOf, readingNow, spendOf, stateOf, walkOf, type Facts, type Gauge, type Line } from "../log";
 import { changed } from "../options";
 import { outcomeOf, type Run } from "../run";
 import type { JsonReport } from "../types";
@@ -10,7 +10,7 @@ import { basename, copy, cx, dollars, download, plural, secs, tokens, useTick } 
 import { Action, Actions, Icon } from "./Icon";
 import { Log } from "./Log";
 import { MiddlePath } from "./Path";
-import { Result } from "./Result";
+import { Result, type Reader } from "./Result";
 import { useToast } from "./Toast";
 
 /** One colour a meaning: what jev read off the question, what was reused from before, and what the walk did. */
@@ -150,7 +150,7 @@ function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
                 {rows.length > 0 && (
                   <ul className={cx("divide-y divide-stone-100", f.path && "mt-0.5 border-l border-stone-200 pl-3")}>
                     {rows.map((r, j) => {
-                      const state = stateOf(r, live && r === last);
+                      const state = stateOf(r, readingNow(r, live, r === last));
                       return (
                         <li key={j} className="flex min-w-0 items-baseline gap-2 py-1 text-xs">
                           <span title={STATE[state].says} className={cx("w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold", STATE[state].tone)}>
@@ -319,11 +319,11 @@ function RunSettings({ run }: { run: Run }) {
   );
 }
 
-type Props = { run: Run; onStop: () => void; onPick: (path: string) => void; onRetry: (patch: Partial<Run["request"]["options"]>) => void; onEdit: () => void };
+type Props = { run: Run; reader: Reader; onStop: () => void; onPick: (path: string) => void; onRetry: (patch: Partial<Run["request"]["options"]>) => void; onEdit: () => void };
 
 const STOP_SAYS = "Stop the run: calls that finished are counted; one still in flight is billed but not counted";
 
-export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
+export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props) {
   const live = run.status === "running";
   const now = useTick(live);
   const [showPaths, setShowPaths] = useState(false);
@@ -403,7 +403,7 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
       {live && <Progress gauges={gauges} trying={run.trying ?? run.lines[run.lines.length - 1]?.text ?? "starting…"} />}
       {live && run.lines.length === 0 && <Skeleton />}
 
-      {!live && <Result run={run} onPick={onPick} onRetry={onRetry} onEdit={onEdit} />}
+      {!live && <Result run={run} reader={reader} onPick={onPick} onRetry={onRetry} onEdit={onEdit} />}
       <FactLine f={f} kind={kind} />
       <Walked lines={run.lines} live={live} />
       {!live && run.end?.report && <Timing spent={run.end.report.spent} />}

@@ -7,7 +7,7 @@ import { cx } from "../util";
  * A modal over the page: the page behind is inert and Tab goes round inside
  * it; Escape or a click outside closes it, and focus goes back where it was.
  */
-export function Dialog({ title, onClose, children, size = "md" }: { title: string; onClose: () => void; children: ReactNode; size?: "md" | "wide" | "page" }) {
+export function Dialog({ title, onClose, children, size = "md" }: { title: string; onClose: () => void; children: ReactNode; size?: "md" | "wide" | "page" | "full" }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -36,7 +36,7 @@ export function Dialog({ title, onClose, children, size = "md" }: { title: strin
     };
   }, []);
   return createPortal(
-    <div className={cx("fixed inset-0 z-40 flex animate-fade items-start justify-center bg-black/40 p-4", size === "page" ? "pt-[3vh]" : "pt-[10vh]")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={cx("fixed inset-0 z-40 flex animate-fade items-start justify-center bg-black/40", size === "full" ? "" : size === "page" ? "p-4 pt-[3vh]" : "p-4 pt-[10vh]")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panel}
         role="dialog"
@@ -44,8 +44,9 @@ export function Dialog({ title, onClose, children, size = "md" }: { title: strin
         aria-label={title}
         tabIndex={-1}
         className={cx(
-          "flex w-full animate-pop flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-stone-200 focus:outline-none",
-          { md: "max-h-[80vh] max-w-lg", wide: "max-h-[80vh] max-w-2xl", page: "max-h-[94vh] max-w-4xl" }[size],
+          "flex w-full animate-pop flex-col overflow-hidden bg-white shadow-2xl ring-1 ring-stone-200 focus:outline-none",
+          size === "full" ? "h-full rounded-none" : "rounded-2xl",
+          { md: "max-h-[80vh] max-w-lg", wide: "max-h-[80vh] max-w-2xl", page: "max-h-[94vh] max-w-4xl", full: "" }[size],
         )}
       >
         {children}

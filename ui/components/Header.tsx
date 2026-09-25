@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { PRICE, spentOver, TOOL_LABEL, type Ledger } from "../labels";
 import { THEME_LABEL, THEMES, type Theme } from "../theme";
 import type { Health } from "../types";
@@ -14,7 +14,7 @@ function checks(h: Health, cache: string): Check[] {
     cache === "off"
       ? { label: "Ranking cache", ok: "off", detail: "off: every PDF is ranked afresh, which costs more tokens" }
       : { label: `Cache · ${cache}`, ok: !why, detail: why ?? "a similar earlier question's ranking is reused", fix: why ? (why.match(/`([^`]+)`/)?.[1] ?? undefined) : undefined },
-    { label: "mutool", ok: h.tools.mutool, detail: h.tools.mutool ? "outlines, page layout, highlights and previews" : "mutool (mupdf) is not on PATH", fix: "install mupdf-tools" },
+    { label: "mutool", ok: h.tools.mutool, detail: h.tools.mutool ? "outlines, page layout, and the pages you read" : "mutool (mupdf) is not on PATH", fix: "install mupdf-tools" },
     { label: "pdftotext", ok: h.tools.pdftotext, detail: h.tools.pdftotext ? "the text cache the walk reads" : "pdftotext (poppler) is not on PATH", fix: "install poppler-utils" },
     { label: "ripgrep", ok: h.tools.rg, detail: h.tools.rg ? "the text search for the question's subject" : "rg is not on PATH", fix: "install ripgrep" },
     { label: "tables", ok: h.tools.tables, detail: h.tools.tables ? "pdfplumber reads tables as rows" : "pdfplumber is not installed; tables read as text", fix: "bun run tables:install" },
@@ -79,6 +79,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
   // One popover at a time; opening one closes the other.
   const [menu, setMenu] = useState<Menu>();
   const opener = useRef<HTMLElement | null>(null);
+  const pop = useRef<HTMLDivElement>(null);
   const toggle = (m: Menu, e: MouseEvent<HTMLElement>) => {
     opener.current = e.currentTarget;
     setMenu((cur) => (cur === m ? undefined : m));
@@ -93,14 +94,18 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
       setMenu(undefined);
       opener.current?.focus();
     };
+    // A popover closes once focus lands anywhere but in it or on its button, however it got there: Shift+Tab from the button never enters it.
+    const onFocus = (e: FocusEvent) => {
+      const to = e.target;
+      if (to instanceof Node && !pop.current?.contains(to) && !opener.current?.contains(to)) setMenu(undefined);
+    };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", onFocus);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", onFocus);
+    };
   }, [menu]);
-  // A popover closes once focus moves on past it, so Tab does not leave it open over the page; back to its own button keeps it.
-  const leave = (e: FocusEvent<HTMLElement>) => {
-    const to = e.relatedTarget;
-    if (to instanceof Node && !e.currentTarget.contains(to) && to !== opener.current) setMenu(undefined);
-  };
   const open = menu === "status";
   const ledger = menu === "spend";
   const down = health === "down";
@@ -121,7 +126,8 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
         <span className="hidden truncate text-sm text-stone-500 xl:inline">ask a shelf of PDFs; every answer is the document's own text</span>
       </div>
 
-      <div className="ml-auto flex items-center gap-1">
+      {/* The controls keep their labels whole; the tagline gives way to them first. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap">
         <button onClick={onHome} aria-label="New question" title="New question (n)" className={cx(iconButton, "md:w-auto md:gap-1.5 md:px-2.5 md:text-xs md:font-medium md:text-stone-600")}>
           <Icon name="plus" size={16} />
           <span className="hidden md:inline">New question</span>
@@ -138,7 +144,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
             <ThemeIcon theme={theme} />
           </button>
           {menu === "theme" && (
-            <div role="group" aria-label="Theme" onBlur={leave} className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
+            <div ref={pop} role="group" aria-label="Theme" className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
               {THEMES.map((t) => (
                 // A click picks and closes, picking itself since the menu is gone before the radio would hear of it; arrow keys (a click of detail 0) move through the choices and leave it open.
                 <label
@@ -160,7 +166,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
         </div>
       </div>
 
-      <div className="relative z-20">
+      <div className="relative z-20 shrink-0">
         <button
           onClick={(e) => toggle("status", e)}
           aria-label={`What the tools need: ${status}`}
@@ -172,7 +178,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           <span className={cx("hidden whitespace-nowrap lg:inline", down && "text-rose-700")}>{status}</span>
         </button>
         {open && down && (
-          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-rose-800">The UI server is not running</div>
             <p className="leading-relaxed">
               This page cannot reach it, so nothing can be asked. Start it again from the repo with <code className="rounded bg-stone-100 px-1 font-mono text-[11px] text-stone-700">bun run ui</code>; the page checks every few seconds and picks up where it was.
@@ -183,7 +189,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </div>
         )}
         {open && health && !down && (
-          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">What the tools need</span>
               <button onClick={onRefresh} className="text-xs text-teal-700 hover:underline">
@@ -212,7 +218,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
         )}
       </div>
 
-      <div className="relative z-20 border-l border-stone-200 pl-3 md:pl-5">
+      <div className="relative z-20 shrink-0 border-l border-stone-200 pl-3 md:pl-5">
         <button
           onClick={(e) => toggle("spend", e)}
           aria-expanded={ledger}
@@ -229,7 +235,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </span>
         </button>
         {ledger && (
-          <div onBlur={leave} className="absolute right-0 top-9 z-20 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-stone-800">What this browser has spent</div>
             <p className="leading-relaxed">
               {dollars(spend.dollars)} over {spend.runs} run{spend.runs === 1 ? "" : "s"}, {spend.in.toLocaleString("en-US")} tokens in{live ? `, and ${dollars(live.dollars)} so far on the run going now` : ""}.

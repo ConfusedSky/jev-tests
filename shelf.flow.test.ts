@@ -78,3 +78,36 @@ test("under a hard floor a file whose name falls below it is never opened, and n
   expect(r.opened).toBe(1);
   expect(log[0]).toStartWith("ranked 2 paths and 0 excerpts");
 });
+
+test("an empty PDF whose name clears the floor is logged and skipped, and the walk goes on to the next", async () => {
+  const client = {
+    systemOne: async ({ state, questions }: { state: { candidates: string[] }; questions: Record<string, unknown> }) => ({
+      answers: Object.fromEntries(
+        Object.keys(questions).map((id) => {
+          const score = state.candidates[Number(id.replace("candidates", ""))]!.includes("taxes") ? 2.9 : 2.0;
+          return [id, { score, confidence: 0.9, probabilities: [0.1, 0.1, 0.4, 0.4] }];
+        }),
+      ),
+    }),
+  } as unknown as TypeSafeClient;
+  const opened: string[] = [];
+  const io: FindIo = {
+    searchPdf: (async (_c: unknown, pdf: string) => {
+      opened.push(pdf);
+      return { hits: [], tried: [], rejected: [], dropped: [] } satisfies Outcome;
+    }) as unknown as FindIo["searchPdf"],
+    composeTable: (async () => {
+      throw new Error("no table here");
+    }) as unknown as FindIo["composeTable"],
+  };
+  const log: string[] = [];
+  const fixture = (f: string) => Bun.fileURLToPath(new URL(`fixture/${f}`, import.meta.url));
+  const [taxes, manual] = [fixture("taxes-2025.pdf"), fixture("manual.pdf")];
+  expect(Bun.file(taxes).size).toBe(0);
+  const search = { ...findDefaults(), question: "How much tax is owed for 2025?", kind: "number" as const };
+  const r = await findIn(client, [taxes, manual], search, ui(log), {}, io);
+
+  expect(opened).toEqual([manual]);
+  expect(r.opened).toBe(1);
+  expect(log).toContain(`2.90  ${taxes}  --  empty file, skipped`);
+});

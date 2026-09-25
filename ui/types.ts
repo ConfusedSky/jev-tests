@@ -3,6 +3,7 @@ import type { Ranked } from "../shared";
 import type { Options, Tool } from "./options";
 
 export type { JsonHit, JsonReport } from "../cli";
+export type { Mark, PageSize } from "../pdf";
 export type { Ranked } from "../shared";
 
 export type RunRequest = { tool: Tool; question: string; options: Options; pdf?: string; paths?: string[] };
@@ -30,3 +31,6 @@ export type Health = {
 };
 
 export type Config = { folders: string[]; root: string };
+
+/** What /api/doc says of a PDF: each page's width and height in PDF points, and the file's mtime, which a page's address carries. */
+export type DocInfo = { pages: [number, number][]; mtime: number };

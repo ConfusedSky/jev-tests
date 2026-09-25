@@ -1,8 +1,8 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
 import { CACHE_MODELS, embedder, rankingCache as makeRankingCache, unready, type CacheModel } from "./cache";
-import { lone, pageParagraphs, type Para, type Row } from "./layout";
-import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
+import { lone, pageParagraphs, type Box, type Para, type Row } from "./layout";
+import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageSizes, pageUrl, type Hit, type Mark, type Outcome, type PageSize, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, snapshot, split, spentSince, timed, type Snapshot, type Spent } from "./shared";
 import { terms } from "./search";
 
@@ -146,7 +146,8 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --no-search      rank outline titles only, without searching the text
       --tsv            piped, print a table's rows tab-separated under their heads, not as JSON,
                        and the link on stderr
-      --json           print the outcome on stdout as one JSON document (JsonReport in cli.ts)
+      --json           print the outcome on stdout as one JSON document (JsonReport in cli.ts),
+                       each hit with the boxes its answer highlights
       --kind K         force count, number, truth, passage or table instead of asking jev
       --cache MODEL    reuse the ranking of an earlier, similar question, matched by
                        qwen3-4b (default, Ollama), qwen3-0.6b (Ollama) or 3-small
@@ -377,12 +378,26 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
+/** What an answer highlights: a passage's lines, its table cells' included, else where a count's names or a figure stand. */
+const boxesOf = (a: Answer | undefined): Box[] => a?.passage?.flatMap((p) => p.lines) ?? a?.marks ?? [];
+
+/** The boxes an answer highlights, each once: a built table can use one cell for many rows. */
+export function marksOf(a: Answer | undefined): Mark[] {
+  const seen = new Set<string>();
+  return boxesOf(a).flatMap(({ page, x0, y0, x1, y1 }) => {
+    const key = `${page} ${x0} ${y0} ${x1} ${y1}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ page, x0, y0, x1, y1 }];
+  });
+}
+
 /** Unless --no-highlight, each hit with passage lines or marks moved to a highlighted copy of its PDF, one copy per file marking every hit's. */
 export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
   const copies = new Set<string>();
   const out: Hit[] = [];
   for (const hit of hits) {
-    const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? hit.answer?.marks ?? [];
+    const lines = boxesOf(hit.answer);
     if (!o.highlight || lines.length === 0) {
       out.push(hit);
       continue;
@@ -403,6 +418,10 @@ export type JsonHit = {
   /** How sure the gate was that the page answers; the answer's own p is in `answer`. */
   found: number;
   answer?: { text: string; p: number; pages?: number[]; passage?: Omit<Para, "lines">[] };
+  /** What the answer highlights, each box once, in PDF points from its page's top left (see Mark); none for a statement. */
+  marks: Mark[];
+  /** The size of each page `marks` fall on, in their units, to scale them onto the page drawn at any size. */
+  pages: Record<number, PageSize>;
 };
 
 /**
@@ -419,20 +438,31 @@ export type JsonReport = {
   spent: Spent;
 };
 
-export const jsonHit = (hit: Hit, view = hit.pdf): JsonHit => ({
-  pdf: hit.pdf,
-  view,
-  page: hit.page,
-  section: hit.section,
-  found: hit.p,
-  answer: hit.answer && {
-    text: hit.answer.text,
-    p: hit.answer.p,
-    pages: hit.answer.pages,
-    // The boxes went into the highlight; the reader wants the text and its weights.
-    passage: hit.answer.passage?.map(({ lines, ...p }) => p),
-  },
-});
+export function jsonHit(hit: Hit, view = hit.pdf, sizes: Record<number, PageSize> = {}): JsonHit {
+  const marks = marksOf(hit.answer);
+  return {
+    pdf: hit.pdf,
+    view,
+    page: hit.page,
+    section: hit.section,
+    found: hit.p,
+    answer: hit.answer && {
+      text: hit.answer.text,
+      p: hit.answer.p,
+      pages: hit.answer.pages,
+      // The boxes are in `marks`; the passage keeps its text and weights.
+      passage: hit.answer.passage?.map(({ lines, ...p }) => p),
+    },
+    marks,
+    pages: Object.fromEntries([...new Set(marks.map((m) => m.page))].flatMap((p) => (sizes[p] ? [[p, sizes[p]]] : []))),
+  };
+}
+
+/** jsonHit with the size of each page it marks, read off the PDF; a size mutool cannot read is left out rather than losing the answer. */
+export async function sizedHit(hit: Hit, view?: string): Promise<JsonHit> {
+  const pages = [...new Set(marksOf(hit.answer).map((m) => m.page))];
+  return jsonHit(hit, view, await pageSizes(hit.pdf, pages).catch(() => ({})));
+}
 
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
 export async function report(
@@ -458,7 +488,7 @@ export async function report(
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
     const hits = await highlightAll(r.hits, o);
-    if (o.json) json("answered", hits.map((h, i) => jsonHit(r.hits[i]!, h.pdf)));
+    if (o.json) json("answered", await Promise.all(hits.map((h, i) => sizedHit(r.hits[i]!, h.pdf))));
     else for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
@@ -470,7 +500,7 @@ export async function report(
     ui.log(`total ${split(since)}${walked}`);
     const message = `no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`;
     console.error(`${tool}: ${message}`);
-    if (o.json) json("below", [jsonHit({ ...hit, answer })], message);
+    if (o.json) json("below", [await sizedHit({ ...hit, answer })], message);
     else printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
     process.exit(1);
   }

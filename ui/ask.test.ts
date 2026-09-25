@@ -15,7 +15,12 @@ describe("whyBlocked", () => {
     expect(whyBlocked({ ...asking, pdf: "/shelf/book.pdf" })).toBeUndefined();
   });
 
-  test("lets the whole shelf be asked with an empty PDF on it", () => {
+  test("lets the whole shelf be asked with an empty PDF on it, but not when every one is", () => {
     expect(whyBlocked({ ...asking, tool: "jevfind", pdf: "/shelf/empty.pdf" })).toBeUndefined();
+    expect(whyBlocked({ ...asking, tool: "jevfind", files: [files[1]!] })).toBe("Every PDF on the shelf is empty");
+  });
+
+  test("says before sending that a question cannot start as an option does", () => {
+    expect(whyBlocked({ ...asking, tool: "jevfind", question: "--help" })).toBe("A question cannot start with “-”: the tool would take it for an option");
   });
 });

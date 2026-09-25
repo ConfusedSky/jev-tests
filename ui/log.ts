@@ -197,7 +197,10 @@ export function walkOf(lines: Line[]): Walk {
       else Object.assign(cur, { p: Math.max(cur.p ?? 0, p), gate: cur.gate === "yes" ? "yes" : gate });
     } else if ((m = /^(take|keep|drop)\s+(.+) \(p=(\d\.\d\d)\)\s{2}(.+)$/.exec(text))) {
       const verdict = m[1] as keyof typeof STRENGTH;
-      const r = cur ?? add({ kind: "window", name: m[4]! });
+      // Pages are gated a batch at a time and read best first, so a verdict is
+      // for the read its line names, which need not be the last one gated.
+      const named = m[4]!.replace(/ \(excerpt\)$/, "");
+      const r = here().reads.findLast((x) => x.name === named) ?? cur ?? add({ kind: "window", name: m[4]! });
       if (r.verdict && STRENGTH[r.verdict] > STRENGTH[verdict]) continue;
       const page = [...m[4]!.matchAll(/p\.(\d+)/g)].pop()?.[1];
       Object.assign(r, { verdict, answer: m[2], sure: Number(m[3]), page: page ? Number(page) : r.page });
@@ -213,6 +216,9 @@ export function walkOf(lines: Line[]): Walk {
  * yet gated out is being read; once it ended, one the gate passed was never
  * read out, and one it never reached is "–".
  */
+/** Whether a read is under way while the run goes on: the last one begun, or one the gate passed that is waiting its turn to be read out. */
+export const readingNow = (r: Read, live: boolean, last: boolean) => live && !r.verdict && (last || r.gate === "yes");
+
 export function stateOf(r: Read, reading: boolean): NonNullable<Read["verdict"] | Read["gate"]> | "reading…" | "–" {
   if (r.verdict) return r.verdict;
   if (r.gate === "no") return "no";

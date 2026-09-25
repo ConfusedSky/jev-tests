@@ -5,7 +5,7 @@
  */
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { normalize, STOPWORDS, wordsOf, type Answer, type Kind, type Word } from "./answer";
-import { answerLayer, highlightAll, hitLine, jsonHit, readDefaults, renderPassage, type JsonReport, type ReadOpts } from "./cli";
+import { answerLayer, highlightAll, hitLine, readDefaults, renderPassage, sizedHit, type JsonReport, type ReadOpts } from "./cli";
 import { composeTable, NA, namesBy } from "./compose";
 import { rowText, type Para, type Row } from "./layout";
 import { openAt, pageUrl, searchPdf, textFile, type Candidate, type Hit, type Outcome, type Tried, type Ui } from "./pdf";
@@ -112,6 +112,11 @@ export async function findIn(client: TypeSafeClient, paths: string[], search: Fi
     }
     if (!(await Bun.file(r.name).exists())) {
       ui.log(`${named}  --  no such file, skipped`);
+      continue;
+    }
+    // mutool cannot open an empty file, and its failure mid-walk ended the run.
+    if (Bun.file(r.name).size === 0) {
+      ui.log(`${named}  --  empty file, skipped`);
       continue;
     }
     // A file names itself first; what it read stands under it and its sum closes it.
@@ -291,8 +296,10 @@ export async function reportAcross(tool: string, t: Across, o: FindOpts, ui: Ui,
   const marked = new Map((await highlightAll(found.map(({ cell }) => cell.hit!), o)).map((hit, i) => [found[i]!.cell, hit]));
   const answered = t.cells.flat().some((c) => !c.why);
   if (o.json) {
-    const cells = t.cells.map((line) =>
-      line.map((c) => ({ text: c.text, kind: c.kind, why: c.why, hit: c.hit && c.answer ? jsonHit({ ...c.hit, answer: c.answer }, marked.get(c)?.pdf) : undefined })),
+    const cells = await Promise.all(
+      t.cells.map((line) =>
+        Promise.all(line.map(async (c) => ({ text: c.text, kind: c.kind, why: c.why, hit: c.hit && c.answer ? await sizedHit({ ...c.hit, answer: c.answer }, marked.get(c)?.pdf) : undefined }))),
+      ),
     );
     const message = answered ? undefined : "no cell answered";
     if (message) console.error(`${tool}: ${message}`);

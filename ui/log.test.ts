@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { columnsOf, drain, errorText, factsOf, flowOf, gaugesOf, isFrame, isTotal, parseLine, spendOf, stateOf, tree, walkOf, withoutCost } from "./log";
+import { columnsOf, drain, errorText, factsOf, flowOf, gaugesOf, isFrame, isTotal, parseLine, readingNow, spendOf, stateOf, tree, walkOf, withoutCost } from "./log";
 
 const LOG = `question looks like a count question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)
 counts skills
@@ -256,6 +256,46 @@ section C  p.3-3…`),
     expect([stateOf(a!, true), stateOf(b!, true), stateOf(c!, true)]).toEqual(["no", "reading…", "reading…"]);
     expect([stateOf(a!, false), stateOf(b!, false), stateOf(c!, false)]).toEqual(["no", "yes", "–"]);
     expect(stateOf({ kind: "section", name: "D", gate: "yes", verdict: "drop" }, true)).toBe("drop");
+  });
+});
+
+describe("walkOf on a batch read best first", () => {
+  // p.1 and p.3 pass the gate together; p.1, the better, is read first.
+  const log = `ranked 0 sections and 0 excerpts in 0.1s (jev 0.1s; 10 tokens in, 1 out, $0.00001), 0 above title floor 1
+no outline: scanning 3 of 3 windows in page order…
+  gated 3 pages (batch 1/1), 0.3s jev, 2 yes
+  yes  0.90  p.1 (window 1/3)
+  no   0.20  p.2 (window 2/3)
+  yes  0.80  p.3 (window 3/3)
+  take  Open the box (p=0.95)  p.1 (window 1/3)`
+    .split("\n")
+    .map((l) => parseLine(l));
+
+  test("gives a verdict to the window its line names, not the last one gated", () => {
+    const reads = walkOf(log).files[0]!.reads;
+    expect(reads.map((r) => [r.name, r.verdict, r.page])).toEqual([
+      ["p.1 (window 1/3)", "take", 1],
+      ["p.2 (window 2/3)", undefined, undefined],
+      ["p.3 (window 3/3)", undefined, undefined],
+    ]);
+  });
+
+  test("while live, shows each window the gate passed as reading until its verdict comes", () => {
+    const states = (lines: typeof log) => {
+      const reads = walkOf(lines).files[0]!.reads;
+      return reads.map((r) => stateOf(r, readingNow(r, true, r === reads.at(-1))));
+    };
+    expect(states(log.slice(0, -1))).toEqual(["reading…", "no", "reading…"]);
+    expect(states(log)).toEqual(["take", "no", "reading…"]);
+    const reads = walkOf(log).files[0]!.reads;
+    expect(reads.map((r) => stateOf(r, readingNow(r, false, r === reads.at(-1))))).toEqual(["take", "no", "yes"]);
+  });
+
+  test("still gives a section's windows' verdict to the section", () => {
+    const w = walkOf(
+      ["section A  p.1-3…", "  gated 3 pages (batch 1/1), 0.3s jev, 2 yes  A", "  yes  0.90  A p.1 (window 1/3)", "  no   0.20  A p.2 (window 2/3)", "  yes  0.80  A p.3 (window 3/3)", "  take  x (p=0.95)  A p.1 (window 1/3)"].map((l) => parseLine(l)),
+    );
+    expect(w.files[0]!.reads).toMatchObject([{ kind: "section", name: "A p.1-3", verdict: "take", page: 1 }]);
   });
 });
 

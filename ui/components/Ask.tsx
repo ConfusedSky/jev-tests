@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { changed, commandFor, DEFAULTS, invalid, SPECS, type Options, type Spec, type Tool } from "../options";
+import { badQuestion } from "../request";
 import type { ShelfFile } from "../types";
-import { copy, cx } from "../util";
+import { copy, cx, plural } from "../util";
 import { Action, Icon } from "./Icon";
 import { PdfPicker } from "./PdfPicker";
 import { useToast } from "./Toast";
@@ -28,8 +29,11 @@ export function whyBlocked(a: { tool: Tool; question: string; options: Options; 
   // Said before a question is typed, since the tools would spend a call on it before finding it empty.
   if (a.tool === "jevsec" && a.pdf && a.files.find((f) => f.path === a.pdf)?.size === 0) return "This file is empty";
   if (!a.question.trim()) return "Type a question";
+  const bad = badQuestion(a.question);
+  if (bad) return bad;
   if (a.tool === "jevsec" && !a.pdf) return "Pick a PDF to ask";
   if (a.tool !== "jevsec" && a.files.length === 0) return "Add a folder or a locate command to the shelf";
+  if (a.tool !== "jevsec" && a.files.every((f) => f.size === 0)) return "Every PDF on the shelf is empty";
   return invalid(a.tool, a.options) ?? (a.cacheWhy ? "The ranking cache can't run" : undefined);
 }
 
@@ -75,6 +79,7 @@ export function Ask(props: Props) {
   const mode = MODES.find((m) => m.tool === tool)!;
   const blocked = whyBlocked({ tool, question, options, pdf, files, cacheWhy, offline });
   const command = commandFor(tool, options, question.trim(), { pdf, sources: folders });
+  const readable = files.filter((f) => f.size > 0).length;
 
   useEffect(() => {
     const el = box.current;
@@ -109,7 +114,7 @@ export function Ask(props: Props) {
   };
 
   return (
-    <section data-ask className="rounded-2xl border border-stone-200 bg-white shadow-sm transition-shadow has-[textarea:focus]:border-teal-600/40 has-[textarea:focus]:ring-4 has-[textarea:focus]:ring-teal-600/10">
+    <section data-ask className="@container rounded-2xl border border-stone-200 bg-white shadow-sm transition-shadow has-[textarea:focus]:border-teal-600/40 has-[textarea:focus]:ring-4 has-[textarea:focus]:ring-teal-600/10">
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 pt-3 pb-3">
         <div role="tablist" aria-label="What to search" className="flex rounded-xl bg-stone-100 p-1">
           {MODES.map((m) => (
@@ -143,7 +148,7 @@ export function Ask(props: Props) {
               </span>
             ) : (
               <span>
-                {files.length} PDF{files.length === 1 ? "" : "s"} on the shelf; {mode.cost}
+                {plural(readable, "PDF")} on the shelf{files.length > readable ? ` (${files.length - readable} empty, left out)` : ""}; {mode.cost}
               </span>
             )}
           </div>
@@ -266,19 +271,19 @@ export function Ask(props: Props) {
           {diff.length > 0 && <span className="rounded-full bg-teal-100 px-1.5 text-[11px] font-semibold text-teal-800">{diff.length} changed</span>}
         </button>
         {diff.length > 0 && !showOptions && (
-          <div className="hidden min-w-0 flex-1 truncate text-xs text-stone-500 lg:block">{diff.map((s) => `${s.label}: ${String(options[s.key])}`).join(" · ")}</div>
+          <div className="hidden min-w-0 flex-1 truncate text-xs text-stone-500 @xl:block">{diff.map((s) => `${s.label}: ${String(options[s.key])}`).join(" · ")}</div>
         )}
         <div className="ml-auto flex items-center gap-3">
           {!running && blocked && <span className={cx("text-xs", blocked === "Type a question" ? "text-stone-500" : offline ? "font-medium text-rose-700" : "font-medium text-amber-700")}>{blocked}</span>}
           {running ? (
-            <button onClick={onStop} title="Stop the run: calls that finished are counted; one still in flight is billed but not counted" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-500">
+            <button onClick={onStop} title="Stop the run: calls that finished are counted; one still in flight is billed but not counted" className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:bg-rose-500">
               Stop <kbd className="ml-1 text-[10px] font-normal text-rose-200">esc</kbd>
             </button>
           ) : (
             <button
               onClick={onAsk}
               disabled={!!blocked}
-              className="group rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:shadow-none"
+              className="group rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:shadow-none"
             >
               Ask <kbd className="ml-1 text-[10px] font-normal text-teal-200 group-disabled:text-stone-500">⏎</kbd>
             </button>
