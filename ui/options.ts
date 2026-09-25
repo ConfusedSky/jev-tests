@@ -3,6 +3,8 @@
  * choices makes. Imported by the browser, so it names the CLI's kinds and
  * cache models itself; options.test.ts holds it to cli.ts and cache.ts.
  */
+import { feed, quote } from "./sources";
+
 export type Tool = "jevsec" | "jevfind" | "jevgrep";
 
 export const KINDS = ["count", "number", "truth", "passage", "table"] as const;
@@ -114,12 +116,9 @@ export function invalid(tool: Tool, o: Options): string | undefined {
 /** The specs that apply to `tool` and differ from the defaults. */
 export const changed = (tool: Tool, o: Options) => SPECS.filter((s) => s.tools.includes(tool) && o[s.key] !== DEFAULTS[s.key]);
 
-const quote = (s: string) => (/^[\w./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
-
 /** The command line the run is, as a user would type it in the repo. */
-export function commandFor(tool: Tool, o: Options, question: string, target: { pdf?: string; folders?: string[] }): string {
+export function commandFor(tool: Tool, o: Options, question: string, target: { pdf?: string; sources?: string[] }): string {
   const cli = ["bun", `${tool}.ts`, ...argsFor(tool, o), ...(tool === "jevsec" ? [target.pdf ?? "BOOK.pdf"] : []), question || "QUESTION"].map(quote).join(" ");
   if (tool === "jevsec") return cli;
-  const dirs = target.folders?.length ? target.folders.map(quote).join(" ") : ".";
-  return `find ${dirs} -iname '*.pdf' | ${cli}`;
+  return `${feed(target.sources ?? [])} | ${cli}`;
 }

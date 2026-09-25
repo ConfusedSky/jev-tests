@@ -52,9 +52,9 @@ export function Ask(props: Props) {
     : tool === "jevsec" && !pdf
       ? "Pick a PDF on the shelf"
       : tool !== "jevsec" && files === 0
-        ? "Add a folder of PDFs to the shelf"
+        ? "Add a folder or a locate command to the shelf"
         : (invalid(tool, options) ?? (cacheWhy ? "The ranking cache can't run" : undefined));
-  const command = commandFor(tool, options, question.trim(), { pdf, folders });
+  const command = commandFor(tool, options, question.trim(), { pdf, sources: folders });
 
   useEffect(() => {
     const el = box.current;
