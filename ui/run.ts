@@ -21,7 +21,7 @@ export function outcomeOf(run: Run): Outcome {
   if (run.status === "running") return "running";
   if (run.status === "stopped") return "stopped";
   const e = run.end;
-  if (e?.ranked) return "names";
+  if (e?.ranked) return e.ranked.length ? "names" : "unanswered";
   if (e?.report) return e.report.status;
   return "error";
 }

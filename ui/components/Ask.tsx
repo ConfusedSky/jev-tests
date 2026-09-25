@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { changed, commandFor, DEFAULTS, SPECS, type Options, type Spec, type Tool } from "../options";
+import { changed, commandFor, DEFAULTS, invalid, SPECS, type Options, type Spec, type Tool } from "../options";
 import { basename, copy, cx } from "../util";
 
 const MODES: { tool: Tool; label: string; asks: string; cost: string }[] = [
@@ -47,7 +47,13 @@ export function Ask(props: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const diff = changed(tool, options);
   const mode = MODES.find((m) => m.tool === tool)!;
-  const blocked = !question.trim() ? "Type a question" : tool === "jevsec" ? (pdf ? undefined : "Pick a PDF on the shelf") : files === 0 ? "Add a folder of PDFs to the shelf" : undefined;
+  const blocked = !question.trim()
+    ? "Type a question"
+    : tool === "jevsec" && !pdf
+      ? "Pick a PDF on the shelf"
+      : tool !== "jevsec" && files === 0
+        ? "Add a folder of PDFs to the shelf"
+        : (invalid(tool, options) ?? (cacheWhy ? "The ranking cache can't run" : undefined));
   const command = commandFor(tool, options, question.trim(), { pdf, folders });
 
   useEffect(() => {
@@ -189,7 +195,7 @@ export function Ask(props: Props) {
           <div className="hidden min-w-0 flex-1 truncate text-xs text-stone-400 lg:block">{diff.map((s) => `${s.label}: ${String(options[s.key])}`).join(" · ")}</div>
         )}
         <div className="ml-auto flex items-center gap-3">
-          {!running && blocked && <span className="text-xs text-stone-400">{blocked}</span>}
+          {!running && blocked && <span className={cx("text-xs", blocked === "Type a question" ? "text-stone-400" : "font-medium text-amber-700")}>{blocked}</span>}
           {running ? (
             <button onClick={onStop} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-500">
               Stop <kbd className="ml-1 text-[10px] font-normal text-rose-200">esc</kbd>
@@ -255,6 +261,7 @@ function OptionsPanel({ tool, options, setOptions }: { tool: Tool; options: Opti
 
 function Field({ spec, value, onChange }: { spec: Spec; value: Options[keyof Options]; onChange: (v: Options[keyof Options]) => void }) {
   const isDefault = value === DEFAULTS[spec.key];
+  const bad = spec.type === "number" && (typeof value !== "number" || !Number.isFinite(value) || value < spec.min || value > spec.max);
   const input = "rounded-md border border-stone-200 bg-white px-2 py-1 text-xs focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15";
   return (
     <label className="flex items-start gap-3 rounded-lg py-1" title={spec.help}>
@@ -264,6 +271,11 @@ function Field({ spec, value, onChange }: { spec: Spec; value: Options[keyof Opt
           {!isDefault && <span className="h-1.5 w-1.5 rounded-full bg-teal-600" title="changed from the default" />}
         </div>
         <div className="text-[11px] leading-snug text-stone-400">{spec.help}</div>
+        {bad && spec.type === "number" && (
+          <div className="text-[11px] font-medium text-rose-700">
+            between {spec.min} and {spec.max}
+          </div>
+        )}
       </div>
       <div className="shrink-0 pt-0.5">
         {spec.type === "toggle" ? (
@@ -292,7 +304,8 @@ function Field({ spec, value, onChange }: { spec: Spec; value: Options[keyof Opt
             step={spec.step}
             value={Number(value)}
             onChange={(e) => onChange(e.target.value === "" ? DEFAULTS[spec.key] : Number(e.target.value))}
-            className={cx(input, "w-24 tabular-nums")}
+            aria-invalid={bad}
+            className={cx(input, "w-24 tabular-nums", bad && "border-rose-400 bg-rose-50 text-rose-800")}
           />
         ) : (
           <input value={String(value)} placeholder={spec.placeholder} onChange={(e) => onChange(e.target.value)} className={cx(input, "w-44 font-mono")} />

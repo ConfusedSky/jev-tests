@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ask, KIND_HINTS } from "./components/Ask";
 import { Header } from "./components/Header";
-import { History, runSpend } from "./components/History";
+import { History, OUTCOME, runSpend } from "./components/History";
 import { RunView } from "./components/RunView";
 import { Shelf } from "./components/Shelf";
 import { spendOf } from "./log";
 import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
-import { useRun, type Run } from "./run";
+import { outcomeOf, useRun, type Run } from "./run";
 import type { Config, Health, RunRequest, Scan } from "./types";
-import { cx, useStored } from "./util";
+import { cx, dollars, useStored } from "./util";
 
 const HISTORY = 40;
+/** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
+const ANSWER_ROOM = 440;
 
 async function scanOf(dir: string): Promise<Scan> {
   const r = await fetch(`/api/scan?dir=${encodeURIComponent(dir)}`);
@@ -36,7 +38,12 @@ export function App() {
   const [note, setNote] = useState<string>();
   const [focus, setFocus] = useState(0);
   const main = useRef<HTMLElement>(null);
+  const runView = useRef<HTMLDivElement>(null);
+  // A run that ends while an older one is on screen leaves word of it until seen.
+  const [ended, setEnded] = useState<Run>();
+  const watching = useRef(true);
   const { run, start, stop } = useRun((r) => {
+    if (!watching.current) setEnded(r);
     setHistory((h) => [r, ...h.filter((x) => x.id !== r.id)].slice(0, HISTORY));
     setLedger((l) => {
       const add = ledgerOf([r]);
@@ -74,9 +81,19 @@ export function App() {
 
   const ask = (request: RunRequest) => {
     setViewing(undefined);
+    setEnded(undefined);
     setNote(undefined);
     start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, folders }));
   };
+
+  // An answer that arrives below the fold is scrolled up under the header; the
+  // page is only tall enough to scroll once it is there.
+  useEffect(() => {
+    const [el, box] = [runView.current, main.current];
+    if (run?.status !== "done" || viewing || !el || !box) return;
+    const below = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    if (below + ANSWER_ROOM > box.clientHeight) box.scrollTo({ top: Math.max(0, below + box.scrollTop - 12), behavior: "smooth" });
+  }, [run?.id, run?.status]);
   const askNow = () =>
     ask({ tool, question: question.trim(), options, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) });
 
@@ -84,9 +101,9 @@ export function App() {
   const addFolder = async (input: string): Promise<string | undefined> => {
     const scan = await scanOf(input);
     if (scan.error) return scan.error === "not a folder" ? `${scan.dir} is not a folder` : /ENOENT/.test(scan.error) ? `${scan.dir} does not exist` : scan.error;
+    if (scan.files.length === 0) return `No PDFs under ${scan.dir}, so it stays off the shelf`;
     setScans((s) => ({ ...s, [scan.dir]: scan }));
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
-    if (scan.files.length === 0) return `${scan.dir} holds no PDFs`;
   };
 
   const pick = (path: string) => {
@@ -95,6 +112,7 @@ export function App() {
   };
 
   const shown = viewing ?? run;
+  watching.current = !viewing;
   const live = run?.status === "running";
   const cacheWhy = tool !== "jevgrep" && options.cache !== "off" ? health?.cache[options.cache] : null;
 
@@ -158,7 +176,28 @@ export function App() {
                 A question is still running. Show it →
               </button>
             )}
+            {viewing && ended && ended.id !== viewing.id && (
+              <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
+                <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(ended)].dot)} />
+                <span className="min-w-0 flex-1 truncate text-stone-700">
+                  Finished: <span className="font-medium">{OUTCOME[outcomeOf(ended)].label}</span> · {dollars(runSpend(ended))} · “{ended.request.question}”
+                </span>
+                <button
+                  onClick={() => {
+                    setViewing(undefined);
+                    setEnded(undefined);
+                  }}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                >
+                  Show it →
+                </button>
+                <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-400 hover:text-stone-700">
+                  ×
+                </button>
+              </div>
+            )}
             {shown ? (
+              <div ref={runView}>
               <RunView
                 run={shown}
                 onStop={stop}
@@ -178,6 +217,7 @@ export function App() {
                   setFocus((n) => n + 1);
                 }}
               />
+              </div>
             ) : (
               <Welcome />
             )}

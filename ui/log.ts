@@ -66,6 +66,14 @@ export function spendOf(lines: Line[]): Cost {
   return counted.reduce((a, { cost }) => ({ in: a.in + cost.in, out: a.out + cost.out, dollars: a.dollars + cost.dollars }), { in: 0, out: 0, dollars: 0 });
 }
 
+/** A line without its time-and-tokens clause, which the UI shows on its own. */
+export const withoutCost = (text: string) =>
+  text
+    .replace(/\s+in \d+(\.\d+)?s \(jev [^)]*\)/, "")
+    .replace(/\s\d+(\.\d+)?s \(jev [^)]*\),?/, "")
+    .replace(/\s{2,}/g, "  ")
+    .trim();
+
 /** What the log says jev read off the question and how the run went about answering it. */
 export type Facts = {
   kind?: string;
@@ -73,7 +81,10 @@ export type Facts = {
   counts?: string;
   asks?: string;
   searches?: string;
-  cache?: { question: string; score: string };
+  /** The first ranking taken from the cache, and how many were. */
+  cache?: { question: string; score: string; count: number };
+  /** PDFs with neither an outline nor a text layer, which nothing can be read off. */
+  noText?: string[];
   embedding?: string;
   across?: { rows: string; columns: string };
   files?: number;
@@ -93,7 +104,8 @@ export function factsOf(lines: Line[]): Facts {
     else if (depth === 0 && (m = /^counts (.+)$/.exec(text))) f.counts = m[1];
     else if (depth === 0 && (m = /^searches for (.+)$/.exec(text))) f.searches = m[1];
     else if (depth === 0 && (m = /^-n (\d+) applies to passage questions only/.exec(text))) f.onlyOne = Number(m[1]);
-    else if ((m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache ??= { question: m[1]!, score: m[2]! };
+    else if ((m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache = f.cache ? { ...f.cache, count: f.cache.count + 1 } : { question: m[1]!, score: m[2]!, count: 1 };
+    else if ((m = /^--\s+no outline and no extractable text\s+(.+)$/.exec(text))) f.noText = [...(f.noText ?? []), m[1]!];
     else if ((m = /^embedding (\d+) pages of (.+), once/.exec(text))) f.embedding = `${m[1]} pages of ${m[2]}`;
     else if ((m = /^rows name documents \(p=[\d.]+\): (.+?); asks (.+?)  in /.exec(text))) f.across = { rows: m[1]!, columns: m[2]! };
     else if ((m = /^total .*, (\d+) files opened, (\d+) windows read/.exec(text))) [f.files, f.windows] = [Number(m[1]), Number(m[2])];

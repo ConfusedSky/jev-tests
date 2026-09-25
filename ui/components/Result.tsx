@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { factsOf, withoutCost } from "../log";
 import type { Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
 import { basename, cx } from "../util";
@@ -52,7 +53,24 @@ function Value({ kind, text }: { kind?: string; text: string }) {
   return <span className="font-serif text-5xl font-semibold tracking-tight break-words text-stone-900">{text}</span>;
 }
 
-function HitCard({ hit, kind, floor, stamp, index, count, below }: { hit: JsonHit; kind?: string; floor: number; stamp: string; index: number; count: number; below?: boolean }) {
+const MARKED: Record<string, string> = {
+  count: "each name counted is marked on its page",
+  number: "the figure is marked where it stands",
+  truth: "a statement rests on no single line, so nothing is marked",
+};
+
+function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3 border-t border-stone-100 py-2 text-xs">
+      <dt className="text-stone-400">{label}</dt>
+      <dd className="min-w-0 text-stone-700">{children}</dd>
+    </div>
+  );
+}
+
+type Card = { hit: JsonHit; kind?: string; floor: number; stamp: string; index: number; count: number; below?: boolean; reading?: string };
+
+function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card) {
   const a = hit.answer;
   const long = kind === "passage" || kind === "table";
   return (
@@ -65,7 +83,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below }: { hit: JsonHi
           <Confidence p={hit.found} label="page" />
         </div>
       </div>
-      <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_220px]")}>
+      <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_200px]")}>
         <div className="min-w-0">
           {!a ? (
             <p className="text-sm text-stone-500">This page passed the gate; nothing was read off it.</p>
@@ -76,10 +94,21 @@ function HitCard({ hit, kind, floor, stamp, index, count, below }: { hit: JsonHi
           ) : (
             <div>
               <Value kind={kind} text={a.text} />
-              <div className="mt-2 text-xs text-stone-500">
+              <div className="mt-1 mb-4 text-sm text-stone-500">
                 {kind === "count" ? "counted off the page" : kind === "number" ? "read off the page" : kind === "truth" ? "the statement, checked against the page" : ""}
                 {a.pages && a.pages.length > 1 ? ` across pages ${a.pages.join(", ")}` : ""}
               </div>
+              <dl>
+                {reading && <Detail label="jev read it as">{reading}</Detail>}
+                <Detail label="found in">
+                  <span className="font-medium">{basename(hit.pdf)}</span>, p.{hit.page}
+                  {!/^p\.\d+(-\d+)?$/.test(hit.section) && <span className="block text-stone-500">{hit.section.split(" > ").join(" › ")}</span>}
+                </Detail>
+                <Detail label="how sure">
+                  answer p={a.p.toFixed(2)} {a.p >= floor ? `clears the answer floor ${floor}` : `is under the answer floor ${floor}`}; the page passed the gate at p={hit.found.toFixed(2)}
+                </Detail>
+                <Detail label="on the page">{hit.view !== hit.pdf ? MARKED[kind ?? ""] ?? "marked in a copy" : kind === "truth" ? MARKED.truth : "not marked: the text was not found on the page's lines, or highlighting is off"}</Detail>
+              </dl>
             </div>
           )}
         </div>
@@ -145,7 +174,7 @@ function Across({ table, floor, stamp }: { table: NonNullable<JsonReport["table"
   );
 }
 
-function Names({ ranked, floor, onPick, onAll }: { ranked: Ranked[]; floor: number; onPick: (path: string) => void; onAll: () => void }) {
+function Names({ ranked, total, floor, onPick, onAll }: { ranked: Ranked[]; total: number; floor: number; onPick: (path: string) => void; onAll: () => void }) {
   if (ranked.length === 0)
     return (
       <Notice tone="stone" title={`No name reached the score floor of ${floor}`}>
@@ -157,6 +186,16 @@ function Names({ ranked, floor, onPick, onAll }: { ranked: Ranked[]; floor: numb
     );
   return (
     <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-stone-100 px-5 py-2.5 text-xs text-stone-500">
+        <span>
+          <span className="font-semibold text-stone-800">{ranked.length}</span> of {total} names reached the score floor {floor}
+        </span>
+        {total > ranked.length && floor > 0 && (
+          <button onClick={onAll} className="ml-auto rounded-md px-2 py-1 font-medium text-teal-700 hover:bg-teal-50">
+            rank every name, floor 0
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 border-b border-stone-100 bg-stone-50 px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-stone-400">
         <span>score 0–3</span>
         <span>file · why</span>
@@ -203,10 +242,17 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
   const e = run.end;
   const o = run.request.options;
   if (!e) return null;
-  if (e.ranked) return <Names ranked={e.ranked} floor={o.nameFloor} onPick={onPick} onAll={() => onRetry({ nameFloor: 0 })} />;
+  const f = factsOf(run.lines);
+  const reading = f.kind === "count" && f.counts ? `a count of ${f.counts}` : f.kind === "number" && f.asks ? `a figure: ${f.asks}` : f.kind ? `a ${f.kind} question` : undefined;
+  if (e.ranked) return <Names ranked={e.ranked} total={run.request.paths?.length ?? 0} floor={o.nameFloor} onPick={onPick} onAll={() => onRetry({ nameFloor: 0 })} />;
   const r = e.report;
   if (!r) {
-    if (e.error === "stopped") return <Notice tone="stone" title="Stopped">The run was stopped; what it spent up to then is in the log.</Notice>;
+    if (e.error === "stopped")
+      return (
+        <Notice tone="stone" title="Stopped">
+          The log counts every call that finished before the stop. A call still in flight is billed by OpenRouter but never reported back, so it is not in that count.
+        </Notice>
+      );
     const cache = /--cache off/.test(e.error ?? "");
     return (
       <Notice tone="rose" title="The tool stopped before answering">
@@ -220,15 +266,24 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
     );
   }
   if (r.table) return <Across table={r.table} floor={o.answerFloor} stamp={run.id} />;
-  if (r.status === "unanswered")
+  if (r.status === "unanswered") {
+    if (run.request.tool === "jevsec" && f.noText?.length)
+      return (
+        <Notice tone="amber" title={f.noText.length === 1 ? `${basename(f.noText[0]!)} has no text to read` : `${f.noText.length} PDFs have no text to read`}>
+          It has neither an outline nor a text layer, so it is most likely scanned pages. jev reads text, so nothing in it can be searched until it has been through OCR (for example with ocrmypdf).
+        </Notice>
+      );
     return (
       <Notice tone="stone" title="No page answered">
-        {r.message}
+        {r.message && withoutCost(r.message)}
         <div className="mt-2 text-xs">
-          Try rewording, a lower page threshold or answer floor in Options, or {run.request.tool === "jevsec" ? "the whole shelf" : "a larger max files"}.
+          Try rewording, a lower page threshold or answer floor in Options, or {run.request.tool === "jevsec" ? "the whole shelf" : "a larger max files"}. The log shows every page that was read and how it scored.
         </div>
+        {f.noText?.length ? <div className="mt-2 text-xs">Skipped for having no text layer (scanned pages?): {f.noText.map(basename).join(", ")}.</div> : null}
       </Notice>
     );
+  }
+  const short = r.kind === "passage" && r.status === "answered" && r.hits.length < o.hits;
   return (
     <div className="space-y-4">
       {r.status === "below" && (
@@ -236,8 +291,16 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
           The best one read is below; treat it as a lead, not an answer.
         </Notice>
       )}
+      {short && (
+        <Notice tone="stone" title={`${r.hits.length} of the ${o.hits} passages asked for`}>
+          The walk read its {o.max} best sections and found no more that answered. Reading further costs more calls.
+          <button onClick={() => onRetry({ max: o.max * 2 })} className="mt-3 block rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
+            Ask again, reading up to {o.max * 2} sections
+          </button>
+        </Notice>
+      )}
       {r.hits.map((h, i) => (
-        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} stamp={run.id} index={i} count={r.hits.length} below={r.status === "below"} />
+        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} stamp={run.id} index={i} count={r.hits.length} below={r.status === "below"} reading={reading} />
       ))}
     </div>
   );

@@ -26,7 +26,7 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
     const why = await onAdd(dir.trim());
     setAdding(false);
     setProblem(why);
-    if (!why || / holds no PDFs$/.test(why)) setDir("");
+    if (!why) setDir("");
   };
 
   return (
