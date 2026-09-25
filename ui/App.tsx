@@ -32,7 +32,7 @@ async function scanOf(source: string): Promise<Scan> {
   try {
     const r = isLocate(source)
       ? await fetch("/api/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: source }) })
-      : await fetch(`/api/scan?dir=${encodeURIComponent(source)}`);
+      : await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dir: source }) });
     const body = (await r.json().catch(() => null)) as Scan | { error?: string } | null;
     if (body && "files" in body) return body;
     return failed(body?.error ?? `the server answered ${r.status} ${r.statusText}`);
@@ -52,9 +52,10 @@ const typing = (e: KeyboardEvent) => {
 export function App() {
   const toast = useToast();
   const [health, setHealth] = useState<Health>();
-  const [folders, setFolders] = useStored<string[]>("jev.folders", []);
+  // History, spend, the shelf and the theme are the browser's, shared by its tabs; the form is each tab's own.
+  const [folders, setFolders] = useStored<string[]>("jev.folders", [], true);
   // Sources the server was started with go on the shelf once; taken off, they stay off.
-  const [seeded, setSeeded] = useStored<string[]>("jev.seeded", []);
+  const [seeded, setSeeded] = useStored<string[]>("jev.seeded", [], true);
   const [scans, setScans] = useState<Record<string, Scan | undefined>>({});
   const scansNow = useRef(scans);
   scansNow.current = scans;
@@ -62,10 +63,10 @@ export function App() {
   const [question, setQuestion] = useStored("jev.question", "");
   const [options, setOptions] = useStored<Options>("jev.options", DEFAULTS);
   const [pdf, setPdf] = useStored("jev.pdf", "");
-  const [history, setHistory] = useStored<Run[]>("jev.history", []);
+  const [history, setHistory] = useStored<Run[]>("jev.history", [], true);
   const [side, setSide] = useState<"shelf" | "history">("shelf");
   // What this browser's runs have spent, kept apart from the history so clearing one keeps the other.
-  const [ledger, setLedger] = useStored("jev.ledger", ledgerOf(history));
+  const [ledger, setLedger] = useStored("jev.ledger", ledgerOf(history), true);
   const [note, setNote] = useState<string>();
   const [focus, setFocus] = useState(0);
   const main = useRef<HTMLElement>(null);
@@ -169,7 +170,12 @@ export function App() {
     return () => document.removeEventListener("visibilitychange", seen);
   }, []);
 
+  // One run at a time: starting another aborts the live one, and that is Stop's job, never a side effect.
   const ask = (request: RunRequest) => {
+    if (run?.status === "running") {
+      toast("A question is still running. Stop it first, or wait for it to end.");
+      return;
+    }
     setEnded(undefined);
     setNote(undefined);
     const id = start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, sources: folders }));
@@ -283,6 +289,8 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A popover or dialog that took the key has done with it.
+      if (e.defaultPrevented) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setDialog((d) => (d === "palette" ? undefined : "palette"));
@@ -294,6 +302,7 @@ export function App() {
       else if (e.key === "b") toggleSide();
       else if (e.key === "[") step(1);
       else if (e.key === "]") step(-1);
+      else if (e.key === "Escape" && drawer) setDrawer(false);
       else if (e.key === "Escape" && live) stop();
       else return;
       e.preventDefault();

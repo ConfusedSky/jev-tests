@@ -55,7 +55,8 @@ export function Palette({ items, onClose }: { items: Item[]; onClose: () => void
               id={`palette-${it.id}`}
               role="option"
               aria-selected={it === cur}
-              onMouseEnter={() => setAt(i)}
+              // A pointer resting where the palette opens is not a choice; only moving it is.
+              onMouseMove={() => setAt(i)}
               onClick={() => pick(it)}
               className={cx("flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm", it === cur ? "bg-teal-50 text-teal-900 ring-1 ring-teal-600/20" : "text-stone-800")}
             >
