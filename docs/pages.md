@@ -25,13 +25,14 @@ copy of the PDF, and how the link opens at the page.
 
 ## Highlighting the answer
 
-`--highlight` links to a copy of the PDF, in `~/.cache/jev/` under a name
+The link goes to a copy of the PDF, in `~/.cache/jev/` under a name
 that carries a hash of the path so two shelves' `manual.pdf` stay apart, with the
 passage's lines marked by a highlight annotation on its page, so the link
 lands on the answer rather than the page. Any viewer that draws annotations
 shows it. The copy is made afresh each run, since a highlight saved into it
 stays there, and every hit in the same file adds its own; the Fallout
 rulebook's 248 MB take about a second to copy. `--open` opens the copy.
+`--no-highlight` links to the PDF itself and makes no copy.
 
 A value is marked where it stands. A count marks each name it counted, on
 every page it counted from: Heart's nine skills, Cyberpunk Red's skill
@@ -52,7 +53,7 @@ asked columns marks only those cells: the weapon and its damage, not its
 magazine and cost.
 
 ```sh
-bun jevsec.ts --highlight --open book.pdf "What skills are there?"
+bun jevsec.ts --open book.pdf "What skills are there?"
 ```
 
 ## Clicking the link at the page

@@ -82,7 +82,7 @@ export const readDefaults = (): ReadOpts => ({
   model: DEFAULT_MODEL,
   quiet: false,
   open: false,
-  highlight: false,
+  highlight: true,
   answerFloor: 0.7,
   noToc: false,
   maxAnswers: 5,
@@ -105,7 +105,9 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--model": (o, next) => (o.model = next()),
   "-q|--quiet": (o) => (o.quiet = true),
   "--open": (o) => (o.open = true),
+  // The default; still taken, so a command line written before is not refused.
   "--highlight": (o) => (o.highlight = true),
+  "--no-highlight": (o) => (o.highlight = false),
   "--whole-windows": (o) => (o.perPage = false),
   "--no-toc": (o) => (o.noToc = true),
   "--no-search": (o) => (o.search = false),
@@ -133,7 +135,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
-      --highlight      link to a copy of the PDF with the passage highlighted
+      --no-highlight   link to the PDF itself, not a copy with the answer highlighted
       --answer-floor P confidence an answer read off a page must reach, 0-1 (default 0.7)
       --max-answers N  windows to read out before settling for the best (default 5)
       --no-toc         never answer from the table of contents alone
@@ -371,7 +373,7 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
-/** Under --highlight, each hit with passage lines or marks moved to a highlighted copy of its PDF, one copy per file marking every hit's. */
+/** Unless --no-highlight, each hit with passage lines or marks moved to a highlighted copy of its PDF, one copy per file marking every hit's. */
 export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
   const copies = new Set<string>();
   const out: Hit[] = [];
