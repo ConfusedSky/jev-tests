@@ -51,9 +51,10 @@ a book embeds its pages once, which takes a few minutes.
 | `jevfind` | which page of which PDF answers it? | `ls *.pdf \| bun jevfind.ts "How is radiation treated?"` |
 
 Each prints its progress to stderr and the answer to stdout; `--help` lists
-the flags. Commonly used: `--highlight` (a copy of the PDF with the answer
-marked), `--open`, `-n N` (several passages), `--kind K` (force a kind of
-question), `--tsv` (tables as tab-separated rows), `--cache MODEL|off`.
+the flags. The link opens a copy of the PDF with the answer highlighted
+(`--no-highlight` links to the PDF itself). Commonly used: `--open`, `-n N`
+(several passages), `--kind K` (force a kind of question), `--tsv` (tables
+as tab-separated rows), `--cache MODEL|off`.
 
 ## Kinds of question
 

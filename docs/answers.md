@@ -100,7 +100,7 @@ Unarmed. The
 page before is never read: tried, it got in twice on its own account, the
 weapons table before the exotic one and a page before hero creation, and
 never held anything. The link lands on the page the passage starts on, and
-`--highlight` marks every page it covers.
+the highlight marks every page it covers.
 
 ```console
 $ bun jevsec.ts manual.pdf "How is radiation treated?"
