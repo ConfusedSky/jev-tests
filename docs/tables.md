@@ -1,7 +1,7 @@
 # Tables
 
-How tables are found and read (pdfplumber), printed as records, and built
-to a question's own design.
+How tables are found and read (pdfplumber), printed as records, built
+to a question's own design, and built across the shelf.
 
 Tables are read with pdfplumber: `bun run tables:install` puts it in `.venv`
 with uv; without it, tables are read as text and the log says so once.
@@ -152,3 +152,80 @@ tab-separated, for a built table and a passage's table alike, with the link
 on stderr so stdout is the table alone. A table found but with no column
 for any row is not an answer: it prints as the best found and exits 1. Most of a
 table's time and tokens go to the column searches it still needs.
+
+## Tables across the shelf
+
+`jevfind` builds a table whose rows are documents the question names and
+whose columns are questions asked of each:
+
+```
+$ ls *.pdf | bun jevfind.ts "Give me a table with Heart, Fallout and Cyberpunk Red as rows and ask how many skills are there for each row?"
+
+  name           how many skills are there
+  Heart          9
+  Fallout        17
+  Cyberpunk Red  62
+
+(p=1.00)  Heart, how many skills are there: heart-….pdf p.12  How To Play > Skills, Domains and Knacks  (found p=0.87)
+…
+```
+
+1. A table question gets one more call. It asks whether the rows are documents
+   on the shelf rather than things inside one, and it reads word by word
+   which words name the rows and which ask the columns' questions.
+   - The table is built across the shelf when jev gives the first question 0.5
+     or more and at least one row and one column were read.
+   - `--across` skips the question's own reading and builds it across without
+     asking. `--no-across` never asks and builds from one document, as before.
+2. Each cell's question is its column's question put of its row, "how many
+   skills are there in Heart?". The cell question is read and walked as a
+   question of its own, over every path on stdin:
+   - A value (count, number, truth) fills the cell.
+   - A passage fills it with where it stands ("p.36 Healing"), and the passage
+     prints under the cell's source line.
+   - A cell question read as a table is walked as a passage.
+3. A cell opens only files whose names clear `--file-floor`, and no page
+   excerpts are ranked. The row names its document, so a file that does not
+   match the name is another work, and its answer would stand in the wrong
+   row. Two files of one work (a core book and a supplement) can both clear
+   the floor and both be read.
+4. A cell nothing answered is N/A. Its source line says why:
+   - the best answer below the answer floor,
+   - no file name reaching the file floor, or
+   - how many files were opened without an answer.
+
+Cells run one after another. Each cell prints a header, its reading, its
+path ranking and its walk under it, then its sum, so the sums add up to
+`total`. A cell costs about what the same question asked of one book costs.
+The example cost 310,678 tokens ($0.013): 27k for Heart, 77k for Fallout
+and 197k for Cyberpunk Red, with the rest on reading the request.
+
+Rows must be named. A row for every document of some kind on the shelf needs
+the catalogue of issue #12. A column must be a whole question:
+- "how many skills and how many classes" reads as two columns.
+- "how many skills and classes are there" reads as "how many skills" and
+  "classes are there".
+
+**Reading the rows, measured.** Scripts: `experiments/across/read.ts` and
+`rows.ts`.
+- **Detection.** The "rows are documents" noul gave 0.85–0.91 on three
+  requests that name documents as rows, and 0.14–0.33 on two table requests
+  from one book.
+- **Row words.**
+  - jev rates a title's own words under even odds at times: over six
+    readings of "Legend in the Mist", Legend got 0.36–0.49, in 0.77–0.89,
+    the 0.41–0.49 (0.27 in another request) and Mist 0.47–0.54.
+  - The words around the titles ("and", "with", "a") stay at 0.06 or less.
+  - So a row is a run of words at 0.2 or more, trimmed of joining words at
+    its ends. It read all three rows in six of six readings.
+  - Dropped: a bar of 0.8 for joining words and 0.5 for others. It lost
+    "Legend in the Mist" in two of six.
+- **Column words.**
+  - A question's own words scored 0.62–0.93, "are" and "does" included.
+  - The words beside them scored at most 0.39 ("and" between two questions,
+    "for each row").
+  - So a column is a run of words at 0.5 or more.
+- **Cell wording.** "how many skills are there in Heart?" and "In Heart, how
+  many skills are there?" read the same kind every time. The first form is
+  kept: "healing work in Fallout?" read as a passage, but "In Fallout,
+  healing work?" read as a truth.

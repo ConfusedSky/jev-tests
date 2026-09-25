@@ -224,7 +224,7 @@ describe("namesBy", () => {
   const at = (...ws: string[]) => (i: number) => ws.includes(words[i]!.word);
 
   test("a name starts at a sure word and runs on through half-sure ones; a comma or full stop ends it; an of joins", () => {
-    expect(namesBy(words, at("small", "Barrel", "rate"), at("guns", "Mods", "fire"), true).map((n) => n.name)).toEqual(["small guns", "Barrel Mods", "rate of fire"]);
+    expect(namesBy(words, at("small", "Barrel", "rate"), at("guns", "Mods", "fire"), { of: true }).map((n) => n.name)).toEqual(["small guns", "Barrel Mods", "rate of fire"]);
   });
 
   test("a half-sure word starts nothing; without `of` an of ends the name", () => {

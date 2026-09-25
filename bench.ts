@@ -17,12 +17,19 @@
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
 import { composeTable } from "./compose";
 import { makeUi, searchPdf, type Outcome } from "./pdf";
+import { acrossTable, findDefaults, readAcross, scoreRows } from "./shelf";
 import { DEFAULT_MODEL, DOLLARS_PER_MILLION_IN, makeClient, tokens } from "./shared";
 
+const BOOKS = { heart: "JEV_HEART_PDF", fallout: "JEV_FALLOUT_PDF", litm: "JEV_LITM_PDF", cpr: "JEV_CPR_PDF" } as const;
+type Book = keyof typeof BOOKS;
 type Case = {
-  book: "heart" | "fallout" | "litm" | "cpr";
+  /** The book asked, or "shelf" for a table across `books`. */
+  book: Book | "shelf";
+  books?: Book[];
+  /** A table across the shelf's true count for each row, its first column. */
+  cells?: Record<string, number>;
   question: string;
-  /** A count's true number, a statement's truth, a figure question's true answer text; a built table scores as a passage. */
+  /** A count's true number, a statement's truth, a figure question's true answer text; a built table scores as a passage, and a table across the shelf ("table") by `cells`. */
   truth: number | string;
   /** Strings a passage must contain, in this order. */
   contains?: string[];
@@ -33,8 +40,6 @@ type Case = {
   /** Why this is expected to come out wrong today. */
   known?: string;
 };
-
-const BOOKS = { heart: "JEV_HEART_PDF", fallout: "JEV_FALLOUT_PDF", litm: "JEV_LITM_PDF", cpr: "JEV_CPR_PDF" } as const;
 
 const CASES: Case[] = [
   { book: "heart", question: "How many classes are there in heart?", truth: 9, page: 31 },
@@ -221,6 +226,16 @@ const CASES: Case[] = [
       '"drum magazine size":"3"}',
     ],
   },
+  // A table whose rows are documents: each cell its question asked of its
+  // row's book over the whole shelf, Legend in the Mist on it but no row.
+  {
+    book: "shelf",
+    books: ["heart", "fallout", "litm", "cpr"],
+    question: "Give me a table with Heart, Fallout and Cyberpunk Red as rows and ask how many skills are there for each row?",
+    truth: "table",
+    cells: { Heart: 9, Fallout: 17, "Cyberpunk Red": 66 },
+    known: "Cyberpunk Red's skills count varies run to run, as its own case does",
+  },
 ];
 
 type Result = {
@@ -239,13 +254,16 @@ type Result = {
 };
 type Run = { at: string; commit: string; model: string; results: Result[] };
 
+/** A count scores by how close it came. */
+function closeness(got: string, truth: number): number {
+  const n = Number(got);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, 1 - Math.abs(n - truth) / truth);
+}
+
 function score(c: Case, got: string | undefined, page: number | undefined): number {
   if (got === undefined) return 0;
-  if (typeof c.truth === "number") {
-    const n = Number(got);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, 1 - Math.abs(n - c.truth) / c.truth);
-  }
+  if (typeof c.truth === "number") return closeness(got, c.truth);
   if (c.truth === "passage") {
     const checks = [c.page === undefined || page === c.page, ...(c.contains ?? []).map((s) => got.includes(s)), ...(c.without ?? []).map((s) => !got.includes(s))];
     let ordered = true;
@@ -272,14 +290,32 @@ const ui = makeUi(true);
 const results: Result[] = [];
 let skipped = 0;
 for (const c of picked) {
-  const pdf = process.env[BOOKS[c.book]] ?? "";
-  if (!pdf || !(await Bun.file(pdf).exists())) {
-    console.error(`skip ${c.book}: ${BOOKS[c.book]} unset or missing`);
+  const books = c.books ?? [c.book as Book];
+  const pdfs = books.map((b) => process.env[BOOKS[b]] ?? "");
+  const missing = (await Promise.all(pdfs.map(async (pdf) => !pdf || !(await Bun.file(pdf).exists())))).findIndex(Boolean);
+  if (missing >= 0) {
+    console.error(`skip ${c.book}: ${BOOKS[books[missing]!]} unset or missing`);
     skipped++;
     continue;
   }
+  const pdf = pdfs[0]!;
   const t = Date.now();
   const spentBefore = tokens.in;
+  if (c.books) {
+    let got: string | undefined;
+    let s = 0;
+    try {
+      const o = { ...findDefaults(), search, question: c.question, quiet: true, cache, ...c.opts };
+      const read = await readAcross(client, c.question);
+      const table = await acrossTable(client, pdfs, o, read.rows, read.columns, ui);
+      got = table.rows.map((r, i) => `${r} ${table.cells[i]![0]?.text ?? "—"}`).join("; ");
+      s = scoreRows(table, c.cells ?? {}, closeness);
+    } catch (e) {
+      console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);
+    }
+    results.push({ book: c.book, question: c.question, truth: c.truth, got, p: undefined, page: undefined, score: s, ms: Date.now() - t, tokens: tokens.in - spentBefore, known: c.known });
+    continue;
+  }
   let r: Outcome | undefined;
   try {
     const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, cache, ...c.opts }, ui);

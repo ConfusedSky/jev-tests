@@ -155,13 +155,18 @@ export function piecesOf(cells: string[]): { text: string; cell: number }[] {
 
 /**
  * Names as runs of words: a run starts at a word `start` passes and goes on
- * through words `go` passes, a joining word never starting or standing inside
- * one; a comma or full stop ends it. With `of`, an "of" between two such words
- * stays inside ("rate of fire"). Each name keeps its first and last word's index.
+ * through words `go` passes, a word `stop` holds (by default a joining word)
+ * never starting or standing inside one; a comma or full stop ends it. With
+ * `of`, an "of" between two such words stays inside ("rate of fire"). Each
+ * name keeps its first and last word's index.
  */
-export function namesBy(words: Word[], start: (i: number) => boolean, go: (i: number) => boolean, of = false): { name: string; start: number; end: number }[] {
+export function namesBy(
+  words: Word[],
+  start: (i: number) => boolean,
+  go: (i: number) => boolean,
+  { of = false, stop = (i: number) => STOPWORDS.has(words[i]!.word.toLowerCase()) }: { of?: boolean; stop?: (i: number) => boolean } = {},
+): { name: string; start: number; end: number }[] {
   const out: { name: string; start: number; end: number }[] = [];
-  const stop = (i: number) => STOPWORDS.has(words[i]!.word.toLowerCase());
   let i = 0;
   while (i < words.length) {
     if (stop(i) || !start(i)) {
@@ -251,10 +256,10 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
     words,
     (i) => !inRows(i) && p("c", i) >= 0.5 && p("c", i) >= p("a", i),
     (i) => !inRows(i) && p("c", i) >= 0.3,
-    true,
+    { of: true },
   ).map((n) => n.name);
   // Of the names read as what to add, the one jev is surest of.
-  const adds = namesBy(words, (i) => !inRows(i) && p("a", i) >= 0.5 && p("a", i) >= p("c", i), (i) => !inRows(i) && p("a", i) >= 0.3, true);
+  const adds = namesBy(words, (i) => !inRows(i) && p("a", i) >= 0.5 && p("a", i) >= p("c", i), (i) => !inRows(i) && p("a", i) >= 0.3, { of: true });
   const surest = (n: { start: number; end: number }) => Math.max(...words.slice(n.start, n.end + 1).map((_, k) => p("a", n.start + k)));
   const add = adds.sort((x, y) => surest(y) - surest(x))[0]?.name;
   if (!add || columns.length === 0) return { things, columns, annotated: [] };
