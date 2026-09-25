@@ -5,6 +5,10 @@
  *
  *   bun ui/server.ts [SOURCE...]   folders, or locate commands such as
  *                                  "plocate '*.pdf'", to put on the shelf at first
+ *
+ * PORT sets the port (3217). JEV_UI_HOSTS lists more names to answer to, for
+ * a proxy in front of it: JEV_UI_HOSTS=box.tailnet.ts.net:3217 behind
+ * `tailscale serve --https=3217 http://127.0.0.1:3217`.
  */
 import { realpathSync } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
@@ -14,7 +18,7 @@ import { CACHE_MODELS, unready } from "../cache";
 import { keyFromScriptEnv } from "../shared";
 import { cacheDir, highlighted, openAt, pageSizes, pageUrl } from "../pdf";
 import index from "./index.html";
-import { foreign, local } from "./guard";
+import { foreign, local, namesFrom } from "./guard";
 import { drain, errorText } from "./log";
 import { argsFor } from "./options";
 import { capOf, drawingName, PageCache } from "./pagecache";
@@ -27,6 +31,8 @@ const SCAN_LIMIT = 5000;
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const LOCATE_TIMEOUT = 30_000;
 const PORT = Number(process.env.PORT ?? 3217);
+// Names beyond 127.0.0.1 and localhost to answer to, such as a tailnet name a proxy forwards; each one can run the tools.
+const HOSTS = namesFrom(process.env.JEV_UI_HOSTS);
 const BOOT = Date.now();
 const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
 const drawings = new PageCache(`${cacheDir()}/ui-pages`, capOf(process.env.JEV_PAGE_CACHE_MB));
@@ -59,7 +65,7 @@ const refused = () => json({ error: "refused: only this UI's own page may ask th
 const own =
   (handle: (req: Request) => Response | Promise<Response>) =>
   (req: Request): Response | Promise<Response> =>
-    local(req, PORT) ? handle(req) : json({ error: "refused: this server answers only to 127.0.0.1 and localhost" }, 403);
+    local(req, PORT, HOSTS) ? handle(req) : json({ error: `refused: this server answers only to 127.0.0.1 and localhost${HOSTS.length ? ` and ${HOSTS.join(", ")}` : ""}` }, 403);
 
 async function scan(dir: string): Promise<Scan> {
   const t = performance.now();
@@ -296,7 +302,7 @@ const server = Bun.serve({
     // A scan makes a folder's PDFs servable, so it is asked for as a command is.
     "/api/scan": {
       POST: async (req) => {
-        if (foreign(req, PORT)) return refused();
+        if (foreign(req, PORT, HOSTS)) return refused();
         const body = (await req.json().catch(() => null)) as { dir?: unknown } | null;
         const dir = typeof body?.dir === "string" ? body.dir.trim() : "";
         if (!dir) return json({ error: "no folder" }, 400);
@@ -307,14 +313,14 @@ const server = Bun.serve({
     },
     "/api/locate": {
       POST: async (req) => {
-        if (foreign(req, PORT)) return refused();
+        if (foreign(req, PORT, HOSTS)) return refused();
         const body = (await req.json().catch(() => null)) as { command?: unknown } | null;
         return typeof body?.command === "string" && body.command.trim() ? json(await locate(body.command)) : json({ error: "no command" }, 400);
       },
     },
     "/api/run": {
       POST: async (req) => {
-        if (foreign(req, PORT)) return refused();
+        if (foreign(req, PORT, HOSTS)) return refused();
         const checked = checkRequest(await req.json().catch(() => null));
         if ("error" in checked) return json({ error: checked.error }, 400);
         const why = unrunnable(checked.request);
@@ -338,7 +344,7 @@ const server = Bun.serve({
     }),
     "/api/open": {
       POST: async (req) => {
-        if (foreign(req, PORT)) return refused();
+        if (foreign(req, PORT, HOSTS)) return refused();
         const body = (await req.json().catch(() => null)) as { path?: string; page?: number; marks?: unknown } | null;
         const path = servable(body?.path);
         if (!path) return json({ error: "not on the shelf" }, 403);
