@@ -16,7 +16,8 @@ export type RunEvent =
   | { type: "end"; code: number | null; ms: number; report?: JsonReport; ranked?: Ranked[]; error?: string };
 
 export type ShelfFile = { path: string; name: string; size: number };
-export type Scan = { dir: string; files: ShelfFile[]; ms: number; truncated: boolean; error?: string };
+/** A source's PDFs; `error` when it listed none because it failed, `warning` when it failed part way and listed some. */
+export type Scan = { dir: string; files: ShelfFile[]; ms: number; truncated: boolean; error?: string; warning?: string };
 
 export type Health = {
   key: boolean;

@@ -15,13 +15,19 @@ const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
 const ANSWER_ROOM = 440;
 
-/** The PDFs a source holds: a folder walked, or a locate command run. */
+/** The PDFs a source holds: a folder walked, or a locate command run. Never throws: a failure comes back as the scan's error. */
 async function scanOf(source: string): Promise<Scan> {
-  const r = isLocate(source)
-    ? await fetch("/api/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: source }) })
-    : await fetch(`/api/scan?dir=${encodeURIComponent(source)}`);
-  const body = (await r.json()) as Scan | { error: string };
-  return "files" in body ? body : { dir: sourceKey(source), files: [], ms: 0, truncated: false, error: body.error };
+  const failed = (error: string): Scan => ({ dir: sourceKey(source), files: [], ms: 0, truncated: false, error });
+  try {
+    const r = isLocate(source)
+      ? await fetch("/api/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: source }) })
+      : await fetch(`/api/scan?dir=${encodeURIComponent(source)}`);
+    const body = (await r.json().catch(() => null)) as Scan | { error?: string } | null;
+    if (body && "files" in body) return body;
+    return failed(body?.error ?? `the server answered ${r.status} ${r.statusText}`);
+  } catch {
+    return failed("the UI server did not answer; is it still running?");
+  }
 }
 
 const ledgerOf = (runs: Run[]) =>
@@ -31,6 +37,8 @@ export function App() {
   const [health, setHealth] = useState<Health>();
   const [folders, setFolders] = useStored<string[]>("jev.folders", []);
   const [scans, setScans] = useState<Record<string, Scan | undefined>>({});
+  const scansNow = useRef(scans);
+  scansNow.current = scans;
   const [tool, setTool] = useStored<Tool>("jev.tool", "jevfind");
   const [question, setQuestion] = useStored("jev.question", "");
   const [options, setOptions] = useStored<Options>("jev.options", DEFAULTS);
@@ -62,10 +70,13 @@ export function App() {
       .then(setHealth, () => setHealth(undefined));
   }, []);
 
+  /** Scans or runs a source again; one that fails keeps the list it had, with why it could not be refreshed. */
   const rescan = useCallback(async (dir: string) => {
+    const before = scansNow.current[dir];
     setScans((s) => ({ ...s, [dir]: undefined }));
     const scan = await scanOf(dir);
-    setScans((s) => ({ ...s, [dir]: scan }));
+    const kept = scan.error && before?.files.length ? { ...before, error: undefined, warning: `could not refresh (${scan.error}); showing the list from before` } : scan;
+    setScans((s) => ({ ...s, [dir]: kept }));
   }, []);
 
   useEffect(() => {

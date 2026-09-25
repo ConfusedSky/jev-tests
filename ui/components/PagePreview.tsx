@@ -9,6 +9,17 @@ export function PagePreview({ view, pdf, page, stamp, compact }: { view: string;
   const [done, setDone] = useState<{ src: string; ok: boolean }>();
   const state = done?.src !== src ? "loading" : done.ok ? "ok" : "failed";
   const highlighted = view !== pdf;
+  const [opening, setOpening] = useState<string>();
+  const openInViewer = async () => {
+    setOpening("opening…");
+    try {
+      const r = await fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: view, page }) });
+      const body = (await r.json().catch(() => ({}))) as { error?: string };
+      setOpening(r.ok ? undefined : (body.error ?? `failed (${r.status})`));
+    } catch {
+      setOpening("the UI server did not answer");
+    }
+  };
   return (
     <figure className="flex flex-col gap-2">
       <a
@@ -32,14 +43,11 @@ export function PagePreview({ view, pdf, page, stamp, compact }: { view: string;
           <a href={pdfUrl(view, page)} target="_blank" rel="noreferrer" className="rounded-md px-1.5 py-0.5 text-teal-700 hover:bg-teal-50">
             open ↗
           </a>
-          <button
-            onClick={() => fetch("/api/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: view, page }) })}
-            className="rounded-md px-1.5 py-0.5 text-teal-700 hover:bg-teal-50"
-            title="Open in your desktop PDF viewer, at the page"
-          >
+          <button onClick={openInViewer} className="rounded-md px-1.5 py-0.5 text-teal-700 hover:bg-teal-50" title="Open in your desktop PDF viewer, at the page">
             in viewer
           </button>
         </span>
+        {opening && <span role="status" className={cx("w-full text-right", opening === "opening…" ? "text-stone-400" : "text-rose-700")}>{opening}</span>}
       </figcaption>
     </figure>
   );

@@ -14,6 +14,7 @@ import { CACHE_MODELS, unready } from "../cache";
 import { keyFromScriptEnv } from "../shared";
 import { cacheDir, openAt, pageUrl } from "../pdf";
 import index from "./index.html";
+import { foreign } from "./guard";
 import { drain } from "./log";
 import { argsFor, DEFAULTS, type Tool } from "./options";
 import { isLocate, locateArgs, sourceKey } from "./sources";
@@ -49,6 +50,7 @@ function servable(p: string | null | undefined): string | undefined {
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+const refused = () => json({ error: "refused: only this UI's own page may ask this server to run a command" }, 403);
 
 async function scan(dir: string): Promise<Scan> {
   const t = performance.now();
@@ -80,34 +82,39 @@ async function locate(command: string): Promise<Scan> {
   if ("error" in parsed) return fail(parsed.error);
   const [name, ...args] = parsed.argv;
   const exe = Bun.which(name!);
-  if (!exe) return fail(`${name} is not installed`);
-  const p = Bun.spawn([exe, ...args], { argv0: name, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => p.kill(), LOCATE_TIMEOUT);
-  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
-  const code = await p.exited;
-  clearTimeout(timer);
-  if (p.signalCode) return fail(`${name} took longer than ${LOCATE_TIMEOUT / 1000}s`);
-  // plocate exits 1 both when nothing matched, silently, and on a bad option, which it explains.
-  if (code !== 0 && (code !== 1 || err.trim())) return fail(err.trim().split("\n")[0] || `${name} exited with ${code}`);
+  if (!exe) return fail(`${name} is not installed, or not on the server's PATH`);
+  let out: string, err: string, code: number, killed: boolean;
+  try {
+    const p = Bun.spawn([exe, ...args], { argv0: name, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+    const timer = setTimeout(() => p.kill(), LOCATE_TIMEOUT);
+    [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    code = await p.exited;
+    clearTimeout(timer);
+    killed = !!p.signalCode;
+  } catch (e) {
+    return fail(`${name} could not be run: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (killed) return fail(`${name} took longer than ${LOCATE_TIMEOUT / 1000}s and was stopped`);
   // The tools' highlighted copies are copies of books, not books of their own.
   const cache = `${cacheDir()}/`;
   const listed = [...new Set(out.split(/[\n\0]/).filter((l) => /\.pdf$/i.test(l) && !l.startsWith(cache)))];
+  // plocate exits 1 both when nothing matched, silently, and on a bad option or database, which it explains.
+  const why = code === 0 || (code === 1 && !err.trim()) ? undefined : explain(name!, err, code);
+  if (why && listed.length === 0) return fail(why);
   // A database can list files deleted since it was built.
   const found = (await Promise.all(listed.slice(0, SCAN_LIMIT).map((path) => stat(path).then((s) => (s.isFile() ? { path, name: path.split("/").pop()!, size: s.size } : undefined), () => undefined)))).filter((f) => f !== undefined);
   for (const f of found) know(f.path);
   found.sort((a, b) => a.path.localeCompare(b.path));
-  return { dir, files: found, ms: performance.now() - t, truncated: listed.length > SCAN_LIMIT };
+  // Some of its databases read and some not: keep what it listed, and say what went wrong.
+  return { dir, files: found, ms: performance.now() - t, truncated: listed.length > SCAN_LIMIT, warning: why };
 }
 
-/**
- * A request another site's page made, which a browser marks as cross-site
- * and a form cannot make as JSON without asking first: what runs a command
- * must be this UI's own doing.
- */
-const foreign = (req: Request) =>
-  !req.headers.get("content-type")?.startsWith("application/json") ||
-  !["same-origin", "none", null].includes(req.headers.get("sec-fetch-site")) ||
-  (req.headers.has("origin") && req.headers.get("origin") !== new URL(req.url).origin);
+/** A locate failure in a line, the program named and a missing or unreadable database pointed at updatedb. */
+function explain(name: string, err: string, code: number): string {
+  const line = err.trim().split("\n")[0] ?? "";
+  const said = !line ? `${name} exited with ${code}` : line.startsWith(name) ? line : `${name}: ${line}`;
+  return /\.db\b|database/i.test(said) ? `${said}. Its database may need building or opening up: sudo updatedb` : said;
+}
 
 async function health(): Promise<Health> {
   const cache = Object.fromEntries(await Promise.all(Object.entries(CACHE_MODELS).map(async ([id, m]) => [id, (await unready(m)) ?? null])));
@@ -232,13 +239,14 @@ const server = Bun.serve({
     },
     "/api/locate": {
       POST: async (req) => {
-        if (foreign(req)) return json({ error: "only this UI may run a locate command" }, 403);
+        if (foreign(req)) return refused();
         const body = (await req.json().catch(() => null)) as { command?: unknown } | null;
         return typeof body?.command === "string" && body.command.trim() ? json(await locate(body.command)) : json({ error: "no command" }, 400);
       },
     },
     "/api/run": {
       POST: async (req) => {
+        if (foreign(req)) return refused();
         const r = (await req.json().catch(() => null)) as RunRequest;
         const why = bad(r);
         return why ? json({ error: why }, 400) : run(req, r);
@@ -252,10 +260,15 @@ const server = Bun.serve({
     },
     "/api/open": {
       POST: async (req) => {
+        if (foreign(req)) return refused();
         const body = (await req.json().catch(() => null)) as { path?: string; page?: number } | null;
         const path = servable(body?.path);
         if (!path) return json({ error: "not on the shelf" }, 403);
-        await openAt(pageUrl(path, Math.max(1, Math.floor(Number(body?.page)) || 1)));
+        try {
+          await openAt(pageUrl(path, Math.max(1, Math.floor(Number(body?.page)) || 1)));
+        } catch (e) {
+          return json({ error: `no PDF viewer could be started: ${e instanceof Error ? e.message : String(e)}` }, 500);
+        }
         return json({ ok: true });
       },
     },
