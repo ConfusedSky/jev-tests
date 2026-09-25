@@ -69,9 +69,15 @@ export function Header({ health, cache, spend, onRefresh, onResetSpend, sidebar,
   const toggle = (m: "status" | "spend") => setMenu((cur) => (cur === m ? undefined : m));
   useEffect(() => {
     if (!menu) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(undefined);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Escape here closes the popover and nothing else: the page's own Escape stops a paid run.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMenu(undefined);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [menu]);
   const open = menu === "status";
   const ledger = menu === "spend";

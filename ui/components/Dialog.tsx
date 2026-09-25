@@ -7,6 +7,7 @@ export function Dialog({ title, onClose, children, wide }: { title: string; onCl
     const before = document.activeElement;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
         onClose();
       }

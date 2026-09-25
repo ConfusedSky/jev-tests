@@ -14,7 +14,7 @@ import { CACHE_MODELS, unready } from "../cache";
 import { keyFromScriptEnv } from "../shared";
 import { cacheDir, openAt, pageUrl } from "../pdf";
 import index from "./index.html";
-import { foreign } from "./guard";
+import { foreign, local } from "./guard";
 import { drain } from "./log";
 import { argsFor, DEFAULTS, type Tool } from "./options";
 import { isLocate, locateArgs, sourceKey } from "./sources";
@@ -25,6 +25,7 @@ const TOOLS: Tool[] = ["jevsec", "jevfind", "jevgrep"];
 const SCAN_LIMIT = 5000;
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const LOCATE_TIMEOUT = 30_000;
+const PORT = Number(process.env.PORT ?? 3217);
 const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
 
 const real = (p: string) => {
@@ -51,6 +52,12 @@ function servable(p: string | null | undefined): string | undefined {
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const refused = () => json({ error: "refused: only this UI's own page may ask this server to run a command" }, 403);
+
+/** A handler that answers only when the server is addressed by its own name; see guard.ts. */
+const own =
+  (handle: (req: Request) => Response | Promise<Response>) =>
+  (req: Request): Response | Promise<Response> =>
+    local(req, PORT) ? handle(req) : json({ error: "refused: this server answers only to 127.0.0.1 and localhost" }, 403);
 
 async function scan(dir: string): Promise<Scan> {
   const t = performance.now();
@@ -238,45 +245,50 @@ async function page(url: URL): Promise<Response> {
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
-  port: Number(process.env.PORT ?? 3217),
+  port: PORT,
   idleTimeout: 60,
   development: process.env.NODE_ENV !== "production" && { hmr: true, console: true },
   routes: {
     "/": index,
     "/favicon.ico": new Response(null, { status: 204 }),
-    "/api/config": () => json({ folders, root: ROOT } satisfies Config),
-    "/api/health": async () => json(await health()),
-    "/api/scan": async (req) => {
-      const dir = new URL(req.url).searchParams.get("dir")?.trim();
-      if (!dir) return json({ error: "no folder" }, 400);
-      // A relative path would be read against wherever the server was started.
-      if (!/^[~/]/.test(dir)) return json({ dir, files: [], ms: 0, truncated: false, error: "use a full path, starting with / or ~" } satisfies Scan);
-      return json(await scan(expand(dir)));
+    "/api/config": own(() => json({ folders, root: ROOT } satisfies Config)),
+    "/api/health": own(async () => json(await health())),
+    // A scan makes a folder's PDFs servable, so it is asked for as a command is.
+    "/api/scan": {
+      POST: async (req) => {
+        if (foreign(req, PORT)) return refused();
+        const body = (await req.json().catch(() => null)) as { dir?: unknown } | null;
+        const dir = typeof body?.dir === "string" ? body.dir.trim() : "";
+        if (!dir) return json({ error: "no folder" }, 400);
+        // A relative path would be read against wherever the server was started.
+        if (!/^[~/]/.test(dir)) return json({ dir, files: [], ms: 0, truncated: false, error: "use a full path, starting with / or ~" } satisfies Scan);
+        return json(await scan(expand(dir)));
+      },
     },
     "/api/locate": {
       POST: async (req) => {
-        if (foreign(req)) return refused();
+        if (foreign(req, PORT)) return refused();
         const body = (await req.json().catch(() => null)) as { command?: unknown } | null;
         return typeof body?.command === "string" && body.command.trim() ? json(await locate(body.command)) : json({ error: "no command" }, 400);
       },
     },
     "/api/run": {
       POST: async (req) => {
-        if (foreign(req)) return refused();
+        if (foreign(req, PORT)) return refused();
         const r = (await req.json().catch(() => null)) as RunRequest;
         const why = bad(r);
         return why ? json({ error: why }, 400) : run(req, r);
       },
     },
-    "/api/page": (req) => page(new URL(req.url)),
-    "/api/pdf": (req) => {
+    "/api/page": own((req) => page(new URL(req.url))),
+    "/api/pdf": own((req) => {
       const path = servable(new URL(req.url).searchParams.get("path"));
       if (!path) return new Response("not on the shelf", { status: 403 });
       return new Response(Bun.file(path), { headers: { "Content-Type": "application/pdf" } });
-    },
+    }),
     "/api/open": {
       POST: async (req) => {
-        if (foreign(req)) return refused();
+        if (foreign(req, PORT)) return refused();
         const body = (await req.json().catch(() => null)) as { path?: string; page?: number } | null;
         const path = servable(body?.path);
         if (!path) return json({ error: "not on the shelf" }, 403);
