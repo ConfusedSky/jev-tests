@@ -79,35 +79,57 @@ test("under a hard floor a file whose name falls below it is never opened, and n
   expect(log[0]).toStartWith("ranked 2 paths and 0 excerpts");
 });
 
-test("an empty PDF whose name clears the floor is logged and skipped, and the walk goes on to the next", async () => {
-  const client = {
-    systemOne: async ({ state, questions }: { state: { candidates: string[] }; questions: Record<string, unknown> }) => ({
-      answers: Object.fromEntries(
-        Object.keys(questions).map((id) => {
-          const score = state.candidates[Number(id.replace("candidates", ""))]!.includes("taxes") ? 2.9 : 2.0;
-          return [id, { score, confidence: 0.9, probabilities: [0.1, 0.1, 0.4, 0.4] }];
-        }),
-      ),
-    }),
+/** A client that scores a file named with any of `high` 2.9 and the rest 2.0, and keeps every name it was asked about. */
+function namer(high: string[], asked: string[] = []): TypeSafeClient {
+  return {
+    systemOne: async ({ state, questions }: { state: { candidates: string[] }; questions: Record<string, unknown> }) => {
+      asked.push(...state.candidates);
+      return {
+        answers: Object.fromEntries(
+          Object.keys(questions).map((id) => {
+            const name = state.candidates[Number(id.replace("candidates", ""))]!;
+            return [id, { score: high.some((h) => name.includes(h)) ? 2.9 : 2.0, confidence: 0.9, probabilities: [0.1, 0.1, 0.4, 0.4] }];
+          }),
+        ),
+      };
+    },
   } as unknown as TypeSafeClient;
-  const opened: string[] = [];
-  const io: FindIo = {
-    searchPdf: (async (_c: unknown, pdf: string) => {
-      opened.push(pdf);
-      return { hits: [], tried: [], rejected: [], dropped: [] } satisfies Outcome;
-    }) as unknown as FindIo["searchPdf"],
-    composeTable: (async () => {
-      throw new Error("no table here");
-    }) as unknown as FindIo["composeTable"],
-  };
-  const log: string[] = [];
-  const fixture = (f: string) => Bun.fileURLToPath(new URL(`fixture/${f}`, import.meta.url));
+}
+
+/** Reads nothing; notes which files the walk opened. */
+const noting = (opened: string[]): FindIo => ({
+  searchPdf: (async (_c: unknown, pdf: string) => {
+    opened.push(pdf);
+    return { hits: [], tried: [], rejected: [], dropped: [] } satisfies Outcome;
+  }) as unknown as FindIo["searchPdf"],
+  composeTable: (async () => {
+    throw new Error("no table here");
+  }) as unknown as FindIo["composeTable"],
+});
+
+const fixture = (f: string) => Bun.fileURLToPath(new URL(`fixture/${f}`, import.meta.url));
+
+test("an empty PDF is left out of the ranking, and said to be", async () => {
   const [taxes, manual] = [fixture("taxes-2025.pdf"), fixture("manual.pdf")];
   expect(Bun.file(taxes).size).toBe(0);
+  const [asked, opened, log]: [string[], string[], string[]] = [[], [], []];
   const search = { ...findDefaults(), question: "How much tax is owed for 2025?", kind: "number" as const };
-  const r = await findIn(client, [taxes, manual], search, ui(log), {}, io);
+  const r = await findIn(namer(["taxes"], asked), [taxes, manual], search, ui(log), {}, noting(opened));
+
+  expect(asked).toEqual([manual]);
+  expect(opened).toEqual([manual]);
+  expect([r.opened, r.above]).toEqual([1, 1]);
+  expect(log[0]).toBe(`--  ${taxes}: empty file, left out of the ranking`);
+  expect(log[1]).toStartWith("ranked 1 paths and 0 excerpts");
+});
+
+test("a PDF mutool cannot open is logged and skipped, and the walk goes on to the next", async () => {
+  const [damaged, manual] = [fixture("damaged.pdf"), fixture("manual.pdf")];
+  const [opened, log]: [string[], string[]] = [[], []];
+  const search = { ...findDefaults(), question: "How much damage does it take?", kind: "number" as const };
+  const r = await findIn(namer(["damaged"]), [damaged, manual], search, ui(log), {}, noting(opened));
 
   expect(opened).toEqual([manual]);
   expect(r.opened).toBe(1);
-  expect(log).toContain(`2.90  ${taxes}  --  empty file, skipped`);
+  expect(log).toContain(`2.90  ${damaged}  --  not a PDF mutool can open (no objects found), skipped`);
 });

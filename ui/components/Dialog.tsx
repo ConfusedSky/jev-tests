@@ -22,6 +22,8 @@ export function Dialog({ title, onClose, children, size = "md" }: { title: strin
     page?.setAttribute("inert", "");
     if (!root.contains(document.activeElement)) (tabbable(root)[0] ?? root).focus();
     const onKey = (e: KeyboardEvent) => {
+      // A layer open inside, such as the viewer's list over its pages, closes on Escape first.
+      if (e.key === "Escape" && root.querySelector("[data-closes-on-escape]")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();

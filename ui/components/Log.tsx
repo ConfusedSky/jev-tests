@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isFrame, isTotal, spendOf, tree, withoutCost, type Line, type Node } from "../log";
-import { copy, cx, dollars, tokens } from "../util";
+import { copy, cx, dollars, plainTitle, tokens } from "../util";
 import { Action, Actions, Icon } from "./Icon";
 import { useToast } from "./Toast";
 
@@ -31,7 +31,8 @@ function Cost({ line, sum }: { line: Line; sum?: boolean }) {
 
 /** A tool's own message is a failure only when the run failed; "no answer reached p=0.7; best follows" is an outcome like any other. */
 function Text({ line, failed }: { line: Line; failed: boolean }) {
-  const t = withoutCost(line.text);
+  // A title's invisible characters show as a box or a gap here too.
+  const t = plainTitle(withoutCost(line.text));
   const verb = line.verb && VERB[line.verb] !== undefined ? line.verb : undefined;
   const rest = verb ? t.slice(verb.length).trimStart() : t;
   return (
@@ -74,7 +75,7 @@ function Row({ node, isOpen, toggle, depth, failed }: { node: Node; isOpen: (i: 
             <div className="flex items-start gap-1 rounded px-1 py-0.5" style={{ paddingLeft: `${depth * 16 + 4}px` }}>
               <span className="w-10 shrink-0 pt-px text-right font-mono text-[10px] tabular-nums text-stone-500">+{(node.sum.t / 1000).toFixed(1)}</span>
               <span className="w-4 shrink-0 text-center text-[11px] text-stone-500">Σ</span>
-              <span className="min-w-0 text-stone-500">{withoutCost(node.sum.text)}</span>
+              <span className="min-w-0 text-stone-500">{plainTitle(withoutCost(node.sum.text))}</span>
               <Cost line={node.sum} sum />
             </div>
           )}

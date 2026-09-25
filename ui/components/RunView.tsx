@@ -6,7 +6,7 @@ import { changed } from "../options";
 import { outcomeOf, type Run } from "../run";
 import type { JsonReport } from "../types";
 import { hashFor } from "../url";
-import { basename, copy, cx, dollars, download, plural, secs, tokens, useTick } from "../util";
+import { basename, copy, cx, dollars, download, plainTitle, plural, secs, tokens, useTick } from "../util";
 import { Action, Actions, Icon } from "./Icon";
 import { Log } from "./Log";
 import { MiddlePath } from "./Path";
@@ -157,8 +157,8 @@ function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
                             {state}
                           </span>
                           <span className="w-14 shrink-0 text-[11px] text-stone-500">{r.kind === "excerpt" ? "excerpt" : r.kind}</span>
-                          <span className="min-w-0 flex-1 truncate text-stone-700" title={r.answer ? `${r.name}: ${r.answer}` : r.name}>
-                            {r.name}
+                          <span className="min-w-0 flex-1 truncate text-stone-700" title={r.answer ? `${plainTitle(r.name)}: ${r.answer}` : plainTitle(r.name)}>
+                            {plainTitle(r.name)}
                             {r.answer && <span className="text-stone-500"> — “{r.answer}”</span>}
                           </span>
                           {r.p !== undefined && <span className="shrink-0 font-mono text-[11px] tabular-nums text-stone-500">p={r.p.toFixed(2)}</span>}
@@ -247,6 +247,7 @@ const PARTS = [
   { key: "stdin", label: "reading paths", color: "bg-sky-500" },
   { key: "embed", label: "embedding for the cache", color: "bg-violet-500" },
   { key: "highlight", label: "marking the answer in a copy", color: "bg-yellow-400" },
+  { key: "sizes", label: "reading page sizes", color: "bg-rose-400" },
   { key: "other", label: "everything else", color: "bg-stone-300" },
 ] as const;
 

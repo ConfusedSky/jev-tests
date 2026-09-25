@@ -18,9 +18,14 @@ export type Para = { heading: boolean; text: string; style: string; lines: Box[]
 /** A table row with its table's heads, a cell a head, so a passage can print its rows as a grid. */
 export type Row = { heads: string[]; cells: string[] };
 
-/** A table as tables.py reads it: rows of cells, each row with its box on the page, the first row the heads. */
+/**
+ * A table as tables.py reads it: rows of cells, each row with its box on the
+ * page, the first row the heads. The boxes are pdfplumber's; `origin` is
+ * where the page mutool draws starts among them, off 0,0 on a page with a
+ * CropBox, a MediaBox away from 0,0, or a /Rotate.
+ */
 type Rect = [number, number, number, number];
-export type Table = { page: number; bbox: Rect; rows: { cells: string[]; bbox: Rect; boxes?: (Rect | null)[] }[] };
+export type Table = { page: number; bbox: Rect; rows: { cells: string[]; bbox: Rect; boxes?: (Rect | null)[] }[]; origin?: [number, number] };
 
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
@@ -280,6 +285,7 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
   // table stood: before the first paragraph that starts below its top within
   // its width. A row with one cell, "Alt. Fire Modes & Special Features:
   // None" under a weapon, stays a line of its own.
+  const placed: { records: Para[]; origin?: [number, number] }[] = [];
   for (const t of tables) {
     const [heads, ...rows] = t.rows;
     if (!heads) continue;
@@ -298,7 +304,14 @@ export function paragraphs(page: { width: number; height: number; lines: Line[] 
     });
     const at = paras.findIndex((p) => p.lines[0] && p.lines[0].y0 > t.bbox[1] && p.lines[0].x1 > t.bbox[0] && p.lines[0].x0 < t.bbox[2]);
     paras.splice(at < 0 ? paras.length : at, 0, ...records);
+    placed.push({ records, origin: t.origin });
   }
+  // Rows are marked where mutool draws the page, moved once every table is
+  // placed. Which lines are a table's and where its rows go, rows placed
+  // before included, still follow pdfplumber's boxes: moving those changes
+  // what a passage reads on a page whose `origin` is off 0,0.
+  for (const { records, origin: [dx, dy] = [0, 0] } of placed)
+    for (const r of records) r.lines = r.lines.map((l) => ({ ...l, x0: l.x0 - dx, y0: l.y0 - dy, x1: l.x1 - dx, y1: l.y1 - dy }));
   return paras;
 }
 

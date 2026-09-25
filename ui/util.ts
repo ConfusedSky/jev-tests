@@ -25,6 +25,9 @@ export function ago(at: number, now = Date.now()): string {
 /** Whether keys typed at `el` are text going into a field, not shortcuts. */
 export const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
 
+/** A title as a reader should see it: an outline can carry the object replacement character (U+FFFC) and invisible controls, which show as a box or a gap. */
+export const plainTitle = (s: string) => s.replace(/[\uFFFC\p{Cf}]/gu, "").replace(/[\p{Cc}\s]+/gu, " ").trim();
+
 /** "1 file", "2 files". */
 export const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 

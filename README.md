@@ -55,8 +55,8 @@ the flags. The link opens a copy of the PDF with the answer highlighted
 (`--no-highlight` links to the PDF itself). Commonly used: `--open`, `-n N`
 (several passages), `--kind K` (force a kind of question), `--tsv` (tables
 as tab-separated rows), `--cache MODEL|off`, `--json` (the outcome as one
-JSON document, each hit with the boxes its answer highlights and their
-pages' sizes, see [docs/pages.md](docs/pages.md#the-highlight-as-data)).
+JSON document, each hit with `marks`, the boxes its answer highlights, and
+`sizes`, their pages' sizes, see [docs/pages.md](docs/pages.md#the-highlight-as-data)).
 
 ## Kinds of question
 

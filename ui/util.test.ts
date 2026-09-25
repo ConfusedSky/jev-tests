@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bytes, modKey } from "./util";
+import { bytes, modKey, plainTitle } from "./util";
 
 describe("bytes", () => {
   test("says a file is empty only when it is, and rounds anything else up to a kilobyte at least", () => {
@@ -18,5 +18,11 @@ describe("modKey", () => {
     expect(modKey("Linux x86_64")).toBe("Ctrl");
     expect(modKey("Win32")).toBe("Ctrl");
     expect(modKey("")).toBe("Ctrl");
+  });
+});
+
+describe("plainTitle", () => {
+  test("drops the object replacement character and invisible controls an outline carries, keeping the words spaced", () => {
+    expect(["\uFFFC Skill Or Trade", "Rules > \uFFFCSkills", "Skill\u00ADful\u200B", "\uFEFFTab\there\n", "Plain"].map(plainTitle)).toEqual(["Skill Or Trade", "Rules > Skills", "Skillful", "Tab here", "Plain"]);
   });
 });

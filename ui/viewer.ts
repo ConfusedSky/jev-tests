@@ -7,6 +7,7 @@ import { hitText } from "./history";
 import { factsOf, walkOf, type Read } from "./log";
 import type { Run } from "./run";
 import type { JsonHit, Mark, PageSize } from "./types";
+import { plainTitle } from "./util";
 
 /**
  * A highlighted page of a run, an entry in the viewer's list: one page of
@@ -46,13 +47,20 @@ export function whyUnmarked(h: JsonHit, kind: string | undefined, contents: bool
   return "the answer's text was not found on the page's lines";
 }
 
+/** A hit's page sizes; a run saved while they were called `pages` has them under that name, beside the answer's own list of pages. */
+export function sizesOf(h: JsonHit): Record<number, PageSize> | undefined {
+  const old = (h as JsonHit & { pages?: unknown }).pages;
+  return h.sizes ?? (typeof old === "object" && old !== null && !Array.isArray(old) ? (old as Record<number, PageSize>) : undefined);
+}
+
 /** A hit's pages, each with its own marks, in page order; a hit with no marks is its own page, unmarked. */
 function hitSpots(h: JsonHit, key: string, kind: string | undefined, contents: boolean, cell?: string): Spot[] {
-  const base = { key, pdf: h.pdf, section: h.section, snippet: clip(hitText(h)), ...(cell && { cell }) };
+  const base = { key, pdf: h.pdf, section: plainTitle(h.section), snippet: clip(hitText(h)), ...(cell && { cell }) };
   const unmarked = whyUnmarked(h, kind, contents);
   if (unmarked) return [{ ...base, page: h.page, marks: [], unmarked }];
   const pages = [...new Set(h.marks.map((m) => m.page))].sort((a, b) => a - b);
-  return pages.map((page) => ({ ...base, page, marks: h.marks.filter((m) => m.page === page), size: h.pages?.[page] }));
+  const sizes = sizesOf(h);
+  return pages.map((page) => ({ ...base, page, marks: h.marks.filter((m) => m.page === page), size: sizes?.[page] }));
 }
 
 /** What a stopped walk had taken last before the stop, and in which PDF: never weighed against the rest of the walk. */
@@ -78,7 +86,7 @@ export function spotsOf(run: Run): Spot[] {
   if (r) return r.hits.flatMap((h, i) => hitSpots(h, `h${i}`, r.kind, contents(h)));
   const lead = run.status === "stopped" ? leadOf(run) : undefined;
   if (lead?.pdf && lead.read.page)
-    return [{ key: "lead", pdf: lead.pdf, page: lead.read.page, section: lead.read.name, snippet: clip(lead.read.answer ?? ""), marks: [], unmarked: "the run was stopped before this was weighed, so nothing is marked" }];
+    return [{ key: "lead", pdf: lead.pdf, page: lead.read.page, section: plainTitle(lead.read.name), snippet: clip(lead.read.answer ?? ""), marks: [], unmarked: "the run was stopped before this was weighed, so nothing is marked" }];
   return [];
 }
 
@@ -147,4 +155,59 @@ export function scrollFor(spot: Pick<Spot, "marks">, top: number, height: number
 /** The viewer's share of the width when the split is dragged to `x`, in a box starting at `left` and `width` wide, held between `min` and `max`. */
 export function splitAt(x: number, left: number, width: number, min = 0.3, max = 0.7): number {
   return Math.max(min, Math.min(max, (left + width - x) / Math.max(1, width)));
+}
+
+/** The page a typed number goes to, held to the last page; none for nothing typed, or no page at all. */
+export function pageInput(typed: string | undefined, count: number): number | undefined {
+  const n = Number(typed?.trim() || NaN);
+  return Number.isInteger(n) && n >= 1 && count >= 1 ? Math.min(n, count) : undefined;
+}
+
+/** Where a page's left edge stands in the column: centred while the page is narrower than the view, else a pad in. */
+export const pageLeft = (width: number, view: number, pad: number) => Math.max(pad, (view - width) / 2);
+
+/** A view of the column: how far it is scrolled, and its size. */
+export type ViewBox = { left: number; top: number; width: number; height: number };
+
+/**
+ * A point of a page, as shares of the page's width and height, and the place
+ * in the view it is to stay at, as shares of the view's: what holds the view
+ * still while the pages change size.
+ */
+export type Anchor = { page: number; fx: number; fy: number; vx: number; vy: number };
+
+type Laid = { lay: ReturnType<typeof layOut>; width: number; pad: number };
+
+/** The anchor holding whatever is under (`vx`, `vy`) of the view where it is. */
+export function anchorAt({ lay, width, pad }: Laid, view: ViewBox, vx: number, vy: number): Anchor {
+  const y = view.top + vy * view.height - pad;
+  const page = pageAt(lay.tops, y);
+  const i = page - 1;
+  const x = view.left + vx * view.width - pageLeft(width, view.width, pad);
+  return { page, fx: x / width, fy: (y - lay.tops[i]!) / Math.max(1, lay.heights[i]!), vx, vy };
+}
+
+/** How far to scroll a view `w` by `h` for an anchor's point to stand at its place in it. */
+export function scrollOf(a: Anchor, { lay, width, pad }: Laid, w: number, h: number): { left: number; top: number } {
+  const i = Math.max(0, Math.min(a.page, lay.tops.length) - 1);
+  return { left: pageLeft(width, w, pad) + a.fx * width - a.vx * w, top: pad + lay.tops[i]! + a.fy * lay.heights[i]! - a.vy * h };
+}
+
+/**
+ * The anchor keeping `spot` in sight while the pages change size, when its
+ * page is in view: the top left of its marks where it stands, brought in
+ * from the view's edges so a zoom in does not push it out. None when nothing
+ * is marked or the page is out of view.
+ */
+export function markAnchor(spot: Pick<Spot, "page" | "marks">, size: PageSize, laid: Laid, view: ViewBox): Anchor | undefined {
+  const { lay, width, pad } = laid;
+  const i = spot.page - 1;
+  if (spot.marks.length === 0 || i >= lay.tops.length) return undefined;
+  const top = pad + lay.tops[i]!;
+  if (top + lay.heights[i]! < view.top || top > view.top + view.height) return undefined;
+  const [fx, fy] = [Math.min(...spot.marks.map((m) => m.x0)) / size.width, Math.min(...spot.marks.map((m) => m.y0)) / size.height];
+  const at = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const x = pageLeft(width, view.width, pad) + fx * width - view.left;
+  const y = top + fy * lay.heights[i]! - view.top;
+  return { page: spot.page, fx, fy, vx: at(x / view.width, 0.05, 0.5), vy: at(y / view.height, 0.1, 0.5) };
 }

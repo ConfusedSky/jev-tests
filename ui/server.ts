@@ -17,6 +17,7 @@ import index from "./index.html";
 import { foreign, local } from "./guard";
 import { drain, errorText } from "./log";
 import { argsFor } from "./options";
+import { capOf, drawingName, PageCache } from "./pagecache";
 import { checkMarks, checkRequest } from "./request";
 import { isLocate, locateArgs, sourceKey } from "./sources";
 import type { Config, DocInfo, Health, RunEvent, RunRequest, Scan } from "./types";
@@ -28,6 +29,8 @@ const LOCATE_TIMEOUT = 30_000;
 const PORT = Number(process.env.PORT ?? 3217);
 const BOOT = Date.now();
 const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
+const drawings = new PageCache(`${cacheDir()}/ui-pages`, capOf(process.env.JEV_PAGE_CACHE_MB));
+const drawingsLoaded = drawings.load();
 
 const real = (p: string) => {
   try {
@@ -134,6 +137,7 @@ async function health(): Promise<Health> {
       tables: await Bun.file(`${ROOT}/.venv/bin/python`).exists(),
     },
     cacheDir: cacheDir(),
+    pages: { bytes: drawings.bytes, cap: drawings.cap },
     boot: BOOT,
   };
 }
@@ -218,6 +222,8 @@ async function docOf(pdf: string): Promise<DocInfo> {
     doc = pageSizes(pdf).then((sizes) => ({ mtime: mtimeMs, pages: Object.values(sizes).map((z): [number, number] => [z.width, z.height]) }));
     docs.set(key, doc);
     doc.catch(() => docs.delete(key));
+    // A PDF met at a new mtime has changed; drawings of what it was are no use now.
+    void drawingsLoaded.then(() => drawings.forget(pdf, mtimeMs));
   }
   return doc;
 }
@@ -239,7 +245,7 @@ async function slot<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-/** A page of a PDF as PNG, kept in the cache until the PDF changes; its address names the file's mtime, so the browser may keep it too. */
+/** A page of a PDF as PNG, kept in the cache (see PageCache) until the PDF changes; its address names the file's mtime, so the browser may keep it too. */
 async function page(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pdf = servable(url.searchParams.get("pdf"));
@@ -254,12 +260,13 @@ async function page(req: Request): Promise<Response> {
   }
   // mutool draws a page past the end without complaint.
   if (n > doc.pages.length) return new Response(`no page ${n}: the PDF has ${doc.pages.length}`, { status: 404 });
-  const dir = `${cacheDir()}/ui-pages`;
-  const png = `${dir}/${Bun.hash(`${pdf}\0${doc.mtime}\0${n}\0${w}`).toString(36)}.png`;
+  await drawingsLoaded;
+  const name = drawingName(pdf, doc.mtime, n, w);
+  const png = `${drawings.dir}/${name}`;
   if (!(await Bun.file(png).exists())) {
     const drawn = await slot(async () => {
       if (req.signal.aborted) return "gone";
-      await mkdir(dir, { recursive: true });
+      await mkdir(drawings.dir, { recursive: true });
       // Drawn aside and moved in place, so a request that comes while it is drawn never reads half a file.
       const part = `${png}.${crypto.randomUUID()}.part`;
       const p = Bun.spawn(["mutool", "draw", "-q", "-F", "png", "-w", String(w), "-o", part, pdf, String(n)], { stdout: "ignore", stderr: "pipe" });
@@ -272,6 +279,7 @@ async function page(req: Request): Promise<Response> {
     if (drawn === "gone") return new Response(null, { status: 499 });
     if (drawn) return drawn;
   }
+  drawings.use(name, Bun.file(png).size);
   return new Response(Bun.file(png), { headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=86400" } });
 }
 
