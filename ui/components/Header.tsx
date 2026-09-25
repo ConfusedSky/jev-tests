@@ -20,18 +20,30 @@ function checks(h: Health, cache: string): Check[] {
 
 const dot = (ok: Check["ok"]) => (ok === "off" ? "bg-stone-400" : ok ? "bg-emerald-500" : "bg-amber-500");
 
-export function Header({ health, cache, spend, onRefresh }: { health?: Health; cache: string; spend: { dollars: number; in: number; runs: number }; onRefresh: () => void }) {
+type Props = { health?: Health; cache: string; spend: { dollars: number; in: number; runs: number }; onRefresh: () => void; onResetSpend: () => void };
+
+export function Header({ health, cache, spend, onRefresh, onResetSpend }: Props) {
   const [open, setOpen] = useState(false);
+  const [ledger, setLedger] = useState(false);
   const list = health ? checks(health, cache) : [];
   const issues = list.filter((c) => c.ok === false).length;
   return (
     <header className="relative z-20 flex h-14 shrink-0 items-center gap-5 border-b border-stone-200 bg-white px-5">
+      {(open || ledger) && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => {
+            setOpen(false);
+            setLedger(false);
+          }}
+        />
+      )}
       <div className="flex items-baseline gap-2.5">
         <span className="font-serif text-2xl font-semibold tracking-tight text-stone-900">jev</span>
         <span className="hidden text-sm text-stone-500 md:inline">ask a shelf of PDFs; every answer is the book's own text</span>
       </div>
 
-      <div className="relative ml-auto">
+      <div className="relative z-20 ml-auto">
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-2 rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
@@ -51,7 +63,7 @@ export function Header({ health, cache, spend, onRefresh }: { health?: Health; c
           )}
         </button>
         {open && health && (
-          <div className="absolute right-0 top-9 w-96 rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
+          <div className="absolute right-0 top-9 z-20 w-96 rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">What the tools need</span>
               <button onClick={onRefresh} className="text-xs text-teal-700 hover:underline">
@@ -73,14 +85,33 @@ export function Header({ health, cache, spend, onRefresh }: { health?: Health; c
         )}
       </div>
 
-      <div className="flex items-center gap-3 border-l border-stone-200 pl-5 text-xs text-stone-500" title="What this browser's runs have spent; jev charges $0.042 per million input tokens and nothing for output">
-        <span>
-          <span className="font-semibold tabular-nums text-stone-800">{dollars(spend.dollars)}</span> spent
-        </span>
-        <span className="tabular-nums">{tokens(spend.in)} tokens</span>
-        <span className="tabular-nums">
-          {spend.runs} run{spend.runs === 1 ? "" : "s"}
-        </span>
+      <div className="relative z-20 border-l border-stone-200 pl-5">
+        <button onClick={() => setLedger((o) => !o)} aria-expanded={ledger} className="flex items-center gap-3 rounded-lg px-2 py-1 text-xs text-stone-500 hover:bg-stone-50">
+          <span>
+            <span className="font-semibold tabular-nums text-stone-800">{dollars(spend.dollars)}</span> spent
+          </span>
+          <span className="tabular-nums">{tokens(spend.in)} tokens in</span>
+          <span className="tabular-nums">
+            {spend.runs} run{spend.runs === 1 ? "" : "s"}
+          </span>
+        </button>
+        {ledger && (
+          <div className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+            <div className="mb-1 text-sm font-semibold text-stone-800">What this browser has spent</div>
+            <p className="leading-relaxed">
+              {dollars(spend.dollars)} over {spend.runs} run{spend.runs === 1 ? "" : "s"}, {spend.in.toLocaleString("en-US")} tokens in. jev charges $0.042 per million tokens in; output is free. Clearing the history keeps this count.
+            </p>
+            <button
+              onClick={() => {
+                onResetSpend();
+                setLedger(false);
+              }}
+              className="mt-3 rounded-md px-2 py-1 font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50"
+            >
+              Reset to $0
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

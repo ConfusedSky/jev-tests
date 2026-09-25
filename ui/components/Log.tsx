@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { spendOf, tree, type Line, type Node } from "../log";
+import { isTotal, spendOf, tree, type Line, type Node } from "../log";
 import { copy, cx, dollars, tokens } from "../util";
 
 const VERB: Record<string, string> = {
@@ -63,7 +63,11 @@ function Row({ node, isOpen, toggle, depth }: { node: Node; isOpen: (i: number) 
           <span className="w-4 shrink-0" />
         )}
         <Text line={node.line} />
-        {has && shut && <span className="ml-1 shrink-0 text-[11px] text-stone-400">{node.children.length} lines</span>}
+        {has && shut && (
+          <span className="ml-1 shrink-0 text-[11px] text-stone-400">
+            {node.children.length} line{node.children.length === 1 ? "" : "s"}
+          </span>
+        )}
         <Cost line={shown} sum={!!node.sum && shown === node.sum} />
       </div>
       {has && !shut && (
@@ -93,6 +97,8 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const end = useRef<HTMLDivElement>(null);
   const spend = spendOf(lines);
+  // Steps that print no count of their own leave the total larger than its parts.
+  const unitemized = lines.some(isTotal) ? spend.in - spendOf(lines.filter((l) => !isTotal(l))).in : 0;
   const isOpen = (i: number) => openByDefault !== flipped.has(i);
   const toggle = (i: number) =>
     setFlipped((f) => {
@@ -114,8 +120,13 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-stone-800">Log</h3>
         <span className="text-xs text-stone-400">
-          {lines.length} lines · {tokens(spend.in)} tokens in · {tokens(spend.out)} out · {dollars(spend.dollars)}
+          {lines.length} line{lines.length === 1 ? "" : "s"} · {tokens(spend.in)} tokens in · {tokens(spend.out)} out · {dollars(spend.dollars)}
         </span>
+        {unitemized > 0 && (
+          <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800 ring-1 ring-amber-600/20" title="The total counts tokens that no line above claims; a step logged no count of its own">
+            {unitemized.toLocaleString("en-US")} tokens not itemized
+          </span>
+        )}
         <div className="ml-auto flex gap-1 text-xs">
           <button onClick={() => all(true)} className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100">
             expand all

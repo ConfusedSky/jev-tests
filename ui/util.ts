@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 export const basename = (p: string) => p.split("/").pop() ?? p;
 export const dirname = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 
-export const dollars = (d: number) => (d === 0 ? "$0" : d < 0.0001 ? `$${d.toFixed(6)}` : d < 0.01 ? `$${d.toFixed(5)}` : `$${d.toFixed(3)}`);
+/** To the hundred-thousandth of a dollar under $1, as the tools' log prints it, so the two agree. */
+export const dollars = (d: number) => (d === 0 ? "$0" : `$${d.toFixed(d < 1 ? 5 : 2)}`);
 export const tokens = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en-US"));
 export const secs = (ms: number) => (ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`);
 export const bytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} kB`);

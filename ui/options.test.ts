@@ -12,13 +12,13 @@ const usage = (code: number): never => {
 describe("the UI's options", () => {
   test("name the CLI's kinds and cache models", () => {
     expect([...KINDS]).toEqual([...CLI_KINDS]);
-    expect([...CACHES]).toEqual([...Object.keys(CACHE_MODELS), "off"]);
+    expect<string[]>([...CACHES]).toEqual([...Object.keys(CACHE_MODELS), "off"]);
   });
 
   test("default to what the CLI defaults to", () => {
     const cli = findDefaults();
     for (const key of ["hits", "cache", "highlight", "threshold", "answerFloor", "search", "max", "maxAnswers", "titleFloor", "fileFloor", "maxFiles", "chars", "batch"] as const)
-      expect([key, DEFAULTS[key]]).toEqual([key, cli[key]]);
+      expect<unknown[]>([key, DEFAULTS[key]]).toEqual([key, cli[key]]);
     expect(DEFAULTS.toc).toBe(!readDefaults().noToc);
     expect(DEFAULTS.wholeWindows).toBe(!readDefaults().perPage);
   });

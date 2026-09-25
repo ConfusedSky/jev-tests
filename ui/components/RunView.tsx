@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { factsOf, spendOf } from "../log";
+import { changed } from "../options";
 import { outcomeOf, type Run } from "../run";
 import type { JsonReport } from "../types";
-import { basename, cx, dollars, secs, tokens, useTick } from "../util";
+import { basename, copy, cx, dollars, secs, tokens, useTick } from "../util";
 import { OUTCOME, TOOL_LABEL } from "./History";
 import { Log } from "./Log";
 import { Result } from "./Result";
@@ -20,11 +22,13 @@ const PARTS = [
   { key: "jev", label: "waiting on jev", color: "bg-teal-600" },
   { key: "read", label: "reading PDFs", color: "bg-amber-500" },
   { key: "stdin", label: "reading paths", color: "bg-sky-500" },
+  { key: "embed", label: "embedding for the cache", color: "bg-violet-500" },
   { key: "other", label: "everything else", color: "bg-stone-300" },
 ] as const;
 
 function Timing({ spent }: { spent: JsonReport["spent"] }) {
-  const total = Math.max(1, PARTS.reduce((n, p) => n + spent.ms[p.key], 0));
+  const ms = (k: (typeof PARTS)[number]["key"]) => spent.ms[k] ?? 0;
+  const total = Math.max(1, PARTS.reduce((n, p) => n + ms(p.key), 0));
   return (
     <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
       <div className="mb-2 flex items-baseline gap-3">
@@ -34,17 +38,44 @@ function Timing({ spent }: { spent: JsonReport["spent"] }) {
         </span>
       </div>
       <div className="flex h-2.5 overflow-hidden rounded-full bg-stone-100">
-        {PARTS.map((p) => spent.ms[p.key] > 0 && <div key={p.key} className={p.color} style={{ width: `${(spent.ms[p.key] / total) * 100}%` }} title={`${p.label} ${secs(spent.ms[p.key])}`} />)}
+        {PARTS.map((p) => ms(p.key) > 0 && <div key={p.key} className={p.color} style={{ width: `${(ms(p.key) / total) * 100}%` }} title={`${p.label} ${secs(ms(p.key))}`} />)}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-500">
-        {PARTS.filter((p) => spent.ms[p.key] > 0 || p.key === "jev").map((p) => (
+        {PARTS.filter((p) => ms(p.key) > 0 || p.key === "jev").map((p) => (
           <span key={p.key} className="flex items-center gap-1.5">
             <span className={cx("h-2 w-2 rounded-sm", p.color)} />
-            {p.label} <span className="font-mono tabular-nums text-stone-700">{secs(spent.ms[p.key])}</span>
+            {p.label} <span className="font-mono tabular-nums text-stone-700">{secs(ms(p.key))}</span>
           </span>
         ))}
         <span className="ml-auto text-stone-400">jev charges $0.042 per million tokens in; output is free</span>
       </div>
+    </div>
+  );
+}
+
+/** The run's own settings, which may differ from the form's now: the options it changed and its command line. */
+function RunSettings({ run }: { run: Run }) {
+  const [copied, setCopied] = useState(false);
+  const diff = changed(run.request.tool, run.request.options);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className="text-stone-400">ran with</span>
+      {diff.length === 0 && <span className="rounded-md bg-stone-200/60 px-1.5 py-0.5 text-stone-600">every option at its default</span>}
+      {diff.map((d) => (
+        <span key={d.key} className="rounded-md bg-teal-50 px-1.5 py-0.5 text-teal-900 ring-1 ring-teal-600/20" title={d.help}>
+          {d.label} <span className="font-semibold">{String(run.request.options[d.key]) || "default"}</span>
+        </span>
+      ))}
+      <button
+        onClick={async () => {
+          setCopied(await copy(run.command));
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        title={run.command}
+        className="ml-auto rounded-md px-1.5 py-0.5 font-mono text-stone-500 hover:bg-stone-200/60"
+      >
+        {copied ? "copied" : "$ copy command"}
+      </button>
     </div>
   );
 }
@@ -95,9 +126,14 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
         </div>
       </div>
 
+      <RunSettings run={run} />
+
       {live && (
-        <div className="relative h-1 overflow-hidden rounded-full bg-sky-100">
-          <div className="absolute inset-y-0 w-1/3 animate-[slide_1.2s_ease-in-out_infinite] rounded-full bg-sky-500" />
+        <div className="space-y-1.5">
+          <div className="relative h-1 overflow-hidden rounded-full bg-sky-100">
+            <div className="absolute inset-y-0 w-1/3 animate-[slide_1.2s_ease-in-out_infinite] rounded-full bg-sky-500" />
+          </div>
+          <div className="truncate font-mono text-[11px] text-sky-800">{run.trying ?? run.lines[run.lines.length - 1]?.text ?? "starting…"}</div>
         </div>
       )}
 
@@ -122,6 +158,7 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
             </Fact>
           )}
           {f.embedding && <Fact label="embedding once">{f.embedding}</Fact>}
+          {f.onlyOne && <Fact label="passages">asked for {f.onlyOne}; a {kind} question has one answer</Fact>}
           {f.sections !== undefined && <Fact label="sections read">{f.sections}</Fact>}
           {f.files !== undefined && (
             <Fact label="walked">
@@ -133,7 +170,7 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
 
       {!live && <Result run={run} onPick={onPick} onRetry={onRetry} />}
       {!live && run.end?.report && <Timing spent={run.end.report.spent} />}
-      <Log lines={run.lines} live={live} trying={run.trying} />
+      <Log key={run.id} lines={run.lines} live={live} trying={run.trying} />
     </div>
   );
 }

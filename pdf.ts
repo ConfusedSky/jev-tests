@@ -682,8 +682,11 @@ export async function searchPdf(
     const left = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
     const ws = left.slice(0, o.max);
     if (left.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-    else ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order, read in ${split(scanSnap)}`);
-    await scan(ws);
+    else {
+      ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order…`);
+      await scan(ws);
+      ui.log(`${indent}no outline ${split(scanSnap)}`);
+    }
   }
   return finish();
 }

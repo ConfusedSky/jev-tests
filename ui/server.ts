@@ -81,18 +81,25 @@ function run(req: Request, r: RunRequest): Response {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const kill = () => proc.kill();
-  req.signal.addEventListener("abort", kill);
   const started = performance.now();
   const enc = new TextEncoder();
+  // Once the reader goes (Stop, a closed tab), nothing more may be enqueued:
+  // a write to a cancelled stream throws, and from a timer that ends the server.
+  let open = true;
+  let beat: Timer | undefined;
+  const hangUp = () => {
+    open = false;
+    clearInterval(beat);
+    proc.kill();
+  };
+  req.signal.addEventListener("abort", hangUp);
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      let open = true;
       const send = (e: RunEvent) => {
         if (open) controller.enqueue(enc.encode(`${JSON.stringify(e)}\n`));
       };
       // A jev call can outlast the idle timeout with nothing to say.
-      const beat = setInterval(() => send({ type: "beat" }), 5000);
+      beat = setInterval(() => send({ type: "beat" }), 5000);
       send({ type: "start", argv: [`${r.tool}.ts`, ...args] });
       const stdout = new Response(proc.stdout).text();
       const said: string[] = [];
@@ -117,15 +124,13 @@ function run(req: Request, r: RunRequest): Response {
       } catch {
         end.error = out;
       }
-      // A tool that stops before answering (a flag, the cache, the key) says why on its last lines.
+      // A tool that stops before answering (the cache, the key, a missing file) says why on its last lines.
       if (!end.report && !end.ranked && code !== 0) end.error ??= said.slice(-3).join("\n") || `exited with ${code}`;
-      if (req.signal.aborted) end.error = "stopped";
       send(end);
-      clearInterval(beat);
-      open = false;
-      controller.close();
+      if (open) controller.close();
+      hangUp();
     },
-    cancel: kill,
+    cancel: hangUp,
   });
   return new Response(stream, { headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" } });
 }
@@ -154,6 +159,7 @@ const server = Bun.serve({
   development: process.env.NODE_ENV !== "production" && { hmr: true, console: true },
   routes: {
     "/": index,
+    "/favicon.ico": new Response(null, { status: 204 }),
     "/api/config": () => json({ folders, root: ROOT } satisfies Config),
     "/api/health": async () => json(await health()),
     "/api/scan": async (req) => {
@@ -162,7 +168,7 @@ const server = Bun.serve({
     },
     "/api/run": {
       POST: async (req) => {
-        const r = (await req.json()) as RunRequest;
+        const r = (await req.json().catch(() => ({}))) as RunRequest;
         const why = bad(r);
         return why ? json({ error: why }, 400) : run(req, r);
       },
