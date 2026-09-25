@@ -184,6 +184,9 @@ $ ls *.pdf | bun jevfind.ts "Give me a table with Heart, Fallout and Cyberpunk R
    - A passage fills it with where it stands ("p.36 Healing"), and the passage
      prints under the cell's source line.
    - A cell question read as a table is walked as a passage.
+   - With `--highlight`, each cell's link opens a copy of its book with the
+     counted names, the figure or the passage marked (see
+     [pages.md](pages.md)).
 3. A cell opens only files whose names clear `--file-floor`, and no page
    excerpts are ranked. The row names its document, so a file that does not
    match the name is another work, and its answer would stand in the wrong

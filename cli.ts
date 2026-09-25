@@ -223,7 +223,7 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
               const range = Array.from({ length: end - page + 1 }, (_, i) => page + i);
               const paras = (await timed("extract", () => Promise.all(range.map((p) => pageParagraphs(pdf, p))))).flat();
               const text = paras.map((p) => p.text).join("\n");
-              return judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
+              return judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end, paras }));
             }
           : async (section, page, text, pdf, end) => judge(await answerFrom(client, kind, o.question, section, text, read, { pdf, page, end }));
   const across: SearchOpts["countAcross"] =
@@ -371,12 +371,12 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
-/** Under --highlight, each hit with passage lines moved to a highlighted copy of its PDF, one copy per file marking every hit's lines. */
+/** Under --highlight, each hit with passage lines or marks moved to a highlighted copy of its PDF, one copy per file marking every hit's. */
 export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
   const copies = new Set<string>();
   const out: Hit[] = [];
   for (const hit of hits) {
-    const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? [];
+    const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? hit.answer?.marks ?? [];
     if (!o.highlight || lines.length === 0) {
       out.push(hit);
       continue;

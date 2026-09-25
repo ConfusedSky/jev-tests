@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageParagraphs, pageTables, paragraphs, parseStext, styledCandidates, type Table } from "./layout";
+import { findOn, pageParagraphs, pageTables, paragraphs, parseStext, styledCandidates, type Table } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -24,7 +24,23 @@ const page = (lines: string[], width = 612, height = 792) => `<page id="p" width
 describe("parseStext", () => {
   test("reads a line's box, size, text and weight", () => {
     const { lines } = parseStext(page([stextLine(50, 100, 12, "Alegreya-Bold", "COMPEL:")]));
-    expect(lines).toEqual([{ x0: 50, y0: 100, x1: 92, y1: 112, size: 12, spans: [{ text: "COMPEL:", bold: true, italic: false, font: "Alegreya-Bold" }], block: 1 }]);
+    expect(lines).toEqual([
+      {
+        x0: 50,
+        y0: 100,
+        x1: 92,
+        y1: 112,
+        size: 12,
+        spans: [{ text: "COMPEL:", bold: true, italic: false, font: "Alegreya-Bold" }],
+        block: 1,
+        edges: [...Array(7).keys()].map((i) => [50 + i * 6, 56 + i * 6]),
+      },
+    ]);
+  });
+
+  test("gives a space it puts back the gap it stands for", () => {
+    const { lines } = parseStext(page([stextLine(50, 100, 12, "Alegreya-Regular", "ab|c")]));
+    expect(lines[0]!.edges).toEqual([[50, 56], [56, 62], [62, 63.8], [63.8, 69.8]]);
   });
 
   // The bug this guards: mutool glued half of every line on Heart's pages,
@@ -324,7 +340,7 @@ describe("styledCandidates", () => {
       stextLine(50, 210, 14, "FuturaPT-Bold", "Wilderness Survival (x2)........................................INT"),
       body(50, 230, "42"),
     ];
-    expect(styledCandidates(parseStext(page(lines)), 1)).toEqual([
+    expect(styledCandidates(parseStext(page(lines)), 1).map(({ text, style }) => ({ text, style }))).toEqual([
       { text: "COMPEL", style: "Alegreya-Bold 12 lead-in" },
       { text: "Athletics", style: "FuturaPT-Bold 14" },
       { text: "Brawling", style: "FuturaPT-Bold 14" },
@@ -332,11 +348,25 @@ describe("styledCandidates", () => {
     ]);
   });
 
+  // A name is marked alone, not with the leaders and the stat after it.
+  test("marks each run's own share of its line", () => {
+    const [run] = styledCandidates(parseStext(page([stextLine(50, 145, 14, "FuturaPT-Bold", "Athletics........DEX")])), 3);
+    expect(run!.box).toMatchObject({ page: 3, x0: 50, x1: 50 + 9 * 7, y0: 145 });
+  });
+
   // The bug this guards: the prose style was the page's commonest, and on a
   // page that is all list, the kits themselves were dropped as prose.
   test("finds the prose style among the long lines only", () => {
     const lines = ["Alderperson", "Fugitive", "Hardworking Drudge", "Landed Noble"].map((t, i) => stextLine(50, 100 + i * 14, 11, "Labrada-Italic", t));
     expect(styledCandidates(parseStext(page(lines)), 1).map((c) => c.text)).toEqual(["Alderperson", "Fugitive", "Hardworking Drudge", "Landed Noble"]);
+  });
+});
+
+describe("findOn", () => {
+  const lines = parseStext(page([stextLine(50, 100, 10, "Body", "Skills: Athletics, Barter and Survival.", 5)])).lines;
+  test("marks a name inline as a whole word, not inside another", () => {
+    expect(findOn(lines, "Barter", 1)).toMatchObject({ x0: 50 + 19 * 5, x1: 50 + 25 * 5 });
+    expect(findOn(lines, "Art", 1)).toBeUndefined();
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, bestRuns, cellsIn, columnsFor, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, boxesAt, bestRuns, cellsIn, columnsFor, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -402,12 +402,27 @@ describe("nameKey", () => {
   });
 });
 
+test("a count marks the names it counted, and not a yes set in another style", async () => {
+  const yes = ["Aegis", "Bulwark", "Cinder", "Gadget Compendium"];
+  const client = {
+    systemOne: async ({ questions }: { questions: Record<string, unknown> }) => ({
+      answers: Object.fromEntries(Object.entries(questions).map(([k, q]) => [k, { type: "noul", noul: yes.some((n) => JSON.stringify(q).includes(`"${n}"`)) ? 0.9 : 0.05 }])),
+    }),
+  } as unknown as Parameters<typeof answerFrom>[0];
+  const a = await answerFrom(client, "count", "How many gadgets?", "Gadgets", "Gadgets", {}, { pdf: fixture("gadgets.pdf"), page: 1 });
+  expect(a.text).toBe("3");
+  expect(a.marks).toHaveLength(3);
+  expect(a.marks!.every((b) => b.page === 1 && b.x1 > b.x0)).toBe(true);
+});
+
 describe("countParts", () => {
   test("takes the text's scraps when the page sets only a title apart", async () => {
     const { parts, fallback } = await countParts({ text: "Skills: Athletics, Barter and Survival.", pdf: fixture("manual.pdf"), page: 1 });
     expect(fallback).toBeUndefined();
     expect(parts).toHaveLength(1);
     expect(parts[0]!.cells.map((c) => c.text)).toEqual(expect.arrayContaining(["Athletics", "Barter", "Survival"]));
+    // Each scrap is marked where it first stands on the page.
+    expect(parts[0]!.cells.find((c) => c.text === "Barter")?.box).toMatchObject({ page: 1 });
   });
 
   test("takes the page's styled runs when it has them, with the scraps to fall back on", async () => {
@@ -555,6 +570,21 @@ describe("a stated figure", () => {
 
   test("is chosen from the figures on the page", async () => {
     expect(await answerFrom(stub("80", 0.9), "number", "How much does the Umber cost?", "s", text)).toEqual({ text: "80", p: 0.9 });
+  });
+
+  test("marks the figure picked: the line of prose holding it, or the table cell under its head", async () => {
+    const box = (start: number, end: number, cell?: number) => ({ page: 4, x0: start, y0: 0, x1: end, y1: 10, start, end, ...(cell === undefined ? {} : { cell }) });
+    const prose = { heading: false, text, style: "", lines: [box(0, 29), box(29, text.length)] };
+    expect((await answerFrom(stub("80", 0.9), "number", "q", "s", text, {}, { paras: [prose] })).marks).toEqual([box(29, text.length)]);
+
+    const row = { heading: false, text: '{"Name":"Umber","Cost":"80","Weight":"1"}', style: "", lines: [box(0, 5, 0), box(0, 2, 1), box(0, 1, 2)], table: { heads: ["Name", "Cost", "Weight"], cells: ["Umber", "80", "1"] } };
+    expect(boxesAt(row, row.text.indexOf("80"))).toEqual([box(0, 2, 1)]);
+    expect(boxesAt(row, row.text.indexOf("1\"}"))).toEqual([box(0, 1, 2)]);
+  });
+
+  test("marks nothing when the paragraphs do not line up with the text's lines", async () => {
+    const prose = { heading: false, text, style: "", lines: [] };
+    expect(await answerFrom(stub("80", 0.9), "number", "q", "s", text, {}, { paras: [prose, prose] })).toEqual({ text: "80", p: 0.9 });
   });
 
   test("a page without figures is not stated, without asking", async () => {

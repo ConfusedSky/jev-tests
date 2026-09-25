@@ -31,8 +31,21 @@ passage's lines marked by a highlight annotation on its page, so the link
 lands on the answer rather than the page. Any viewer that draws annotations
 shows it. The copy is made afresh each run, since a highlight saved into it
 stays there, and every hit in the same file adds its own; the Fallout
-rulebook's 248 MB take about a second to copy. `--open` opens the copy. A
-count, number or statement links to the page as before.
+rulebook's 248 MB take about a second to copy. `--open` opens the copy.
+
+A value is marked where it stands. A count marks each name it counted, on
+every page it counted from: Heart's nine skills, Cyberpunk Red's skill
+names without their leaders and stat. A number marks the figure jev
+picked: in a table the cell under its column's head, the Combat Rifle's
+damage 5, weight 11 and cost 117, and in prose the line holding it. Each
+name or figure is marked by its own characters' edges, as mutool reports
+them. These are not marked, and link to their page as before:
+- a statement, which rests on no single line;
+- a count read off the contents;
+- a count or figure whose text was not found on the page's lines.
+
+Two runs at once on one book write the same copy, and each run's fresh copy
+wipes the other's marks.
 
 A table's row is marked a cell at a time, so a passage that keeps only the
 asked columns marks only those cells: the weapon and its damage, not its
