@@ -102,6 +102,15 @@ export function argsFor(tool: Tool, o: Options): string[] {
   });
 }
 
+/** Why `tool` cannot run with these options (a number outside its range), or undefined. */
+export function invalid(tool: Tool, o: Options): string | undefined {
+  for (const s of SPECS) {
+    const v = o[s.key];
+    if (s.type !== "number" || !s.tools.includes(tool)) continue;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < s.min || v > s.max) return `${s.label} must be between ${s.min} and ${s.max}`;
+  }
+}
+
 /** The specs that apply to `tool` and differ from the defaults. */
 export const changed = (tool: Tool, o: Options) => SPECS.filter((s) => s.tools.includes(tool) && o[s.key] !== DEFAULTS[s.key]);
 

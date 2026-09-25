@@ -23,21 +23,16 @@ const dot = (ok: Check["ok"]) => (ok === "off" ? "bg-stone-400" : ok ? "bg-emera
 type Props = { health?: Health; cache: string; spend: { dollars: number; in: number; runs: number }; onRefresh: () => void; onResetSpend: () => void };
 
 export function Header({ health, cache, spend, onRefresh, onResetSpend }: Props) {
-  const [open, setOpen] = useState(false);
-  const [ledger, setLedger] = useState(false);
+  // One popover at a time; opening one closes the other.
+  const [menu, setMenu] = useState<"status" | "spend">();
+  const toggle = (m: "status" | "spend") => setMenu((cur) => (cur === m ? undefined : m));
+  const open = menu === "status";
+  const ledger = menu === "spend";
   const list = health ? checks(health, cache) : [];
   const issues = list.filter((c) => c.ok === false).length;
   return (
     <header className="relative z-20 flex h-14 shrink-0 items-center gap-5 border-b border-stone-200 bg-white px-5">
-      {(open || ledger) && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={() => {
-            setOpen(false);
-            setLedger(false);
-          }}
-        />
-      )}
+      {menu && <div className="fixed inset-0 z-10" onClick={() => setMenu(undefined)} />}
       <div className="flex items-baseline gap-2.5">
         <span className="font-serif text-2xl font-semibold tracking-tight text-stone-900">jev</span>
         <span className="hidden text-sm text-stone-500 md:inline">ask a shelf of PDFs; every answer is the book's own text</span>
@@ -45,7 +40,7 @@ export function Header({ health, cache, spend, onRefresh, onResetSpend }: Props)
 
       <div className="relative z-20 ml-auto">
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => toggle("status")}
           className="flex items-center gap-2 rounded-full border border-stone-200 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
           aria-expanded={open}
         >
@@ -86,7 +81,7 @@ export function Header({ health, cache, spend, onRefresh, onResetSpend }: Props)
       </div>
 
       <div className="relative z-20 border-l border-stone-200 pl-5">
-        <button onClick={() => setLedger((o) => !o)} aria-expanded={ledger} className="flex items-center gap-3 rounded-lg px-2 py-1 text-xs text-stone-500 hover:bg-stone-50">
+        <button onClick={() => toggle("spend")} aria-expanded={ledger} className="flex items-center gap-3 rounded-lg px-2 py-1 text-xs text-stone-500 hover:bg-stone-50">
           <span>
             <span className="font-semibold tabular-nums text-stone-800">{dollars(spend.dollars)}</span> spent
           </span>
@@ -104,7 +99,7 @@ export function Header({ health, cache, spend, onRefresh, onResetSpend }: Props)
             <button
               onClick={() => {
                 onResetSpend();
-                setLedger(false);
+                setMenu(undefined);
               }}
               className="mt-3 rounded-md px-2 py-1 font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50"
             >

@@ -3,7 +3,7 @@ import { KINDS as CLI_KINDS } from "../answer";
 import { CACHE_MODELS } from "../cache";
 import { parseFlags, readDefaults, readFlags } from "../cli";
 import { findDefaults } from "../shelf";
-import { argsFor, CACHES, commandFor, DEFAULTS, KINDS, SPECS, type Options } from "./options";
+import { argsFor, CACHES, commandFor, DEFAULTS, invalid, KINDS, SPECS, type Options } from "./options";
 
 const usage = (code: number): never => {
   throw new Error(`usage ${code}`);
@@ -46,6 +46,15 @@ describe("the UI's options", () => {
 
   test("every spec's key is an option", () => {
     for (const s of SPECS) expect(Object.keys(DEFAULTS)).toContain(s.key);
+  });
+});
+
+describe("invalid", () => {
+  test("names the first number out of its range for the tool", () => {
+    expect(invalid("jevsec", DEFAULTS)).toBeUndefined();
+    expect(invalid("jevsec", { ...DEFAULTS, threshold: 5 })).toBe("Page threshold must be between 0 and 1");
+    // jevgrep has no page threshold, so it does not stop on one.
+    expect(invalid("jevgrep", { ...DEFAULTS, threshold: 5 })).toBeUndefined();
   });
 });
 

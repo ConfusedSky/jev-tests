@@ -23,6 +23,7 @@ const PARTS = [
   { key: "read", label: "reading PDFs", color: "bg-amber-500" },
   { key: "stdin", label: "reading paths", color: "bg-sky-500" },
   { key: "embed", label: "embedding for the cache", color: "bg-violet-500" },
+  { key: "highlight", label: "marking the answer in a copy", color: "bg-yellow-400" },
   { key: "other", label: "everything else", color: "bg-stone-300" },
 ] as const;
 
@@ -154,7 +155,11 @@ export function RunView({ run, onStop, onPick, onRetry, onEdit }: Props) {
           )}
           {f.cache && (
             <Fact label="ranking from cache" tone="violet">
-              <span title={f.cache.score}>“{f.cache.question}”</span>
+              {f.cache.count > 1 ? (
+                <span title={`first: “${f.cache.question}” (${f.cache.score})`}>{f.cache.count} rankings reused</span>
+              ) : (
+                <span title={f.cache.score}>“{f.cache.question}”</span>
+              )}
             </Fact>
           )}
           {f.embedding && <Fact label="embedding once">{f.embedding}</Fact>}

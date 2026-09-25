@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { drain, factsOf, parseLine, spendOf, tree } from "./log";
+import { drain, factsOf, parseLine, spendOf, tree, withoutCost } from "./log";
 
 const LOG = `question looks like a count question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)
 counts skills
@@ -75,8 +75,18 @@ describe("factsOf", () => {
       parseLine(`  ranked from cache in 3.8s (jev 0.0s, read 0.0s, other 3.8s): "How is radiation treated?" (question 0.53, subject 0.85)`),
       parseLine("total 52.1s (jev 1.8s, read 0.2s, stdin 50.1s, other 0.0s), 1 files opened, 2 windows read"),
     ]);
-    expect(f.cache).toEqual({ question: "How is radiation treated?", score: "question 0.53, subject 0.85" });
+    expect(f.cache).toEqual({ question: "How is radiation treated?", score: "question 0.53, subject 0.85", count: 1 });
     expect([f.files, f.windows]).toEqual([1, 2]);
+  });
+});
+
+describe("withoutCost", () => {
+  test("drops the time and tokens clause wherever the line puts it", () => {
+    expect(withoutCost("counts done  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)")).toBe("counts done");
+    expect(withoutCost("total 3.5s (jev 0.9s, read 0.0s, other 2.5s; 6,861 tokens in, 1,049 out, $0.00029), 1 files opened")).toBe("total 1 files opened");
+    expect(withoutCost("jevsec: none of 3 windows reached p=0.7 in 0.7s (jev 0.6s, read 0.1s, other 0.0s; 1,336 tokens in, 114 out, $0.00006); best was 0.15 at Guns p.1")).toBe(
+      "jevsec: none of 3 windows reached p=0.7; best was 0.15 at Guns p.1",
+    );
   });
 });
 

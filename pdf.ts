@@ -1,7 +1,7 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
-import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
+import { clock, rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
 import type { RankingCache } from "./cache";
 import { pageSim } from "./embed";
 import { excerpts, type Term } from "./search";
@@ -54,8 +54,8 @@ export function makeUi(quiet: boolean): Ui {
   };
 }
 
-export function run(cmd: string[]): Promise<string> {
-  return timed("extract", async () => {
+export function run(cmd: string[], kind: keyof typeof clock = "extract"): Promise<string> {
+  return timed(kind, async () => {
     const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     if ((await p.exited) !== 0) throw new Error(`${cmd[0]} failed: ${err.trim()}`);
@@ -181,11 +181,11 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
 export async function highlighted(pdf: string, lines: Box[], fresh = true): Promise<string> {
   // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
   const copy = `${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
-  if (fresh) await Bun.write(copy, Bun.file(pdf));
+  if (fresh) await timed("highlight", () => Bun.write(copy, Bun.file(pdf)));
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
   // A passage read across a window's pages is marked on each of them.
   for (const page of new Set(lines.map((l) => l.page))) {
-    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quadsOn(lines, page))]);
+    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quadsOn(lines, page))], "highlight");
   }
   return copy;
 }

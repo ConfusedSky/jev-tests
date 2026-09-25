@@ -5,6 +5,7 @@
  *
  *   bun ui/server.ts [FOLDER...]   folders to put on the shelf at first
  */
+import { realpathSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -22,9 +23,27 @@ const SCAN_LIMIT = 5000;
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
 const folders = Bun.argv.slice(2).map(expand);
 
-// Only PDFs the UI was shown or given, and the tools' highlighted copies, are served.
+const real = (p: string) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return undefined;
+  }
+};
+
+// Only PDFs the UI was shown or given, and the tools' highlighted copies, are
+// served, each checked by its real path so ".." and links cannot reach others.
 const known = new Set<string>();
-const servable = (p: string | null): p is string => !!p && /\.pdf$/i.test(p) && (known.has(p) || p.startsWith(`${cacheDir()}/`));
+const know = (p: string) => {
+  const r = real(p);
+  if (r) known.add(r);
+};
+function servable(p: string | null | undefined): string | undefined {
+  const r = p ? real(p) : undefined;
+  if (!r || !/\.pdf$/i.test(r)) return undefined;
+  const cache = real(cacheDir());
+  return known.has(r) || (cache && r.startsWith(`${cache}/`)) ? r : undefined;
+}
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -40,7 +59,7 @@ async function scan(dir: string): Promise<Scan> {
         break;
       }
       files.push({ path, name: path.split("/").pop()!, size: Bun.file(path).size });
-      known.add(path);
+      know(path);
     }
   } catch (e) {
     return { dir, files, ms: performance.now() - t, truncated, error: e instanceof Error ? e.message : String(e) };
@@ -65,9 +84,10 @@ async function health(): Promise<Health> {
 }
 
 function bad(r: RunRequest): string | undefined {
+  if (typeof r !== "object" || r === null) return "the request must be a JSON object";
   if (!TOOLS.includes(r.tool)) return "unknown tool";
   if (typeof r.question !== "string" || !r.question.trim()) return "ask a question";
-  if (r.tool === "jevsec" && !servable(r.pdf ?? null)) return "choose a PDF from the shelf";
+  if (r.tool === "jevsec" && !servable(r.pdf)) return "choose a PDF from the shelf";
   if (r.tool !== "jevsec" && (!Array.isArray(r.paths) || r.paths.length === 0)) return "the shelf is empty";
 }
 
@@ -119,7 +139,7 @@ function run(req: Request, r: RunRequest): Response {
         if (Array.isArray(parsed)) end.ranked = parsed;
         else if (parsed) {
           end.report = parsed;
-          for (const h of [...parsed.hits, ...(parsed.table?.cells.flat().flatMap((c: { hit?: { view: string } }) => (c.hit ? [c.hit] : [])) ?? [])]) known.add(h.view);
+          for (const h of [...parsed.hits, ...(parsed.table?.cells.flat().flatMap((c: { hit?: { view: string } }) => (c.hit ? [c.hit] : [])) ?? [])]) know(h.view);
         }
       } catch {
         end.error = out;
@@ -137,10 +157,10 @@ function run(req: Request, r: RunRequest): Response {
 
 /** A page of a PDF as PNG, highlights and all, kept in the cache until the PDF changes. */
 async function page(url: URL): Promise<Response> {
-  const pdf = url.searchParams.get("pdf");
+  const pdf = servable(url.searchParams.get("pdf"));
   const n = Math.max(1, Math.floor(Number(url.searchParams.get("page")) || 1));
   const w = Math.min(2000, Math.max(200, Math.floor(Number(url.searchParams.get("w")) || 900)));
-  if (!servable(pdf)) return new Response("not on the shelf", { status: 403 });
+  if (!pdf) return new Response("not on the shelf", { status: 403 });
   const { mtimeMs } = await stat(pdf);
   const dir = `${cacheDir()}/ui-pages`;
   const png = `${dir}/${Bun.hash(`${pdf}\0${mtimeMs}\0${n}\0${w}`).toString(36)}.png`;
@@ -163,27 +183,31 @@ const server = Bun.serve({
     "/api/config": () => json({ folders, root: ROOT } satisfies Config),
     "/api/health": async () => json(await health()),
     "/api/scan": async (req) => {
-      const dir = new URL(req.url).searchParams.get("dir");
-      return dir ? json(await scan(expand(dir))) : json({ error: "no folder" }, 400);
+      const dir = new URL(req.url).searchParams.get("dir")?.trim();
+      if (!dir) return json({ error: "no folder" }, 400);
+      // A relative path would be read against wherever the server was started.
+      if (!/^[~/]/.test(dir)) return json({ dir, files: [], ms: 0, truncated: false, error: "use a full path, starting with / or ~" } satisfies Scan);
+      return json(await scan(expand(dir)));
     },
     "/api/run": {
       POST: async (req) => {
-        const r = (await req.json().catch(() => ({}))) as RunRequest;
+        const r = (await req.json().catch(() => null)) as RunRequest;
         const why = bad(r);
         return why ? json({ error: why }, 400) : run(req, r);
       },
     },
     "/api/page": (req) => page(new URL(req.url)),
     "/api/pdf": (req) => {
-      const path = new URL(req.url).searchParams.get("path");
-      if (!servable(path)) return new Response("not on the shelf", { status: 403 });
+      const path = servable(new URL(req.url).searchParams.get("path"));
+      if (!path) return new Response("not on the shelf", { status: 403 });
       return new Response(Bun.file(path), { headers: { "Content-Type": "application/pdf" } });
     },
     "/api/open": {
       POST: async (req) => {
-        const { path, page } = (await req.json()) as { path: string; page: number };
-        if (!servable(path)) return json({ error: "not on the shelf" }, 403);
-        await openAt(pageUrl(path, page));
+        const body = (await req.json().catch(() => null)) as { path?: string; page?: number } | null;
+        const path = servable(body?.path);
+        if (!path) return json({ error: "not on the shelf" }, 403);
+        await openAt(pageUrl(path, Math.max(1, Math.floor(Number(body?.page)) || 1)));
         return json({ ok: true });
       },
     },

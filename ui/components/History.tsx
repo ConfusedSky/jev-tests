@@ -1,6 +1,6 @@
 import { spendOf } from "../log";
 import { outcomeOf, type Outcome, type Run } from "../run";
-import { ago, cx, dollars } from "../util";
+import { ago, cx, dollars, useTick } from "../util";
 
 export const OUTCOME: Record<Outcome, { label: string; dot: string; tone: string }> = {
   running: { label: "Running", dot: "bg-sky-500 animate-pulse", tone: "text-sky-700 bg-sky-50 ring-sky-600/20" },
@@ -17,6 +17,7 @@ export const TOOL_LABEL = { jevfind: "Shelf", jevsec: "PDF", jevgrep: "Names" } 
 export const runSpend = (r: Run) => r.end?.report?.spent.dollars ?? spendOf(r.lines).dollars;
 
 export function History({ runs, current, onOpen, onClear }: { runs: Run[]; current?: string; onOpen: (r: Run) => void; onClear: () => void }) {
+  const now = useTick(true, 30_000);
   if (runs.length === 0)
     return <div className="m-3 rounded-xl border border-dashed border-stone-300 p-4 text-center text-xs text-stone-500">Questions you ask appear here, with what each one cost.</div>;
   return (
@@ -33,7 +34,7 @@ export function History({ runs, current, onOpen, onClear }: { runs: Run[]; curre
                   <span className="truncate">{o.label}</span>
                   <span className="rounded bg-stone-200/60 px-1 text-stone-500">{TOOL_LABEL[r.request.tool]}</span>
                   <span className="ml-auto tabular-nums">{dollars(runSpend(r))}</span>
-                  <span className="text-stone-300">{ago(r.at)}</span>
+                  <span className="text-stone-300">{ago(r.at, now)}</span>
                 </div>
               </button>
             </li>

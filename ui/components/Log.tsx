@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isTotal, spendOf, tree, type Line, type Node } from "../log";
+import { isTotal, spendOf, tree, withoutCost, type Line, type Node } from "../log";
 import { copy, cx, dollars, tokens } from "../util";
 
 const VERB: Record<string, string> = {
@@ -27,16 +27,8 @@ function Cost({ line, sum }: { line: Line; sum?: boolean }) {
   );
 }
 
-/** The line without its cost clause, which the badge shows instead. */
-const bare = (text: string) =>
-  text
-    .replace(/\s+in \d+(\.\d+)?s \(jev [^)]*\)/, "")
-    .replace(/\s\d+(\.\d+)?s \(jev [^)]*\),?/, "")
-    .replace(/\s{2,}/g, "  ")
-    .trim();
-
 function Text({ line }: { line: Line }) {
-  const t = bare(line.text);
+  const t = withoutCost(line.text);
   const verb = line.verb && VERB[line.verb] !== undefined ? line.verb : undefined;
   const rest = verb ? t.slice(verb.length).trimStart() : t;
   return (
@@ -79,7 +71,7 @@ function Row({ node, isOpen, toggle, depth }: { node: Node; isOpen: (i: number) 
             <div className="flex items-start gap-1 rounded px-1 py-0.5" style={{ paddingLeft: `${depth * 16 + 4}px` }}>
               <span className="w-10 shrink-0 pt-px text-right font-mono text-[10px] tabular-nums text-stone-300">+{(node.sum.t / 1000).toFixed(1)}</span>
               <span className="w-4 shrink-0 text-center text-[11px] text-stone-400">Σ</span>
-              <span className="min-w-0 text-stone-500">{bare(node.sum.text)}</span>
+              <span className="min-w-0 text-stone-500">{withoutCost(node.sum.text)}</span>
               <Cost line={node.sum} sum />
             </div>
           )}
@@ -95,7 +87,7 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
   // Headers start open; `flipped` holds the ones the user turned the other way.
   const [openByDefault, setOpenByDefault] = useState(true);
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
-  const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const spend = spendOf(lines);
   // Steps that print no count of their own leave the total larger than its parts.
   const unitemized = lines.some(isTotal) ? spend.in - spendOf(lines.filter((l) => !isTotal(l))).in : 0;
@@ -111,8 +103,10 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
     setFlipped(new Set());
   };
 
+  // Follows the run inside the log's own box only; moving the page would pull the question out of view.
   useEffect(() => {
-    if (live) end.current?.scrollIntoView({ block: "nearest" });
+    const el = box.current;
+    if (live && el) el.scrollTop = el.scrollHeight;
   }, [lines.length, live]);
 
   return (
@@ -139,7 +133,7 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
           </button>
         </div>
       </div>
-      <div className="scroll-thin max-h-[32rem] overflow-y-auto px-2 py-2 font-mono text-xs leading-relaxed">
+      <div ref={box} className="scroll-thin max-h-[32rem] overflow-y-auto px-2 py-2 font-mono text-xs leading-relaxed">
         {lines.length === 0 && !trying && <div className="px-2 py-3 text-stone-400">{live ? "Starting…" : "Nothing was logged."}</div>}
         {nodes.map((n) => (
           <Row key={n.index} node={n} isOpen={isOpen} toggle={toggle} depth={0} />
@@ -150,7 +144,6 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
             {trying}
           </div>
         )}
-        <div ref={end} />
       </div>
     </section>
   );
