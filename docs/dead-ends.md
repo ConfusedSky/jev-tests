@@ -124,6 +124,17 @@ replaced them. Numbers are from the runs at the time (September 2026).
   page failed 3 of 3). Not built; `experiments/embed/embed-gate-and-rank.patch`
   holds it (`JEV_EMBED_GATE`) with the logging used to measure it.
 
+## The ranking cache
+
+- **A "weak match" margin for offering a fresh ranking** (a cache hit whose
+  whole-question score was within 0.1 of its bar, or under it with the
+  subject carrying the match). No walk off a ranking the OR rule accepted
+  missed or did worse than ranking afresh, at any distance over the rule (0
+  of 49), so the margin fired only on sound hits: 16 of 24 bench hits, 5 of
+  them the same question found again. Replaced by offering it on any miss
+  whose walk stopped with some of its ranking unread
+  (docs/ranking-cache.md, "Offering to rank afresh").
+
 ## Known flaky, not fixed
 
 - CPR "How much do each type of magazine cost?": p.344 gates between 0.61 and

@@ -216,3 +216,124 @@ text-embedding-3-small through OpenRouter 293 ms.
 - Store an entry only after its ranking led to an answer.
 - Recheck the bars (0.53 / 0.80) as real lookups come in; add bench cases
   for a hit, a miss and a paraphrase.
+
+## Offering to rank afresh
+
+When a walk off a cached ranking finds nothing, the UI offers to ask again
+with `--cache off`. As first built it offered that only on a "weak" match:
+a whole-question score under its bar plus an unmeasured 0.1, which also
+called every hit the subject carried weak. Measured here with Qwen3-4B Q4;
+a hit's distance over the rule is the larger of whole − 0.53 and subject −
+0.80. Scripts: `margin.ts` (labelled pairs), `trace.ts` and `afresh.ts`
+(the bench with the cache on against the bench ranking afresh), `walks.ts`
+(real walks of the labelled pairs, kept in `walks.json`). Cost $0.31: the
+two bench runs $0.175, the walks $0.127, reruns and a fixture $0.006.
+
+**Labelled pairs** (840, embedded again: still 26/26 at 0.53 / 0.80):
+
+| distance over the rule | good | bad |
+| --- | --- | --- |
+| −0.10 to −0.05 | 11 | 39 |
+| −0.05 to 0 | 6 | 10 |
+| 0 to +0.03 | 5 | 0 |
+| +0.03 to +0.05 | 8 | 0 |
+| +0.05 to +0.10 | 5 | 0 |
+| +0.10 and over | 8 | 0 |
+
+- No accepted pair is wrong at any distance, out of sample too: bars
+  refitted without each question (0.53 / 0.80 for 38 of 42) or on the
+  other book (Fallout's 0.53 / 0.80 on CPR, CPR's 0.53 / 0.81 on Fallout)
+  accept 26, all right. Wrong pairs stop 0.020 under the rule (subject
+  0.78: exotic weapons cost ↔ damage of every ranged weapon) and 0.024
+  under (whole 0.506: skills available ← "Is Lockpick a perk?").
+- Every accepted pair's cached ranking holds the answer at rank 1 (22) or
+  2 (4), so within `--max` 12 the walk reaches it either way.
+- Hits crowd the bar, 13 of 26 within 0.05. None has a whole score of
+  0.63 (the highest is 0.624), so the rule as built called all 26 weak.
+
+**The bench, cache on and off** (`--no-save` both; the cache on run used a
+copy of the shared cache under a scratch `XDG_CACHE_HOME`, holding 1 Heart
+ranking, 6 Fallout, 3 Legend in the Mist and 5 CPR, some of them bench
+questions word for word):
+
+- 10 cases never look up (the contents confine them). The rest made 29
+  lookups: 24 hits and 5 misses, which ranked afresh and were kept.
+- Hits by distance over the rule: 2 under +0.03, 4 at +0.03–0.05, 3 at
+  +0.05–0.10, 15 over that.
+- Every hit answered, and scored as ranking afresh did on every case but
+  two. The magazine case (+0.05) scored 100% off the cached ranking in 2
+  runs of 2 and 0% ranked afresh in 2 of 2, as in the recorded run: its
+  known p.344 gate. The shelf table scored 97% against 98% through its CPR
+  cell, which never looks up. 1,928,514 tokens against 2,235,875.
+- The weakest hits answered. "How does hero creation work in Legend in the
+  Mist?" off "How do Fellowship themes work…" (+0.009, the whole question
+  alone at 0.54, subject 0.50) took p.73 for 76,492 tokens against 48,196
+  afresh. Heart's "What are the skills available to a character?" off "how
+  many skills are there in Heart?" (+0.011, the subject alone) took p.12
+  for 11,095 against 24,345.
+- As built, 16 of the 24 hits were "weak", 5 of them the same question
+  found again (whole 0.49–0.63, subject 1.00): the cached side holds its
+  top three sections, so a question can score under 0.63 against itself.
+
+**Walks off a partner's ranking** (`walks.ts`): the 42 labelled pairs at
+−0.05 or more over the rule. Each question was walked afresh with a cache
+of its own, which kept its ranking when it answered, then on each
+partner's kept ranking, excerpts and all, whatever the pair scored. 41
+walked; 3 that the contents confined never used the cached ranking and are
+left out. The distance is the live one, which moves up to 0.05 from the
+labelled one because the cached side holds the real ranking's top three.
+
+| live distance over the rule | walked | same page as afresh | both right, other pages | cached missed, afresh answered | cached wrong, afresh right | cached right, afresh not |
+| --- | --- | --- | --- | --- | --- | --- |
+| under −0.05 | 2 | 1 | 1 | | | |
+| −0.05 to 0 | 11 | 7 | | 1 | 3 | |
+| 0 to +0.03 | 6 | 4 | 2 | | | |
+| +0.03 to +0.05 | 8 | 6 | 2 | | | |
+| +0.05 to +0.10 | 5 | 3 | | | | 2 |
+| +0.10 and over | 6 | 4 | | | | 2 |
+
+- Over the rule, 25 walks: none missed and none did worse than ranking
+  afresh. 4 did better: walked afresh, the RadAway and Stimpak questions
+  took the Chems table (p.167) or the healing rules (p.36), where the
+  cached ranking reached the item's own entry.
+- Under it the failures start. "What is the damage of every small gun?"
+  off "…every melee weapon?" (−0.043) found nothing where afresh took p.97;
+  "How do I treat a critical injury?" off "What happens when I fail a death
+  save?" (−0.050) took Death Saves. The other two "wrong" (exotic weapons
+  cost off ranged weapons damage and off heavy pistol cost, −0.02) took
+  p.348, the Night Market's copy of the exotic price table, which the
+  bench accepts.
+
+**A short outline.** A walk that misses reads `--max` sections or the
+whole ranking, whichever is fewer, unless `--max-answers` answers under the
+floor stop it first. In the shared cache and these runs, rankings of the
+four bench books hold 41–503 sections (Fallout and CPR keep a
+page-embedding shortlist, Heart and Legend in the Mist their whole
+outlines), other books' 85–189, and the fixtures' and one PDF whose outline
+is a single bookmark 0–3. On `gadgets.pdf` (one section, three pages), "How
+much does it cost to repair the Cinder?" walked the ranking of "How much
+does the Cinder cost?" (question 0.66, subject 1.00) and missed, best 0.56
+on p.1. Ranked afresh (374 tokens for the one section) it read the same
+three windows and missed the same way. A walk that stopped for neither
+reason read its whole ranking; ranking again only reorders those sections
+and swaps the cached question's excerpt pages for this one's.
+
+**Adopted: no margin.** Over the rule, 49 walks off a cached ranking (24
+bench hits, 25 labelled pairs) ran from +0.002 to +0.26. None missed, none
+did worse than ranking afresh, and the one case that differed went the
+cache's way. That puts a miss off an accepted ranking under about 6% (0 of
+49, fewer independent: four bench tables share one lookup), with nothing
+near the bar to key on. Wrong matches start under the rule, where the bars'
+0.020 / 0.024 safety margins keep them out. A margin would fire only on
+sound hits: 0.1 over the rule flags 18 of 26 labelled hits and 9 of 24
+bench hits, 0.03 flags 5 and 2, and the rule as built flagged 26 and 16. So
+the UI offers the fresh ranking on any miss off a cached ranking whose walk
+stopped with some of the ranking unread, at `--max` sections or at
+`--max-answers` answers under the floor (`offerAfresh` in `ui/options.ts`),
+and says what happened rather than calling the match weak. A miss that
+stopped for neither read its whole ranking, as on `gadgets.pdf`.
+
+Not measured: how often ranking afresh rescues a miss off a cached
+ranking, since none of the 49 missed. `trace.ts` logs every lookup of a run
+(the question, its match and both scores); pairing those with outcomes as
+real lookups come in would show whether a margin is ever worth having.
