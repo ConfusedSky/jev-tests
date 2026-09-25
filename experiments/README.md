@@ -11,6 +11,7 @@ directory) and have no tests. Run them from the repo root so Bun loads
 | `ranking-cache/` | the 42-question similarity study | [ranking-cache.md](../docs/ranking-cache.md) |
 | `choice-ranking/` | ranking by one choice question: a patch and its comparison script | [choice-ranking.md](../docs/choice-ranking.md) |
 | `embed/` | page embeddings as a ranking shortlist and as a page check | [token-usage.md](../docs/token-usage.md), [dead-ends.md](../docs/dead-ends.md) |
+| `across/` | `read.ts`: how jev reads a table request across the shelf, word by word, and each cell question's kind in two wordings; `rows.ts`: one request's row reading repeated | [tables.md](../docs/tables.md) |
 
 ## ranking-cache
 

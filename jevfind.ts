@@ -1,24 +1,29 @@
 #!/usr/bin/env bun
-import { composeTable } from "./compose";
-import { answerLayer, num, parseFlags, READ_USAGE, readDefaults, readFlags, report, type ReadOpts } from "./cli";
-import { makeUi, searchPdf, textFile, type Candidate, type Hit, type Tried } from "./pdf";
-import { excerpts, type Excerpt } from "./search";
-import { makeClient, rank, snapshot, split, timed } from "./shared";
+import { answerLayer, checkCache, num, parseFlags, READ_USAGE, readFlags, report } from "./cli";
+import { makeUi } from "./pdf";
+import { acrossTable, ACROSS, findDefaults, findIn, readAcross, reportAcross, type FindOpts } from "./shelf";
+import { makeClient, snapshot, split, timed } from "./shared";
 
-type Opts = ReadOpts & { fileFloor: number; maxFiles: number };
+type Opts = FindOpts & { across?: boolean };
 
 function usage(code: number): never {
   (code === 0 ? console.log : console.error)(`jevfind — find the page that answers a question, across many PDFs
 
   find . -name '*.pdf' | jevfind "How does character creation work?"
+  ls *.pdf | jevfind "Give me a table with Heart and Fallout as rows and ask how many skills are there"
 
 Ranks the paths by filename and by the pages that mention the question's
 subject, then walks them best-first: each PDF's outline is ranked by section
 title beside those pages, and they are read until one answers the question.
 
+A table whose rows are documents the question names asks each column's
+question of each row, walking only files whose names clear the file floor.
+
       --file-floor F   open files scoring below F on filename only while nothing has
                        answered, 0-3 (default 1.5)
       --max-files N    open at most N files (default 5)
+      --across         build a table whose rows are the documents the question names
+      --no-across      build any table from one document's pages, without asking
 ${READ_USAGE}
 
 Reads paths on stdin. A PDF without an outline is read window by window in
@@ -28,15 +33,30 @@ Needs $OPENROUTER_API_KEY, mutool and pdftotext.`);
 }
 
 const startSnap = snapshot();
-const opts: Opts = { ...readDefaults(), fileFloor: 1.5, maxFiles: 5 };
+const opts: Opts = findDefaults();
 const words = parseFlags(
   Bun.argv.slice(2),
   opts,
-  { ...readFlags(), "--file-floor": num("fileFloor"), "--max-files": num("maxFiles") },
+  {
+    ...readFlags(),
+    "--file-floor": num("fileFloor"),
+    "--max-files": num("maxFiles"),
+    "--across": (o, _next, fail) => (o.across === false ? fail("cannot go with --no-across") : (o.across = true)),
+    "--no-across": (o, _next, fail) => (o.across === true ? fail("cannot go with --across") : (o.across = false)),
+  },
   usage,
 );
 opts.question = words.join(" ").trim();
 if (!opts.question) usage(1);
+// A table across the shelf has one row per document and one answer per cell.
+if (opts.across && opts.kind !== undefined && opts.kind !== "table") {
+  console.error(`--across builds a table; it cannot go with --kind ${opts.kind}`);
+  usage(1);
+}
+if (opts.across && opts.hits > 1) {
+  console.error(`--hits only applies to a passage question; --across builds a table`);
+  usage(1);
+}
 
 const paths = (await timed("wait", () => Bun.stdin.text()))
   .split("\n")
@@ -49,110 +69,36 @@ if (paths.length === 0) {
 
 const client = await makeClient(opts.model);
 const ui = makeUi(opts.quiet);
+
+/** Builds the table across the shelf when the rows name documents, or when told to; returns when it does not. */
+async function across(forced: boolean) {
+  const readSnap = snapshot();
+  const read = await readAcross(client, opts.question);
+  const named = read.rows.length > 0 && read.columns.length > 0;
+  const p = `(p=${read.p.toFixed(2)})`;
+  if (!forced && read.p < ACROSS) return ui.log(`rows are things in one document ${p}  in ${split(readSnap)}`);
+  if (!named) {
+    ui.log(`rows name documents ${p}, but no ${read.rows.length ? "question" : "row"} was read  in ${split(readSnap)}`);
+    if (!forced) return;
+    console.error(`jevfind: found no ${read.rows.length ? "question to ask of each row" : "document named as a row"} in the question`);
+    process.exit(1);
+  }
+  ui.log(`rows name documents ${p}: ${read.rows.join(", ")}; asks ${read.columns.join("; ")}  in ${split(readSnap)}`);
+  await reportAcross("jevfind", await acrossTable(client, paths, opts, read.rows, read.columns, ui), opts, ui, startSnap);
+}
+
+// Told to go across, the question's own reading would go unused.
+if (opts.across) {
+  await checkCache(opts.cache);
+  await across(true);
+}
 const search = await answerLayer(client, opts, ui);
+if (search.kind === "table" && opts.across === undefined) await across(false);
 
-const rankSnap = snapshot();
-// A file's name may say nothing of what it holds, so the pages of every
-// readable PDF that mention the subject are ranked beside the names, and a
-// file opens on the better of the two. Each book is extracted once and cached.
-const found: { file: string; excerpt: Excerpt }[] = [];
-// A count ranks titles alone inside a file, so its files rank by name alone too.
-if (search.terms && !search.countAcross) {
-  const pdfs = (await Promise.all(paths.map(async (p) => (p.toLowerCase().endsWith(".pdf") && (await Bun.file(p).exists()) ? p : undefined)))).filter((p) => p !== undefined);
-  // Extracted four at a time; one book pdftotext cannot read is skipped, not fatal.
-  const texts = new Map<string, string>();
-  for (let i = 0; i < pdfs.length; i += 4) {
-    await Promise.all(
-      pdfs.slice(i, i + 4).map(async (pdf) => {
-        try {
-          texts.set(pdf, await textFile(pdf));
-        } catch (e) {
-          ui.log(`  --  ${pdf}: ${e instanceof Error ? e.message.split("\n")[0] : e}; skipped`);
-        }
-      }),
-    );
-  }
-  const byFile = await excerpts([...texts.values()], search.terms, { limit: 3 });
-  for (const [pdf, file] of texts) for (const excerpt of byFile.get(file) ?? []) found.push({ file: pdf, excerpt });
-}
-const scored = await rank(
-  client,
-  opts.question,
-  [
-    { key: "candidates", noun: "file named", items: paths.map((p) => ({ label: p, value: p })) },
-    {
-      key: "excerpts",
-      noun: "page excerpt",
-      items: found.map(({ file, excerpt: e }) => ({ label: `${file.split("/").pop()} p.${e.page} ${e.content}`, value: { file, page: e.page, content: e.content } })),
-    },
-  ],
-  opts.batch,
-);
-// A name that clears the floor is trusted over any page: a supplement's
-// page on perks outranked the core rulebook's name and answered from armor
-// mods. Below the floor the names say nothing, and a file's best page
-// orders it instead, still under the floor.
-const all = paths
-  .map((name) => {
-    const own = scored.find((r) => r.list === "candidates" && r.name === name)!;
-    const best = scored.find((r) => r.list === "excerpts" && found[r.index]!.file === name);
-    if (own.score >= opts.fileFloor || !best || best.score <= own.score) return { name, score: own.score, by: "name" };
-    return { name, score: Math.min(best.score, opts.fileFloor - 0.01), by: `p.${found[best.index]!.excerpt.page}` };
-  })
-  .sort((a, b) => b.score - a.score);
-const ranked = all.slice(0, opts.maxFiles);
-const above = all.filter((r) => r.score >= opts.fileFloor).length;
-ui.log(
-  `ranked ${paths.length} paths and ${found.length} excerpts in ${split(rankSnap)}, ` +
-    `${above} above file floor ${opts.fileFloor}` +
-    (all.length > above ? ` (${all.length - above} below)` : ""),
-);
-
-const hits: Hit[] = [];
-const tried: Tried[] = [];
-const rejected: Candidate[] = [];
-const dropped: Candidate[] = [];
-let opened = 0;
-let below = false;
-
-for (const r of ranked) {
-  // The floor is soft: a file that scored under it is opened only while
-  // nothing has answered. "Which items cost more than 900 caps" says nothing a
-  // filename can match, and the rulebook holding the answer scored 1.48.
-  // Above the floor -n windows are collected; below it one is enough.
-  if (r.score < opts.fileFloor) {
-    if (hits.length > 0) break;
-    if (!below) ui.log(`nothing above the file floor answered; opening files below it`);
-    below = true;
-  }
-  const fileSnap = snapshot();
-  // A file names itself first; what it read stands under it and its sum closes it.
-  ui.log(`${r.score.toFixed(2)}  ${r.name}${r.by === "name" ? "" : `  (by ${r.by})`}…`);
-  if (!r.name.toLowerCase().endsWith(".pdf")) {
-    ui.log(`  --  not a PDF, skipped`);
-    continue;
-  }
-  if (!(await Bun.file(r.name).exists())) {
-    ui.log(`  --  no such file, skipped`);
-    continue;
-  }
-  opened++;
-  // The answer budget spans files, so each file gets what the last one left.
-  const res =
-    search.kind === "table"
-      ? await composeTable(client, r.name, search, ui, "  ")
-      : await searchPdf(client, r.name, { ...search, maxAnswers: opts.maxAnswers - rejected.length, hits: opts.hits - hits.length }, ui, "  ");
-  tried.push(...res.tried);
-  rejected.push(...res.rejected);
-  dropped.push(...res.dropped);
-  ui.log(`file ${split(fileSnap)}  ${res.tried.length} windows read`);
-  hits.push(...res.hits);
-  if (hits.length >= opts.hits || rejected.length >= opts.maxAnswers) break;
-}
-
-await report("jevfind", { hit: hits[0], hits, tried, rejected, dropped }, search, ui, startSnap, {
-  files: opened,
+const r = await findIn(client, paths, search, ui);
+await report("jevfind", r, search, ui, startSnap, {
+  files: r.opened,
   nothing:
     `nothing searchable in ${split(startSnap)}; ` +
-    `${above} paths passed the filename floor, ${opened} of the first ${ranked.length} were readable PDFs`,
+    `${r.above} paths passed the filename floor, ${r.opened} of the first ${r.considered} were readable PDFs`,
 });

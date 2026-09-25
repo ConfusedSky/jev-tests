@@ -70,6 +70,19 @@ replaced them. Numbers are from the runs at the time (September 2026).
 - **Pooling every annotated column's items** into one lookup matched a
   barrel's item among the sights. Each column is looked up on its own.
 
+## Tables across the shelf
+
+- **A higher bar for joining words inside a row's name** (0.8 for "in",
+  "the", "and", 0.5 for the rest). jev rates a title's own words under even
+  odds at times, "Legend" of "Legend in the Mist" at 0.36–0.49, so the row
+  was lost in 2 of 6 readings. The same 0.8 bar cut "are" (0.77) and "does"
+  (0.78) out of the columns' questions. Replaced by a run of words at 0.2 or
+  more for a row, and at 0.5 or more for a column (see [tables.md](tables.md)).
+- **"In Heart, how many skills are there?"** as the cell's question. It read
+  the same kind as "how many skills are there in Heart?" for every count,
+  but "In Fallout, healing work?" read as a truth where "healing work in
+  Fallout?" read as a passage.
+
 ## Layout and the log
 
 - **The paragraph gap rule** split a 9pt bullet item from its wrapped line

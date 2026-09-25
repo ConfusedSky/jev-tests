@@ -166,7 +166,7 @@ export function checkCache(model: string): Promise<void> {
   }));
 }
 
-export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, preset?: Reading): Promise<ReadOpts> {
+export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o: O, ui: Ui, preset?: Reading): Promise<O> {
   await checkCache(o.cache);
   // Kind and quantities come off the wording alone, so one call reads both.
   const asked = snapshot();
@@ -251,7 +251,7 @@ export async function answerLayer(client: TypeSafeClient, o: ReadOpts, ui: Ui, p
   return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
 }
 
-const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
+export const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
   `${link(h.pdf, h.page)}  ${h.section}  (found p=${h.p.toFixed(2)})`;
 
 /**
@@ -371,6 +371,23 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
+/** Under --highlight, each hit with passage lines moved to a highlighted copy of its PDF, one copy per file marking every hit's lines. */
+export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
+  const copies = new Set<string>();
+  const out: Hit[] = [];
+  for (const hit of hits) {
+    const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? [];
+    if (!o.highlight || lines.length === 0) {
+      out.push(hit);
+      continue;
+    }
+    const copy = await highlighted(hit.pdf, lines, !copies.has(hit.pdf));
+    copies.add(hit.pdf);
+    out.push({ ...hit, pdf: copy });
+  }
+  return out;
+}
+
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
 export async function report(
   tool: string,
@@ -385,17 +402,7 @@ export async function report(
 
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
-    // A highlighted copy per file, every hit's passage marked on it.
-    const copies = new Set<string>();
-    const at = async (hit: Hit): Promise<Hit> => {
-      const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? [];
-      if (!o.highlight || lines.length === 0) return hit;
-      const copy = await highlighted(hit.pdf, lines, !copies.has(hit.pdf));
-      copies.add(hit.pdf);
-      return { ...hit, pdf: copy };
-    };
-    const hits: Hit[] = [];
-    for (const hit of r.hits) hits.push(await at(hit));
+    const hits = await highlightAll(r.hits, o);
     for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
