@@ -1,19 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Ask, KIND_HINTS } from "./components/Ask";
+import { Ask, whyBlocked } from "./components/Ask";
 import { Header } from "./components/Header";
-import { History, OUTCOME, runSpend } from "./components/History";
+import { History } from "./components/History";
+import { Palette } from "./components/Palette";
 import { RunView } from "./components/RunView";
 import { Shelf } from "./components/Shelf";
+import { Shortcuts } from "./components/Shortcuts";
+import { useToast } from "./components/Toast";
+import { Welcome } from "./components/Welcome";
+import { fileStem, runJson } from "./export";
+import { ordered, recentQuestions, remember } from "./history";
+import { OUTCOME, runSpend, TOOL_LABEL } from "./labels";
 import { spendOf } from "./log";
 import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
+import type { Item } from "./palette";
 import { outcomeOf, useRun, type Run } from "./run";
 import { isLocate, locateHint, sourceKey } from "./sources";
+import { nextTheme, useTheme } from "./theme";
 import type { Config, Health, RunRequest, Scan } from "./types";
-import { cx, dollars, useStored } from "./util";
+import { hashFor, runInHash } from "./url";
+import { cx, dollars, download, secs, useMediaQuery, useStored } from "./util";
 
 const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
 const ANSWER_ROOM = 440;
+const TITLE = document.title;
 
 /** The PDFs a source holds: a folder walked, or a locate command run. Never throws: a failure comes back as the scan's error. */
 async function scanOf(source: string): Promise<Scan> {
@@ -33,9 +44,17 @@ async function scanOf(source: string): Promise<Scan> {
 const ledgerOf = (runs: Run[]) =>
   runs.reduce((a, r) => ({ dollars: a.dollars + runSpend(r), in: a.in + (r.end?.report?.spent.in ?? spendOf(r.lines).in), runs: a.runs + 1 }), { dollars: 0, in: 0, runs: 0 });
 
+const typing = (e: KeyboardEvent) => {
+  const el = e.target;
+  return el instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+};
+
 export function App() {
+  const toast = useToast();
   const [health, setHealth] = useState<Health>();
   const [folders, setFolders] = useStored<string[]>("jev.folders", []);
+  // Sources the server was started with go on the shelf once; taken off, they stay off.
+  const [seeded, setSeeded] = useStored<string[]>("jev.seeded", []);
   const [scans, setScans] = useState<Record<string, Scan | undefined>>({});
   const scansNow = useRef(scans);
   scansNow.current = scans;
@@ -45,23 +64,53 @@ export function App() {
   const [pdf, setPdf] = useStored("jev.pdf", "");
   const [history, setHistory] = useStored<Run[]>("jev.history", []);
   const [side, setSide] = useState<"shelf" | "history">("shelf");
-  const [viewing, setViewing] = useState<Run>();
   // What this browser's runs have spent, kept apart from the history so clearing one keeps the other.
   const [ledger, setLedger] = useStored("jev.ledger", ledgerOf(history));
   const [note, setNote] = useState<string>();
   const [focus, setFocus] = useState(0);
   const main = useRef<HTMLElement>(null);
   const runView = useRef<HTMLDivElement>(null);
+  const { theme, setTheme } = useTheme();
+  const [notify, setNotify] = useStored("jev.notify", false);
+  const notifyNow = useRef(notify);
+  notifyNow.current = notify;
+  const [sidebar, setSidebar] = useStored("jev.sidebar", true);
+  const narrow = useMediaQuery("(max-width: 767px)");
+  // On a narrow window the sidebar is a drawer over the page, shut until asked for.
+  const [drawer, setDrawer] = useState(false);
+  const [dialog, setDialog] = useState<"palette" | "shortcuts">();
+  const [said, setSaid] = useState("");
+  const [badge, setBadge] = useState<string>();
+
+  // The run on screen, named in the address so a reload and the back button return to it; null is the welcome page.
+  const [viewingId, setViewingId] = useState<string | null>(() => {
+    const wanted = runInHash(location.hash);
+    return (wanted && history.some((r) => r.id === wanted) ? wanted : history[0]?.id) ?? null;
+  });
+  const viewingNow = useRef(viewingId);
+  viewingNow.current = viewingId;
+  const view = useCallback((id: string | null, push = true) => {
+    setViewingId(id);
+    const url = hashFor(id ?? undefined) || location.pathname;
+    if (push) window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
+  }, []);
+
   // A run that ends while an older one is on screen leaves word of it until seen.
   const [ended, setEnded] = useState<Run>();
-  const watching = useRef(true);
-  const { run, start, stop } = useRun((r) => {
-    if (!watching.current) setEnded(r);
-    setHistory((h) => [r, ...h.filter((x) => x.id !== r.id)].slice(0, HISTORY));
+  const { run, setRun, start, stop } = useRun((r) => {
+    if (r.id !== viewingNow.current) setEnded(r);
+    setHistory((h) => remember(h, r, HISTORY));
     setLedger((l) => {
       const add = ledgerOf([r]);
       return { dollars: l.dollars + add.dollars, in: l.in + add.in, runs: l.runs + 1 };
     });
+    const outcome = OUTCOME[outcomeOf(r)].label;
+    setSaid(`${outcome}: ${r.request.question}. ${secs(r.end?.ms ?? 0)}, ${dollars(runSpend(r))}.`);
+    if (document.hidden) {
+      setBadge(outcome);
+      if (notifyNow.current && Notification.permission === "granted") new Notification(`jev: ${outcome}`, { body: r.request.question, tag: r.id }).onclick = () => window.focus();
+    }
   });
 
   const checkHealth = useCallback(() => {
@@ -79,12 +128,22 @@ export function App() {
     setScans((s) => ({ ...s, [dir]: kept }));
   }, []);
 
+  // Runs once: the address is made to say what is shown, and the server's sources not seen before go on the shelf.
   useEffect(() => {
+    view(viewingNow.current, false);
     checkHealth();
     fetch("/api/config")
       .then((r) => r.json() as Promise<Config>)
-      .then((c) => setFolders((f) => [...new Set([...f, ...c.folders])]));
-  }, [checkHealth, setFolders]);
+      .then((c) => {
+        const fresh = c.folders.filter((f) => !seeded.includes(f));
+        if (fresh.length === 0) return;
+        setFolders((f) => [...new Set([...f, ...fresh])]);
+        setSeeded([...seeded, ...fresh]);
+      });
+    const back = () => setViewingId(runInHash(location.hash) ?? null);
+    window.addEventListener("popstate", back);
+    return () => window.removeEventListener("popstate", back);
+  }, []);
 
   useEffect(() => {
     for (const f of folders) if (!(f in scans)) rescan(f);
@@ -95,23 +154,49 @@ export function App() {
     return folders.flatMap((f) => scans[f]?.files ?? []).filter((f) => !seen.has(f.path) && seen.set(f.path, true));
   }, [folders, scans]);
 
+  // A PDF picked from a source since taken off the shelf is let go, once every source has answered.
+  useEffect(() => {
+    if (pdf && folders.every((f) => scans[f] !== undefined) && !files.some((f) => f.path === pdf)) setPdf("");
+  }, [pdf, files, folders, scans, setPdf]);
+
+  // The tab's title says how a run ended while it was in the background, until it is looked at.
+  useEffect(() => {
+    document.title = badge ? `(${badge}) ${TITLE}` : TITLE;
+  }, [badge]);
+  useEffect(() => {
+    const seen = () => !document.hidden && setBadge(undefined);
+    document.addEventListener("visibilitychange", seen);
+    return () => document.removeEventListener("visibilitychange", seen);
+  }, []);
+
   const ask = (request: RunRequest) => {
-    setViewing(undefined);
     setEnded(undefined);
     setNote(undefined);
-    start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, sources: folders }));
+    const id = start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, sources: folders }));
+    view(id);
+    setSaid(`Asking: ${request.question}`);
+    setDrawer(false);
   };
+
+  const shown = viewingId === null ? undefined : run?.id === viewingId ? run : history.find((r) => r.id === viewingId);
+  const live = run?.status === "running";
 
   // An answer that arrives below the fold is scrolled up under the header; the
   // page is only tall enough to scroll once it is there.
   useEffect(() => {
     const [el, box] = [runView.current, main.current];
-    if (run?.status !== "done" || viewing || !el || !box) return;
+    if (run?.status !== "done" || shown?.id !== run.id || !el || !box) return;
     const below = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
     if (below + ANSWER_ROOM > box.clientHeight) box.scrollTo({ top: Math.max(0, below + box.scrollTop - 12), behavior: "smooth" });
   }, [run?.id, run?.status]);
-  const askNow = () =>
-    ask({ tool, question: question.trim(), options, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) });
+
+  const cacheWhy = tool !== "jevgrep" && options.cache !== "off" ? health?.cache[options.cache] : null;
+  const target = () => (tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) });
+  const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files: files.length, cacheWhy: cacheWhy ?? undefined });
+  const askNow = () => {
+    if (live || blocked) return;
+    ask({ tool, question: question.trim(), options, ...target() });
+  };
 
   /** Adds the folder or locate command, or says why not: one that lists no PDFs never goes on the shelf. */
   const addFolder = async (input: string): Promise<string | undefined> => {
@@ -124,23 +209,176 @@ export function App() {
     }
     setScans((s) => ({ ...s, [scan.dir]: scan }));
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
+    toast(`${scan.files.length} PDF${scan.files.length === 1 ? "" : "s"} on the shelf from ${scan.dir}`);
+  };
+
+  const removeFolder = (dir: string) => {
+    setFolders((f) => f.filter((x) => x !== dir));
+    toast(`${dir} taken off the shelf`);
   };
 
   const pick = (path: string) => {
     setPdf(path);
     setTool("jevsec");
+    setDrawer(false);
   };
 
-  const shown = viewing ?? run;
-  watching.current = !viewing;
-  const live = run?.status === "running";
-  const cacheWhy = tool !== "jevgrep" && options.cache !== "off" ? health?.cache[options.cache] : null;
+  const open = (r: Run) => {
+    view(r.id);
+    setDrawer(false);
+    if (ended?.id === r.id) setEnded(undefined);
+  };
+
+  /** Restores a run's question and options into the form. */
+  const edit = (r: Run) => {
+    const restored = { ...DEFAULTS, ...r.request.options };
+    const diff = changed(r.request.tool, restored);
+    setTool(r.request.tool);
+    setQuestion(r.request.question);
+    setOptions(restored);
+    if (r.request.pdf) setPdf(r.request.pdf);
+    setNote(`Restored from that run: ${diff.length ? diff.map((d) => `${d.label} ${String(restored[d.key])}`).join(", ") : "every option at its default"}.`);
+    main.current?.scrollTo({ top: 0, behavior: "smooth" });
+    setFocus((n) => n + 1);
+  };
+
+  // Clearing takes the shown run off the screen too, unless it is pinned or still going.
+  const clearHistory = () => {
+    const keep = new Set(history.filter((r) => r.pinned).map((r) => r.id));
+    if (live && run) keep.add(run.id);
+    setHistory((h) => h.filter((r) => keep.has(r.id)));
+    if (run && !keep.has(run.id)) setRun(undefined);
+    if (viewingId && !keep.has(viewingId)) view(null, false);
+    toast(keep.size ? "History cleared, but for what is pinned or running" : "History cleared");
+  };
+
+  const deleteRun = (id: string) => {
+    setHistory((h) => h.filter((r) => r.id !== id));
+    if (run?.id === id) setRun(undefined);
+    if (viewingId === id) view(null, false);
+    toast("Run deleted");
+  };
+
+  const pinRun = (id: string) => setHistory((h) => h.map((r) => (r.id === id ? { ...r, pinned: !r.pinned } : r)));
+
+  const setNotifyAsking = async (on: boolean) => {
+    if (on && Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") {
+      toast("This site is not allowed to show notifications", "warn");
+      setNotify(false);
+      return;
+    }
+    setNotify(on);
+    toast(on ? "You will be told when a run ends while the tab is in the background" : "Desktop notifications off");
+  };
+
+  const toggleSide = () => (narrow ? setDrawer((d) => !d) : setSidebar((s) => !s));
+
+  /** Shows the run before or after the one on screen, in the history's order. */
+  const step = (by: 1 | -1) => {
+    const list = ordered(history);
+    const at = list.findIndex((r) => r.id === shown?.id);
+    const next = list[at < 0 ? (by > 0 ? 0 : list.length - 1) : at + by];
+    if (next) open(next);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setDialog((d) => (d === "palette" ? undefined : "palette"));
+        return;
+      }
+      if (dialog || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "/") setFocus((n) => n + 1);
+      else if (e.key === "?") setDialog("shortcuts");
+      else if (e.key === "b") toggleSide();
+      else if (e.key === "[") step(1);
+      else if (e.key === "]") step(-1);
+      else if (e.key === "Escape" && live) stop();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const items = (): Item[] => {
+    const act = (id: string, label: string, run: () => void, extra: Partial<Item> = {}): Item => ({ id, group: "Actions", label, run, ...extra });
+    const modes: { tool: Tool; label: string }[] = [
+      { tool: "jevfind", label: "Ask the whole shelf" },
+      { tool: "jevsec", label: "Ask one PDF" },
+      { tool: "jevgrep", label: "Rank the file names" },
+    ];
+    return [
+      live ? act("stop", "Stop the run", stop, { shortcut: "esc" }) : act("ask", "Ask", askNow, { hint: blocked ?? `“${question.trim()}”`, shortcut: "⏎" }),
+      act("focus", "Type a question", () => setFocus((n) => n + 1), { shortcut: "/" }),
+      ...(shown && shown.status !== "running"
+        ? [
+            act("again", "Ask again, with that run's question and options", () => edit(shown)),
+            act("json", "Save the run as JSON", () => {
+              const name = `jev-${fileStem(shown.request.question)}.json`;
+              download(name, runJson(shown), "application/json");
+              toast(`Saved ${name}`);
+            }),
+          ]
+        : []),
+      act("theme", `Theme: ${theme} → ${nextTheme(theme)}`, () => setTheme(nextTheme(theme)), { keywords: "dark light mode appearance" }),
+      act("sidebar", sidebar || drawer ? "Hide the sidebar" : "Show the sidebar", toggleSide, { shortcut: "b" }),
+      act("notify", notify ? "Desktop notifications: off" : "Desktop notifications: on", () => setNotifyAsking(!notify)),
+      act("keys", "Keyboard shortcuts", () => setDialog("shortcuts"), { shortcut: "?" }),
+      act("clear", "Clear the history", clearHistory),
+      ...modes.map<Item>((m) => ({ id: `mode-${m.tool}`, group: "Mode", label: m.label, hint: m.tool, run: () => setTool(m.tool) })),
+      ...files.map<Item>((f) => ({ id: `pdf-${f.path}`, group: "Ask one PDF", label: f.name, hint: f.path, run: () => pick(f.path) })),
+      ...ordered(history).map<Item>((r) => ({
+        id: `run-${r.id}`,
+        group: "History",
+        label: r.request.question,
+        hint: `${OUTCOME[outcomeOf(r)].label} · ${TOOL_LABEL[r.request.tool]} · ${dollars(runSpend(r))}`,
+        run: () => open(r),
+      })),
+      ...recentQuestions(history, "", 8).map<Item>((q) => ({
+        id: `q-${q}`,
+        group: "Ask again",
+        label: q,
+        run: () => {
+          setQuestion(q);
+          setFocus((n) => n + 1);
+        },
+      })),
+    ];
+  };
+
+  const sideOpen = narrow ? drawer : sidebar;
+  const closeDialog = useCallback(() => setDialog(undefined), []);
 
   return (
     <div className="flex h-full flex-col">
-      <Header health={health} cache={options.cache} spend={ledger} onRefresh={checkHealth} onResetSpend={() => setLedger({ dollars: 0, in: 0, runs: 0 })} />
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-50 xl:w-80">
+      <div role="status" aria-live="polite" className="sr-only">
+        {said}
+      </div>
+      <Header
+        health={health}
+        cache={options.cache}
+        spend={ledger}
+        onRefresh={checkHealth}
+        onResetSpend={() => setLedger({ dollars: 0, in: 0, runs: 0 })}
+        sidebar={sideOpen}
+        onSidebar={toggleSide}
+        theme={theme}
+        onTheme={() => setTheme(nextTheme(theme))}
+        onPalette={() => setDialog("palette")}
+        notify={notify}
+        onNotify={setNotifyAsking}
+      />
+      <div className="relative flex min-h-0 flex-1">
+        {narrow && drawer && <div className="fixed inset-0 z-30 bg-black/40" onClick={() => setDrawer(false)} />}
+        <aside
+          inert={!sideOpen}
+          className={cx(
+            "flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-50 xl:w-80",
+            narrow ? cx("fixed top-14 bottom-0 left-0 z-40 w-72 shadow-2xl transition-transform", drawer ? "translate-x-0" : "-translate-x-full") : !sidebar && "hidden",
+          )}
+        >
           <div role="tablist" className="flex gap-1 border-b border-stone-200 px-3 pt-2">
             {(["shelf", "history"] as const).map((s) => (
               <button
@@ -156,22 +394,14 @@ export function App() {
             ))}
           </div>
           {side === "shelf" ? (
-            <Shelf
-              folders={folders}
-              scans={scans}
-              picked={pdf}
-              onAdd={addFolder}
-              onRemove={(d) => setFolders((f) => f.filter((x) => x !== d))}
-              onRescan={rescan}
-              onPick={pick}
-            />
+            <Shelf folders={folders} scans={scans} picked={pdf} onAdd={addFolder} onRemove={removeFolder} onRescan={rescan} onPick={pick} />
           ) : (
-            <History runs={history} current={shown?.id} onOpen={setViewing} onClear={() => setHistory([])} />
+            <History runs={history} current={shown?.id} onOpen={open} onClear={clearHistory} onPin={pinRun} onDelete={deleteRun} />
           )}
         </aside>
 
         <main ref={main} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl space-y-5 px-4 py-5 xl:px-6 xl:py-6">
+          <div className="mx-auto max-w-5xl space-y-5 px-3 py-4 md:px-4 md:py-5 xl:px-6 xl:py-6">
             <Ask
               tool={tool}
               setTool={setTool}
@@ -189,26 +419,21 @@ export function App() {
               onDismissNote={() => setNote(undefined)}
               focus={focus}
               cacheWhy={cacheWhy ?? undefined}
-              onCacheOffOnce={() => ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) })}
+              onCacheOffOnce={() => ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() })}
+              suggestions={recentQuestions(history, question)}
             />
-            {viewing && live && (
-              <button onClick={() => setViewing(undefined)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
+            {live && run && shown?.id !== run.id && (
+              <button onClick={() => open(run)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
                 A question is still running. Show it →
               </button>
             )}
-            {viewing && ended && ended.id !== viewing.id && (
+            {ended && ended.id !== shown?.id && (
               <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
                 <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(ended)].dot)} />
                 <span className="min-w-0 flex-1 truncate text-stone-700">
                   Finished: <span className="font-medium">{OUTCOME[outcomeOf(ended)].label}</span> · {dollars(runSpend(ended))} · “{ended.request.question}”
                 </span>
-                <button
-                  onClick={() => {
-                    setViewing(undefined);
-                    setEnded(undefined);
-                  }}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
-                >
+                <button onClick={() => open(ended)} className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">
                   Show it →
                 </button>
                 <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-400 hover:text-stone-700">
@@ -218,25 +443,14 @@ export function App() {
             )}
             {shown ? (
               <div ref={runView}>
-              <RunView
-                run={shown}
-                onStop={stop}
-                onPick={pick}
-                // A retry changes this run only; the saved options stay as they are.
-                onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
-                onEdit={() => {
-                  const r = shown.request;
-                  const restored = { ...DEFAULTS, ...r.options };
-                  const diff = changed(r.tool, restored);
-                  setTool(r.tool);
-                  setQuestion(r.question);
-                  setOptions(restored);
-                  if (r.pdf) setPdf(r.pdf);
-                  setNote(`Restored from that run: ${diff.length ? diff.map((d) => `${d.label} ${String(restored[d.key])}`).join(", ") : "every option at its default"}.`);
-                  main.current?.scrollTo({ top: 0, behavior: "smooth" });
-                  setFocus((n) => n + 1);
-                }}
-              />
+                <RunView
+                  run={shown}
+                  onStop={stop}
+                  onPick={pick}
+                  // A retry changes this run only; the saved options stay as they are.
+                  onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
+                  onEdit={() => edit(shown)}
+                />
               </div>
             ) : (
               <Welcome />
@@ -244,46 +458,8 @@ export function App() {
           </div>
         </main>
       </div>
-    </div>
-  );
-}
-
-function Welcome() {
-  const steps = [
-    { n: "1", title: "Put PDFs on the shelf", body: "Add a folder, or a locate command such as plocate -i '*.pdf', on the left. Nothing is read or sent until you ask." },
-    { n: "2", title: "Ask in plain words", body: "The whole shelf, one PDF, or just the file names. jev reads the kind of answer off the wording." },
-    { n: "3", title: "Read the page itself", body: "Every answer is a number, true or false, a passage or a table of the book's own text, with the page it stands on, highlighted." },
-  ];
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        {steps.map((s) => (
-          <div key={s.n} className="rounded-2xl border border-stone-200 bg-white p-5">
-            <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-teal-700 font-serif text-sm font-semibold text-white">{s.n}</div>
-            <div className="font-medium text-stone-900">{s.title}</div>
-            <div className="mt-1 text-sm leading-relaxed text-stone-500">{s.body}</div>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-2xl border border-stone-200 bg-white">
-        <div className="border-b border-stone-100 px-5 py-3 text-sm font-semibold text-stone-800">What you get back depends on how you ask</div>
-        <table className="w-full text-sm">
-          <tbody>
-            {KIND_HINTS.map((k) => (
-              <tr key={k.kind} className="border-b border-stone-100 last:border-0">
-                <td className="w-24 px-5 py-2.5">
-                  <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800 ring-1 ring-teal-600/20">{k.kind}</span>
-                </td>
-                <td className="py-2.5 font-serif text-stone-700">{k.says}</td>
-                <td className="px-5 py-2.5 text-right text-stone-500">{k.gives}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-center text-xs text-stone-400">
-        Each question costs a fraction of a cent: jev charges $0.042 per million tokens in. Every step's tokens show in the log. Press <kbd className="rounded bg-stone-200 px-1">/</kbd> to type a question.
-      </p>
+      {dialog === "palette" && <Palette items={items()} onClose={closeDialog} />}
+      {dialog === "shortcuts" && <Shortcuts onClose={closeDialog} />}
     </div>
   );
 }

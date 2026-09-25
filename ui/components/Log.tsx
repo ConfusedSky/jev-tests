@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTotal, spendOf, tree, withoutCost, type Line, type Node } from "../log";
 import { copy, cx, dollars, tokens } from "../util";
+import { useToast } from "./Toast";
 
 const VERB: Record<string, string> = {
   take: "bg-emerald-100 text-emerald-800",
@@ -88,6 +89,7 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
   const [openByDefault, setOpenByDefault] = useState(true);
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const box = useRef<HTMLDivElement>(null);
+  const toast = useToast();
   const spend = spendOf(lines);
   // Steps that print no count of their own leave the total larger than its parts.
   const unitemized = lines.some(isTotal) ? spend.in - spendOf(lines.filter((l) => !isTotal(l))).in : 0;
@@ -128,7 +130,7 @@ export function Log({ lines, live, trying }: { lines: Line[]; live: boolean; try
           <button onClick={() => all(false)} className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100">
             collapse all
           </button>
-          <button onClick={() => copy(lines.map((l) => "  ".repeat(l.depth) + l.text).join("\n"))} className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100">
+          <button onClick={async () => toast((await copy(lines.map((l) => "  ".repeat(l.depth) + l.text).join("\n"))) ? "Log copied" : "Could not reach the clipboard", "ok")} className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100">
             copy
           </button>
         </div>

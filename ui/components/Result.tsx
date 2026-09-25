@@ -1,10 +1,14 @@
 import { useState } from "react";
-import { factsOf, withoutCost } from "../log";
+import { acrossGrid, answerText, fileStem } from "../export";
+import { factsOf, withoutCost, type Facts } from "../log";
+import type { Options, Tool } from "../options";
 import type { Run } from "../run";
 import type { JsonHit, JsonReport, Ranked } from "../types";
-import { basename, cx } from "../util";
+import { basename, copy, cx } from "../util";
+import { GridExport } from "./GridExport";
 import { PagePreview } from "./PagePreview";
 import { Passage } from "./Passage";
+import { useToast } from "./Toast";
 
 /** A probability as a bar and its figure, green once it clears `floor`. */
 export function Confidence({ p, floor, label }: { p: number; floor?: number; label: string }) {
@@ -68,10 +72,17 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-type Card = { hit: JsonHit; kind?: string; floor: number; stamp: string; index: number; count: number; below?: boolean; reading?: string };
+type Card = { hit: JsonHit; kind?: string; floor: number; stamp: string; index: number; count: number; below?: boolean; reading?: string; contents?: boolean; stem?: string };
 
-function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card) {
+/** Where a count or figure came from: the page it stands on, or the table of contents, which lists the entries without a page to mark. */
+const FROM = {
+  page: { count: "counted off the page", number: "read off the page", truth: "the statement, checked against the page" } as Record<string, string>,
+  contents: { count: "counted off the table of contents", number: "read off the table of contents" } as Record<string, string>,
+};
+
+function HitCard({ hit, kind, floor, stamp, index, count, below, reading, contents, stem }: Card) {
   const a = hit.answer;
+  const toast = useToast();
   const long = kind === "passage" || kind === "table";
   return (
     <article className={cx("overflow-hidden rounded-2xl border bg-white shadow-sm", below ? "border-amber-300" : "border-stone-200")}>
@@ -81,6 +92,15 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card
         <div className="ml-auto flex items-center gap-4">
           {a && <Confidence p={a.p} floor={floor} label="answer" />}
           <Confidence p={hit.found} label="page" />
+          {a && (
+            <button
+              onClick={async () => toast((await copy(answerText(hit))) ? "Answer copied, with where it stands" : "Could not reach the clipboard", "ok")}
+              title="Copy the answer with the book, page and section"
+              className="rounded-md px-1.5 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+            >
+              copy
+            </button>
+          )}
         </div>
       </div>
       <div className={cx("grid gap-6 p-5", long ? "lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_320px]" : "md:grid-cols-[minmax(0,1fr)_200px]")}>
@@ -88,14 +108,14 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card
           {!a ? (
             <p className="text-sm text-stone-500">This page passed the gate; nothing was read off it.</p>
           ) : long && a.passage ? (
-            <Passage paras={a.passage} />
+            <Passage paras={a.passage} stem={stem} />
           ) : long ? (
             <p className="font-serif text-[15px] leading-relaxed whitespace-pre-wrap text-stone-800">{a.text}</p>
           ) : (
             <div>
               <Value kind={kind} text={a.text} />
               <div className="mt-1 mb-4 text-sm text-stone-500">
-                {kind === "count" ? "counted off the page" : kind === "number" ? "read off the page" : kind === "truth" ? "the statement, checked against the page" : ""}
+                {(contents ? FROM.contents : FROM.page)[kind ?? ""] ?? ""}
                 {a.pages && a.pages.length > 1 ? ` across pages ${a.pages.join(", ")}` : ""}
               </div>
               <dl>
@@ -107,7 +127,15 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card
                 <Detail label="how sure">
                   answer p={a.p.toFixed(2)} {a.p >= floor ? `clears the answer floor ${floor}` : `is under the answer floor ${floor}`}; the page passed the gate at p={hit.found.toFixed(2)}
                 </Detail>
-                <Detail label="on the page">{hit.view !== hit.pdf ? MARKED[kind ?? ""] ?? "marked in a copy" : kind === "truth" ? MARKED.truth : "not marked: the text was not found on the page's lines, or highlighting is off"}</Detail>
+                <Detail label="on the page">
+                  {contents
+                    ? "nothing is marked: the contents list the section's entries, and the page shown is where the section starts"
+                    : hit.view !== hit.pdf
+                      ? (MARKED[kind ?? ""] ?? "marked in a copy")
+                      : kind === "truth"
+                        ? MARKED.truth
+                        : "not marked: the text was not found on the page's lines, or highlighting is off"}
+                </Detail>
               </dl>
             </div>
           )}
@@ -118,7 +146,7 @@ function HitCard({ hit, kind, floor, stamp, index, count, below, reading }: Card
   );
 }
 
-function Across({ table, floor, stamp }: { table: NonNullable<JsonReport["table"]>; floor: number; stamp: string }) {
+function Across({ table, floor, stamp, stem, contents }: { table: NonNullable<JsonReport["table"]>; floor: number; stamp: string; stem: string; contents: (hit: JsonHit) => boolean }) {
   const [at, setAt] = useState<[number, number] | undefined>(() => {
     for (let i = 0; i < table.rows.length; i++) for (let j = 0; j < table.columns.length; j++) if (table.cells[i]![j]!.hit) return [i, j];
   });
@@ -126,6 +154,14 @@ function Across({ table, floor, stamp }: { table: NonNullable<JsonReport["table"
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <div className="flex items-center gap-3 border-b border-stone-100 px-4 py-2 text-xs text-stone-500">
+          <span>
+            {table.rows.length} document{table.rows.length === 1 ? "" : "s"} × {table.columns.length} question{table.columns.length === 1 ? "" : "s"}; click a cell to see where it was read
+          </span>
+          <span className="ml-auto">
+            <GridExport grid={acrossGrid(table)} stem={stem} />
+          </span>
+        </div>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-stone-50">
@@ -167,10 +203,44 @@ function Across({ table, floor, stamp }: { table: NonNullable<JsonReport["table"
           <div className="mb-2 text-xs text-stone-500">
             Where <span className="font-medium text-stone-700">{table.rows[at![0]]}</span> × <span className="font-medium text-stone-700">{table.columns[at![1]]}</span> was read, as a {cell.kind} question:
           </div>
-          <HitCard hit={cell.hit} kind={cell.kind} floor={floor} stamp={stamp} index={0} count={1} below={!!cell.why} />
+          <HitCard hit={cell.hit} kind={cell.kind} floor={floor} stamp={stamp} index={0} count={1} below={!!cell.why} contents={contents(cell.hit)} stem={stem} />
         </div>
       )}
     </div>
+  );
+}
+
+/** Fewer passages than asked for: what the walk read, what stopped it, and the retry that would go on, each read off the log. */
+function Short({ got, f, o, tool, onRetry }: { got: number; f: Facts; o: Options; tool: Tool; onRetry: (patch: Partial<Options>) => void }) {
+  const atMax = (f.mostSections ?? 0) >= o.max || (f.scan !== undefined && f.scan.read >= o.max && f.scan.of > f.scan.read);
+  const n = (k: number, what: string) => `${k} ${what}${k === 1 ? "" : "s"}`;
+  const read = [f.sections ? n(f.sections, "section") : "", f.scan ? n(f.scan.read, "window") : ""].filter(Boolean).join(" and ");
+  const files = tool === "jevfind" && f.filesBelow ? f.filesBelow : 0;
+  const button = "rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700";
+  return (
+    <Notice tone="stone" title={`${got} of the ${o.hits} passages asked for`}>
+      {read ? `The walk read ${read} and found no more that answered.` : "Nothing more was read."}
+      {atMax && ` It stopped at the max of ${o.max} sections per file; reading further costs more calls.`}
+      {!atMax && f.titleBelow ? ` ${n(f.titleBelow, "section")} scored below the title floor ${o.titleFloor}, which the walk reads only while nothing has answered.` : ""}
+      {files ? ` ${n(files, "file")} scored below the file floor ${o.fileFloor} and stayed shut.` : ""}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {atMax && (
+          <button onClick={() => onRetry({ max: o.max * 2 })} className={button}>
+            Ask again, reading up to {o.max * 2} sections
+          </button>
+        )}
+        {!atMax && f.titleBelow ? (
+          <button onClick={() => onRetry({ titleFloor: 0 })} className={button}>
+            Ask again, reading below the title floor
+          </button>
+        ) : null}
+        {files ? (
+          <button onClick={() => onRetry({ fileFloor: 0 })} className={button}>
+            Ask again, opening files below the file floor
+          </button>
+        ) : null}
+      </div>
+    </Notice>
   );
 }
 
@@ -244,6 +314,9 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
   if (!e) return null;
   const f = factsOf(run.lines);
   const reading = f.kind === "count" && f.counts ? `a count of ${f.counts}` : f.kind === "number" && f.asks ? `a figure: ${f.asks}` : f.kind ? `a ${f.kind} question` : undefined;
+  // A hit the contents answered names the section and the answer the log's toc line does.
+  const contents = (hit: JsonHit) => f.toc?.some((t) => t.section === hit.section && t.text === hit.answer?.text) ?? false;
+  const stem = fileStem(run.request.question);
   if (e.ranked) return <Names ranked={e.ranked} total={run.request.paths?.length ?? 0} floor={o.nameFloor} onPick={onPick} onAll={() => onRetry({ nameFloor: 0 })} />;
   const r = e.report;
   if (!r) {
@@ -265,7 +338,7 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
       </Notice>
     );
   }
-  if (r.table) return <Across table={r.table} floor={o.answerFloor} stamp={run.id} />;
+  if (r.table) return <Across table={r.table} floor={o.answerFloor} stamp={run.id} stem={stem} contents={contents} />;
   if (r.status === "unanswered") {
     if (run.request.tool === "jevsec" && f.noText?.length)
       return (
@@ -291,16 +364,9 @@ export function Result({ run, onPick, onRetry }: { run: Run; onPick: (path: stri
           The best one read is below; treat it as a lead, not an answer.
         </Notice>
       )}
-      {short && (
-        <Notice tone="stone" title={`${r.hits.length} of the ${o.hits} passages asked for`}>
-          The walk read its {o.max} best sections and found no more that answered. Reading further costs more calls.
-          <button onClick={() => onRetry({ max: o.max * 2 })} className="mt-3 block rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
-            Ask again, reading up to {o.max * 2} sections
-          </button>
-        </Notice>
-      )}
+      {short && <Short got={r.hits.length} f={f} o={o} tool={run.request.tool} onRetry={onRetry} />}
       {r.hits.map((h, i) => (
-        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} stamp={run.id} index={i} count={r.hits.length} below={r.status === "below"} reading={reading} />
+        <HitCard key={i} hit={h} kind={r.kind} floor={o.answerFloor} stamp={run.id} index={i} count={r.hits.length} below={r.status === "below"} reading={reading} contents={contents(h)} stem={stem} />
       ))}
     </div>
   );

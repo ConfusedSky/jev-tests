@@ -52,8 +52,10 @@ export function tree(lines: Line[]): Node[] {
 /**
  * Tokens spent so far. A cost line sums the deeper cost lines since the last
  * line at its depth or shallower, so it replaces them; `total` is the whole.
+ * A tool's own closing message counts since the start too, and older logs
+ * end on it without a `total`.
  */
-export const isTotal = (l: Line) => l.depth === 0 && l.text.startsWith("total ");
+export const isTotal = (l: Line) => l.depth === 0 && (l.text.startsWith("total ") || (l.message && !!l.cost));
 
 export function spendOf(lines: Line[]): Cost {
   const counted: { depth: number; cost: Cost }[] = [];
@@ -92,24 +94,45 @@ export type Facts = {
   sections?: number;
   /** -n asked for this many passages of a question that has one answer. */
   onlyOne?: number;
+  /** Answers the table of contents gave, with the section each named; a hit matching one was never read off a page. */
+  toc?: { text: string; section: string }[];
+  /** Sections one file's walk took up, the most of any file; --max stops a walk at that many. */
+  mostSections?: number;
+  /** A book without an outline: windows scanned, of those left after the excerpts. */
+  scan?: { read: number; of: number };
+  /** Sections under the title floor, and files under the file floor, read only while nothing has answered. */
+  titleBelow?: number;
+  filesBelow?: number;
 };
+
+/** A section the walk passed over, logged a level under the ones it took up; both count against --max. */
+const SKIPPED = /^--\s+.*(already read$|already counted under |p\.\d+-\d+\s+no extractable text$)/;
 
 export function factsOf(lines: Line[]): Facts {
   const f: Facts = {};
   let m: RegExpExecArray | null;
-  for (const { text, depth } of lines) {
+  let attempts = 0;
+  for (const { text, depth, header } of lines) {
     // A table across the shelf reads each cell's question too, a level down; the facts are the question's own.
     if (depth === 0 && (m = /^question (looks like|treated as) an? (\w+) question/.exec(text))) [f.kind, f.forced] = [m[2], m[1] === "treated as"];
     else if (depth === 0 && (m = /^asks for (.+)$/.exec(text))) f.asks = m[1];
     else if (depth === 0 && (m = /^counts (.+)$/.exec(text))) f.counts = m[1];
     else if (depth === 0 && (m = /^searches for (.+)$/.exec(text))) f.searches = m[1];
     else if (depth === 0 && (m = /^-n (\d+) applies to passage questions only/.exec(text))) f.onlyOne = Number(m[1]);
-    else if ((m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache = f.cache ? { ...f.cache, count: f.cache.count + 1 } : { question: m[1]!, score: m[2]!, count: 1 };
+    // A shelf walk ranks each file a level down; a cell's walk, two down, is the cell's own.
+    else if (depth <= 1 && (m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache = f.cache ? { ...f.cache, count: f.cache.count + 1 } : { question: m[1]!, score: m[2]!, count: 1 };
+    else if (depth <= 1 && (m = /^ranked .* sections and .* above title floor [\d.]+ \((\d+) below\)/.exec(text))) f.titleBelow = Math.max(f.titleBelow ?? 0, Number(m[1]));
+    else if (depth === 0 && (m = /^ranked \d+ paths .* above file floor [\d.]+ \((\d+) below\)/.exec(text))) f.filesBelow = Number(m[1]);
+    else if ((m = /^toc\s+(.+?) \(p=[\d.]+\)\s{2}(.+?)\s{2}in \d/.exec(text))) f.toc = [...(f.toc ?? []), { text: m[1]!, section: m[2]! }];
+    else if ((m = /^no outline: scanning (\d+) of (\d+) windows/.exec(text))) f.scan = { read: Number(m[1]), of: Number(m[2]) };
     else if ((m = /^--\s+no outline and no extractable text\s+(.+)$/.exec(text))) f.noText = [...(f.noText ?? []), m[1]!];
     else if ((m = /^embedding (\d+) pages of (.+), once/.exec(text))) f.embedding = `${m[1]} pages of ${m[2]}`;
     else if ((m = /^rows name documents \(p=[\d.]+\): (.+?); asks (.+?)  in /.exec(text))) f.across = { rows: m[1]!, columns: m[2]! };
     else if ((m = /^total .*, (\d+) files opened, (\d+) windows read/.exec(text))) [f.files, f.windows] = [Number(m[1]), Number(m[2])];
     if (/^section .*…$/.test(text)) f.sections = (f.sections ?? 0) + 1;
+    // A shelf walk opens each file under a line of its score and name.
+    if (depth === 0 && header && /^\d\.\d\d\s{2}/.test(text)) attempts = 0;
+    if ((depth <= 1 && /^section .*…$/.test(text)) || (depth <= 2 && SKIPPED.test(text))) f.mostSections = Math.max(f.mostSections ?? 0, ++attempts);
   }
   return f;
 }

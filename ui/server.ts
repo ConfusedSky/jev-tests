@@ -203,6 +203,20 @@ function run(req: Request, r: RunRequest): Response {
   return new Response(stream, { headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" } });
 }
 
+/** How many pages a PDF has, off its page tree, or undefined when that cannot be read; mutool draws a page past the end without complaint. */
+const pageCounts = new Map<string, number | undefined>();
+async function pageCount(pdf: string, mtimeMs: number): Promise<number | undefined> {
+  const key = `${pdf}\0${mtimeMs}`;
+  if (!pageCounts.has(key)) {
+    const p = Bun.spawn(["mutool", "show", pdf, "trailer/Root/Pages/Count"], { stdout: "pipe", stderr: "ignore" });
+    const out = await new Response(p.stdout).text();
+    await p.exited;
+    const n = Number(out.trim().split("\n").pop());
+    pageCounts.set(key, Number.isInteger(n) && n > 0 ? n : undefined);
+  }
+  return pageCounts.get(key);
+}
+
 /** A page of a PDF as PNG, highlights and all, kept in the cache until the PDF changes. */
 async function page(url: URL): Promise<Response> {
   const pdf = servable(url.searchParams.get("pdf"));
@@ -210,6 +224,8 @@ async function page(url: URL): Promise<Response> {
   const w = Math.min(2000, Math.max(200, Math.floor(Number(url.searchParams.get("w")) || 900)));
   if (!pdf) return new Response("not on the shelf", { status: 403 });
   const { mtimeMs } = await stat(pdf);
+  const count = await pageCount(pdf, mtimeMs);
+  if (count !== undefined && n > count) return new Response(`no page ${n}: the PDF has ${count}`, { status: 404 });
   const dir = `${cacheDir()}/ui-pages`;
   const png = `${dir}/${Bun.hash(`${pdf}\0${mtimeMs}\0${n}\0${w}`).toString(36)}.png`;
   if (!(await Bun.file(png).exists())) {
