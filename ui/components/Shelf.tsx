@@ -24,10 +24,15 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
   const add = async () => {
     if (!dir.trim()) return;
     setAdding(true);
-    const why = await onAdd(dir.trim());
-    setAdding(false);
-    setProblem(why);
-    if (!why) setDir("");
+    try {
+      const why = await onAdd(dir.trim());
+      setProblem(why);
+      if (!why) setDir("");
+    } catch (e) {
+      setProblem(`could not add it: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
@@ -115,7 +120,24 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
           ×
         </button>
       </div>
-      {scan?.error && <div className="mx-2 rounded-md bg-rose-50 px-2 py-1 text-[11px] text-rose-700">{scan.error}</div>}
+      {scan?.error && (
+        <div role="alert" className="mx-2 rounded-md bg-rose-50 px-2 py-1.5 text-[11px] [overflow-wrap:anywhere] text-rose-800 ring-1 ring-rose-600/15">
+          {scan.error}
+          <div className="mt-1 flex gap-2">
+            <button onClick={onRescan} className="font-semibold text-rose-800 hover:underline">
+              {command ? "Run again" : "Scan again"}
+            </button>
+            <button onClick={onRemove} className="text-rose-700 hover:underline">
+              Take off the shelf
+            </button>
+          </div>
+        </div>
+      )}
+      {scan?.warning && (
+        <div className="mx-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] [overflow-wrap:anywhere] text-amber-800 ring-1 ring-amber-600/15" title={scan.warning}>
+          {scan.warning}
+        </div>
+      )}
       {open && (
         <ul className="mt-0.5">
           {files.map((f) => {
