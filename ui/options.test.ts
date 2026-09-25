@@ -64,6 +64,11 @@ describe("commandFor", () => {
   });
 
   test("feeds the shelf's folders to a shelf tool", () => {
-    expect(commandFor("jevfind", DEFAULTS, "what's in it", { folders: ["/a", "/b c"] })).toBe(`find /a '/b c' -iname '*.pdf' | bun jevfind.ts 'what'\\''s in it'`);
+    expect(commandFor("jevfind", DEFAULTS, "what's in it", { sources: ["/a", "/b c"] })).toBe(`find /a '/b c' -iname '*.pdf' | bun jevfind.ts 'what'\\''s in it'`);
+  });
+
+  test("feeds a locate command as it runs, and folders and commands together", () => {
+    expect(commandFor("jevgrep", DEFAULTS, "q", { sources: ["plocate -i *.pdf"] })).toBe("plocate -i '*.pdf' | bun jevgrep.ts q");
+    expect(commandFor("jevfind", DEFAULTS, "q", { sources: ["/a", "locate x.pdf"] })).toBe("{ find /a -iname '*.pdf'; locate x.pdf; } | sort -u | bun jevfind.ts q");
   });
 });

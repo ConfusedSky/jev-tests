@@ -7,6 +7,7 @@ import { Shelf } from "./components/Shelf";
 import { spendOf } from "./log";
 import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
 import { outcomeOf, useRun, type Run } from "./run";
+import { isLocate, locateHint, sourceKey } from "./sources";
 import type { Config, Health, RunRequest, Scan } from "./types";
 import { cx, dollars, useStored } from "./util";
 
@@ -14,9 +15,13 @@ const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
 const ANSWER_ROOM = 440;
 
-async function scanOf(dir: string): Promise<Scan> {
-  const r = await fetch(`/api/scan?dir=${encodeURIComponent(dir)}`);
-  return (await r.json()) as Scan;
+/** The PDFs a source holds: a folder walked, or a locate command run. */
+async function scanOf(source: string): Promise<Scan> {
+  const r = isLocate(source)
+    ? await fetch("/api/locate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: source }) })
+    : await fetch(`/api/scan?dir=${encodeURIComponent(source)}`);
+  const body = (await r.json()) as Scan | { error: string };
+  return "files" in body ? body : { dir: sourceKey(source), files: [], ms: 0, truncated: false, error: body.error };
 }
 
 const ledgerOf = (runs: Run[]) =>
@@ -83,7 +88,7 @@ export function App() {
     setViewing(undefined);
     setEnded(undefined);
     setNote(undefined);
-    start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, folders }));
+    start(request, commandFor(request.tool, request.options, request.question, { pdf: request.pdf, sources: folders }));
   };
 
   // An answer that arrives below the fold is scrolled up under the header; the
@@ -97,11 +102,15 @@ export function App() {
   const askNow = () =>
     ask({ tool, question: question.trim(), options, ...(tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) }) });
 
-  /** Adds the folder, or says why not: a path that is not a folder never goes on the shelf. */
+  /** Adds the folder or locate command, or says why not: one that lists no PDFs never goes on the shelf. */
   const addFolder = async (input: string): Promise<string | undefined> => {
     const scan = await scanOf(input);
     if (scan.error) return scan.error === "not a folder" ? `${scan.dir} is not a folder` : /ENOENT/.test(scan.error) ? `${scan.dir} does not exist` : scan.error;
-    if (scan.files.length === 0) return `No PDFs under ${scan.dir}, so it stays off the shelf`;
+    if (scan.files.length === 0) {
+      if (!isLocate(input)) return `No PDFs under ${scan.dir}, so it stays off the shelf`;
+      const hint = locateHint(input);
+      return `${scan.dir} lists no PDFs that exist, so it stays off the shelf${hint ? `: ${hint}` : ""}`;
+    }
     setScans((s) => ({ ...s, [scan.dir]: scan }));
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
   };
@@ -230,7 +239,7 @@ export function App() {
 
 function Welcome() {
   const steps = [
-    { n: "1", title: "Put PDFs on the shelf", body: "Add a folder on the left. Nothing is read or sent until you ask." },
+    { n: "1", title: "Put PDFs on the shelf", body: "Add a folder, or a locate command such as plocate -i '*.pdf', on the left. Nothing is read or sent until you ask." },
     { n: "2", title: "Ask in plain words", body: "The whole shelf, one PDF, or just the file names. jev reads the kind of answer off the wording." },
     { n: "3", title: "Read the page itself", body: "Every answer is a number, true or false, a passage or a table of the book's own text, with the page it stands on, highlighted." },
   ];

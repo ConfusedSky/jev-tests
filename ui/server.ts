@@ -3,7 +3,8 @@
  * The web UI: serves the React app and runs the CLI tools for it, one child
  * process a question, so a run is exactly what the command line would do.
  *
- *   bun ui/server.ts [FOLDER...]   folders to put on the shelf at first
+ *   bun ui/server.ts [SOURCE...]   folders, or locate commands such as
+ *                                  "plocate '*.pdf'", to put on the shelf at first
  */
 import { realpathSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
@@ -15,13 +16,15 @@ import { cacheDir, openAt, pageUrl } from "../pdf";
 import index from "./index.html";
 import { drain } from "./log";
 import { argsFor, DEFAULTS, type Tool } from "./options";
+import { isLocate, locateArgs, sourceKey } from "./sources";
 import type { Config, Health, RunEvent, RunRequest, Scan } from "./types";
 
 const ROOT = resolve(import.meta.dir, "..");
 const TOOLS: Tool[] = ["jevsec", "jevfind", "jevgrep"];
 const SCAN_LIMIT = 5000;
 const expand = (p: string) => resolve(p.replace(/^~(?=$|\/)/, homedir()));
-const folders = Bun.argv.slice(2).map(expand);
+const LOCATE_TIMEOUT = 30_000;
+const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
 
 const real = (p: string) => {
   try {
@@ -67,6 +70,44 @@ async function scan(dir: string): Promise<Scan> {
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { dir, files, ms: performance.now() - t, truncated };
 }
+
+/** The PDFs a locate command lists that are still there; it runs without a shell, so it can only be plocate. */
+async function locate(command: string): Promise<Scan> {
+  const t = performance.now();
+  const dir = sourceKey(command);
+  const fail = (error: string): Scan => ({ dir, files: [], ms: performance.now() - t, truncated: false, error });
+  const parsed = locateArgs(command);
+  if ("error" in parsed) return fail(parsed.error);
+  const [name, ...args] = parsed.argv;
+  const exe = Bun.which(name!);
+  if (!exe) return fail(`${name} is not installed`);
+  const p = Bun.spawn([exe, ...args], { argv0: name, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  const timer = setTimeout(() => p.kill(), LOCATE_TIMEOUT);
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  const code = await p.exited;
+  clearTimeout(timer);
+  if (p.signalCode) return fail(`${name} took longer than ${LOCATE_TIMEOUT / 1000}s`);
+  // plocate exits 1 both when nothing matched, silently, and on a bad option, which it explains.
+  if (code !== 0 && (code !== 1 || err.trim())) return fail(err.trim().split("\n")[0] || `${name} exited with ${code}`);
+  // The tools' highlighted copies are copies of books, not books of their own.
+  const cache = `${cacheDir()}/`;
+  const listed = [...new Set(out.split(/[\n\0]/).filter((l) => /\.pdf$/i.test(l) && !l.startsWith(cache)))];
+  // A database can list files deleted since it was built.
+  const found = (await Promise.all(listed.slice(0, SCAN_LIMIT).map((path) => stat(path).then((s) => (s.isFile() ? { path, name: path.split("/").pop()!, size: s.size } : undefined), () => undefined)))).filter((f) => f !== undefined);
+  for (const f of found) know(f.path);
+  found.sort((a, b) => a.path.localeCompare(b.path));
+  return { dir, files: found, ms: performance.now() - t, truncated: listed.length > SCAN_LIMIT };
+}
+
+/**
+ * A request another site's page made, which a browser marks as cross-site
+ * and a form cannot make as JSON without asking first: what runs a command
+ * must be this UI's own doing.
+ */
+const foreign = (req: Request) =>
+  !req.headers.get("content-type")?.startsWith("application/json") ||
+  !["same-origin", "none", null].includes(req.headers.get("sec-fetch-site")) ||
+  (req.headers.has("origin") && req.headers.get("origin") !== new URL(req.url).origin);
 
 async function health(): Promise<Health> {
   const cache = Object.fromEntries(await Promise.all(Object.entries(CACHE_MODELS).map(async ([id, m]) => [id, (await unready(m)) ?? null])));
@@ -188,6 +229,13 @@ const server = Bun.serve({
       // A relative path would be read against wherever the server was started.
       if (!/^[~/]/.test(dir)) return json({ dir, files: [], ms: 0, truncated: false, error: "use a full path, starting with / or ~" } satisfies Scan);
       return json(await scan(expand(dir)));
+    },
+    "/api/locate": {
+      POST: async (req) => {
+        if (foreign(req)) return json({ error: "only this UI may run a locate command" }, 403);
+        const body = (await req.json().catch(() => null)) as { command?: unknown } | null;
+        return typeof body?.command === "string" && body.command.trim() ? json(await locate(body.command)) : json({ error: "no command" }, 400);
+      },
     },
     "/api/run": {
       POST: async (req) => {
