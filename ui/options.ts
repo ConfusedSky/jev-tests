@@ -89,7 +89,7 @@ export const SPECS: Spec[] = [
   { key: "top", label: "Keep best", type: "number", min: 0, max: 1000, step: 1, flag: "-n", tools: ["jevgrep"], help: "keep only this many names; 0 keeps all" },
   { key: "nameFloor", label: "Score floor", type: "number", min: 0, max: 3, step: 0.1, flag: "-t", tools: ["jevgrep"], help: "minimum score a name needs, 0-3" },
   { key: "batch", label: "Names per call", type: "number", min: 1, max: 500, step: 1, flag: "--batch", tools: ALL, advanced: true, help: "names per ranking call" },
-  { key: "model", label: "Model", type: "text", flag: "--model", placeholder: "~typesafe/jev-latest", tools: ALL, advanced: true, help: "jev's slug on OpenRouter, or semif for the local backend" },
+  { key: "model", label: "Model", type: "text", flag: "--model", placeholder: "empty: jev's default", tools: ALL, advanced: true, help: "an OpenRouter slug, or semif for the local backend" },
 ];
 
 /** The flags that differ from the defaults, in SPECS order. */

@@ -15,6 +15,10 @@ export type Run = {
   end?: End;
   /** Kept in the history however full it gets. */
   pinned?: boolean;
+  /** The server never started the tool: it could not be reached, or it refused the request. Nothing was spent. */
+  unsent?: "offline" | "refused";
+  /** Stopped because the page was closed or reloaded while it ran. */
+  left?: boolean;
 };
 
 export type Outcome = "running" | "answered" | "below" | "unanswered" | "names" | "error" | "stopped";
@@ -27,6 +31,13 @@ export function outcomeOf(run: Run): Outcome {
   if (e?.report) return e.report.status;
   return "error";
 }
+
+const stopped = (r: Run, now: number): Run => ({ ...r, status: "stopped", trying: undefined, end: { type: "end", code: null, ms: now - r.at, error: "stopped" } });
+
+/** A live run as the history keeps it once the page it ran in is gone: stopped, with what it logged. */
+export const leftRun = (r: Run, now: number): Run => ({ ...stopped(r, now), left: true });
+
+export const OFFLINE = "the UI server is not running";
 
 function apply(r: Run, e: RunEvent): Run {
   switch (e.type) {
@@ -64,11 +75,18 @@ export function useRun(onDone: (run: Run) => void) {
       cur = f(cur);
       if (abort.current === ctrl) setRun(cur);
     };
-    const fail = (error: string) => update((r) => ({ ...r, status: "done", trying: undefined, end: { type: "end", code: null, ms: Date.now() - r.at, error } }));
+    const fail = (error: string, unsent?: Run["unsent"]) => update((r) => ({ ...r, status: "done", trying: undefined, unsent, end: { type: "end", code: null, ms: Date.now() - r.at, error } }));
+    let res: Response | undefined;
     try {
-      const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request), signal: ctrl.signal });
-      if (!res.ok || !res.body) fail(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
-      else {
+      res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request), signal: ctrl.signal });
+    } catch {
+      // fetch throws only when no answer came at all.
+      if (ctrl.signal.aborted) update((r) => stopped(r, Date.now()));
+      else fail(OFFLINE, "offline");
+    }
+    if (res && (!res.ok || !res.body)) fail(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`, "refused");
+    else if (res?.body) {
+      try {
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buf = "";
         for (;;) {
@@ -83,10 +101,10 @@ export function useRun(onDone: (run: Run) => void) {
           if (events.length) update((r) => events.reduce(apply, r));
         }
         if (cur.status === "running") fail("the server closed the run before it ended");
+      } catch (e) {
+        if (ctrl.signal.aborted) update((r) => stopped(r, Date.now()));
+        else fail(`the UI server stopped answering during the run (${e instanceof Error ? e.message : String(e)})`);
       }
-    } catch (e) {
-      if (ctrl.signal.aborted) update((r) => ({ ...r, status: "stopped", trying: undefined, end: { type: "end", code: null, ms: Date.now() - r.at, error: "stopped" } }));
-      else fail(e instanceof Error ? e.message : String(e));
     }
     onDone(cur);
     if (abort.current === ctrl) abort.current = null;

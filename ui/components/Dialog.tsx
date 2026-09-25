@@ -1,28 +1,56 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { tabbable, wrapTab } from "../focus";
 import { cx } from "../util";
 
-/** A modal over the page: Escape or a click outside closes it, and focus goes back where it was. */
-export function Dialog({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+/**
+ * A modal over the page: the page behind is inert and Tab goes round inside
+ * it; Escape or a click outside closes it, and focus goes back where it was.
+ */
+export function Dialog({ title, onClose, children, size = "md" }: { title: string; onClose: () => void; children: ReactNode; size?: "md" | "wide" | "page" }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  // Taken while rendering, before a field inside takes focus on mount.
+  const [opener] = useState(() => document.activeElement);
   useEffect(() => {
-    const before = document.activeElement;
+    const root = panel.current!;
+    // A dialog that took another's place in one render got the other's field; by now focus is back where that one came from.
+    const before = opener?.isConnected ? opener : document.activeElement;
+    // The dialog is portalled beside #root, so all of the page can be made inert at once.
+    const page = document.getElementById("root");
+    page?.setAttribute("inert", "");
+    if (!root.contains(document.activeElement)) (tabbable(root)[0] ?? root).focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
-      }
+        close.current();
+      } else wrapTab(e, root);
     };
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("keydown", onKey, true);
+      page?.removeAttribute("inert");
       if (before instanceof HTMLElement) before.focus();
     };
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={cx("flex max-h-[80vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-stone-200", wide ? "max-w-2xl" : "max-w-lg")}>
+  }, []);
+  return createPortal(
+    <div className={cx("fixed inset-0 z-40 flex animate-fade items-start justify-center bg-black/40 p-4", size === "page" ? "pt-[3vh]" : "pt-[10vh]")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className={cx(
+          "flex w-full animate-pop flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-stone-200 focus:outline-none",
+          { md: "max-h-[80vh] max-w-lg", wide: "max-h-[80vh] max-w-2xl", page: "max-h-[94vh] max-w-4xl" }[size],
+        )}
+      >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

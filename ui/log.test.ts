@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { drain, factsOf, isTotal, parseLine, spendOf, tree, withoutCost } from "./log";
+import { columnsOf, drain, errorText, factsOf, flowOf, gaugesOf, isTotal, parseLine, spendOf, tree, walkOf, withoutCost } from "./log";
 
 const LOG = `question looks like a count question  in 0.4s (jev 0.4s, read 0.0s, other 0.0s; 2,642 tokens in, 614 out, $0.00011)
 counts skills
@@ -126,6 +126,160 @@ describe("factsOf", () => {
     expect(f.sections).toBe(2);
     expect(f.scan).toEqual({ read: 12, of: 40 });
     expect([f.titleBelow, f.filesBelow]).toEqual([4, 2]);
+  });
+});
+
+describe("factsOf excerpts", () => {
+  test("counts the excerpt pages gated, passed or not, apart from the sections", () => {
+    const f = factsOf(
+      [
+        "section Rules  p.1-2…",
+        "section 0.5s (jev 0.5s; 10 tokens in, 1 out, $0.00001)  Rules",
+        "excerpts: gated 2 pages (1 batch)  in 0.2s (jev 0.2s; 10 tokens in, 1 out, $0.00001)",
+        "excerpt  no   0.10  Rules p.7 (excerpt)",
+        "excerpt  yes  0.90  Rules p.9 (excerpt)…",
+        "excerpt 0.3s (jev 0.3s; 10 tokens in, 1 out, $0.00001)  Rules p.9 (excerpt)",
+      ].map((l) => parseLine(l)),
+    );
+    expect(f.excerpts).toBe(2);
+    expect(f.sections).toBe(1);
+  });
+});
+
+describe("walkOf and flowOf", () => {
+  const parse = (log: string) => log.split("\n").map((l) => parseLine(l));
+
+  test("follow a shelf walk from the paths ranked to the page taken", () => {
+    const w = walkOf(
+      parse(`question looks like a passage question  in 0.2s (jev 0.2s; 3,169 tokens in, 751 out, $0.00013)
+ranked 25 paths and 23 excerpts in 0.5s (jev 0.4s; 8,044 tokens in, 796 out, $0.00034), 1 above file floor 1.5 (24 below)
+2.70  /books/Guide.pdf…
+  ranked 169 sections and 20 excerpts in 0.5s (jev 0.3s; 27,803 tokens in, 3,174 out, $0.00117), 60 above title floor 1 (109 below)
+  section Part I > Getting Started  p.136-137…
+    gated 2 pages (batch 1/1), 0.2s jev, 2 yes  Part I > Getting Started
+    yes  0.78  Part I > Getting Started p.136 (window 1/2)
+    yes  0.76  Part I > Getting Started p.137 (window 2/2)
+    take  Open the box… (p=0.76)  Part I > Getting Started p.136 (window 1/2)
+  section 1.8s (jev 0.7s; 9,068 tokens in, 720 out, $0.00038)  Part I > Getting Started
+file 2.3s (jev 1.0s; 36,871 tokens in, 3,894 out, $0.00155)  2 windows read
+total 3.0s (jev 1.6s; 48,084 tokens in, 5,441 out, $0.00202), 1 files opened, 2 windows read`),
+    );
+    expect(w.paths).toEqual({ ranked: 25, above: 1, floor: "1.5" });
+    expect(w.files).toEqual([
+      { path: "/books/Guide.pdf", score: 2.7, ranked: "169 sections and 20 excerpts", reads: [{ kind: "section", name: "Part I > Getting Started p.136-137", p: 0.78, verdict: "take", answer: "Open the box…", page: 136 }] },
+    ]);
+    expect(flowOf(w)).toEqual(["ranked 25 paths", "opened 1 of 25 (1 above the file floor 1.5)", "read 1 section", "took p.136"]);
+  });
+
+  test("count excerpt pages, a cached ranking and a page read off the contents", () => {
+    const w = walkOf(
+      parse(`ranked from cache in 0.1s (jev 0.0s; embed 0.1s): "How much does it cost?" (question 0.78, subject 1.00)
+excerpts: gated 7 pages (1 batch)  in 0.3s (jev 0.3s; 2,946 tokens in, 143 out, $0.00012)
+excerpt  no   0.10  Catalogue p.20 (excerpt)
+excerpt  yes  0.99  Catalogue p.24 (excerpt)…
+  take  410 (p=1.00)  Catalogue p.24 (excerpt)
+excerpt 0.3s (jev 0.2s; 1,593 tokens in, 168 out, $0.00007)  Catalogue p.24 (excerpt)`),
+    );
+    expect(w.files[0]!.reads).toEqual([
+      { kind: "excerpt", name: "Catalogue p.20", p: 0.1 },
+      { kind: "excerpt", name: "Catalogue p.24", p: 0.99, verdict: "take", answer: "410", page: 24 },
+    ]);
+    expect(flowOf(w)).toEqual(["ranked from the cache", "read 2 excerpt pages", "took p.24"]);
+    // A PDF without an outline names an excerpt by its page twice over.
+    expect(walkOf(parse("excerpt  yes  0.98  p.1 p.1 (excerpt)…")).files[0]!.reads[0]!.name).toBe("p.1");
+    const toc = walkOf(parse("toc   9 (p=1.00)  Characters > Classes  in 0.1s (jev 0.1s; 767 tokens in, 111 out, $0.00003)"));
+    expect(flowOf(toc)).toEqual(["read the contents", "took the contents"]);
+  });
+
+  test("take the windows of a PDF without an outline, and say when nothing was taken", () => {
+    const w = walkOf(
+      parse(`ranked 0 sections and 0 excerpts in 0.1s (jev 0.1s; 10 tokens in, 1 out, $0.00001), 0 above title floor 1
+no outline: scanning 2 of 2 windows in page order…
+  no   0.20  p.1
+  no   0.10  p.2
+no outline 0.4s (jev 0.4s; 900 tokens in, 20 out, $0.00004)`),
+    );
+    expect(w.files[0]!.reads.map((r) => [r.kind, r.name, r.p])).toEqual([
+      ["window", "p.1", 0.2],
+      ["window", "p.2", 0.1],
+    ]);
+    expect(flowOf(w)).toEqual(["ranked 0 sections", "read 2 windows", "took nothing"]);
+    expect(flowOf(walkOf(parse("ranked 9 names in 0.3s (jev 0.3s; 1,317 tokens in, 148 out, $0.00006)")))).toEqual(["ranked 9 names"]);
+  });
+});
+
+describe("columnsOf", () => {
+  test("reads where each column of a built table came from, and only from the step that fills its cells", () => {
+    const lines = [
+      "columns: searched for 1 column  in 0.3s",
+      "  weight: searching…",
+      "cells: filling 6…",
+      '  damage: "Damage" p.12',
+      "  weight: each entry's label",
+      "  notes: not in a table; from the rows' own cells",
+      "cells: 6 of 6 filled, 0 other tables matched by row, 0 gaps left to the rows' own cells  in 0.4s",
+      "  damage: 3 of 3 items found",
+    ].map((l) => parseLine(l));
+    expect(columnsOf(lines)).toEqual({ damage: '"Damage" p.12', weight: "each entry's label", notes: "not in a table; from the rows' own cells" });
+  });
+});
+
+describe("gaugesOf", () => {
+  const lines = `ranked 25 paths and 23 excerpts in 0.5s (jev 0.4s; 8,044 tokens in, 796 out, $0.00034), 3 above file floor 1.5 (22 below)
+2.70  /books/Guide.pdf…
+  ranked 169 sections and 20 excerpts in 0.5s (jev 0.3s; 27,803 tokens in, 3,174 out, $0.00117), 60 above title floor 1 (109 below)
+  section Start  p.1-2…
+    yes  0.20  Start p.1
+  section 0.4s (jev 0.4s; 900 tokens in, 20 out, $0.00004)  Start
+  section Rules  p.3-9…`
+    .split("\n")
+    .map((l) => parseLine(l));
+
+  test("measure the files a shelf walk may open, the sections a file may read, and the step under way", () => {
+    expect(gaugesOf(lines, "Rules 4 pages (batch 2/3)", { max: 12, maxFiles: 5 })).toEqual([
+      { label: "files opened", done: 1, of: 5 },
+      { label: "sections read in this file", done: 2, of: 12 },
+      { label: "batch 2 of 3 in this step", done: 1, of: 3 },
+    ]);
+  });
+
+  test("say nothing before the log does", () => {
+    expect(gaugesOf([], undefined, { max: 12 })).toEqual([]);
+  });
+});
+
+describe("errorText", () => {
+  // What the tool printed on a zero-byte PDF: its log, the code frame, the error, and the stack.
+  const crash = `question looks like a number question  in 0.5s (jev 0.5s, read 0.0s, other 0.0s; 1,859 tokens in, 410 out, $0.00008)
+searches for tax
+56 |
+57 | export function run(cmd: string[], kind: keyof typeof clock = "extract"): Promise<string> {
+61 |     if ((await p.exited) !== 0) throw new Error(\`\${cmd[0]} failed: \${err.trim()}\`);
+                                               ^
+error: mutool failed: format error: cannot find version marker
+warning: trying to repair broken xref
+warning: repairing PDF document
+Error: no objects found
+	at Document.openDocument (native)
+	at [string]:1
+      at <anonymous> (/repo/pdf.ts:61:43)
+      at async timed (/repo/shared.ts:72:18)
+
+Bun v1.4.2 (Linux x64)`.split("\n");
+
+  test("keeps an uncaught error from its own line on, and none of the frames", () => {
+    expect(errorText(crash)).toBe("error: mutool failed: format error: cannot find version marker\nwarning: trying to repair broken xref\nwarning: repairing PDF document\nError: no objects found");
+  });
+
+  test("takes a tool's own last lines when nothing was thrown", () => {
+    expect(errorText(["searches for tax", "jevsec: the ranking cache can't run", "start Ollama, or pass --cache off"])).toBe("searches for tax\njevsec: the ranking cache can't run\nstart Ollama, or pass --cache off");
+    expect(errorText(["a", "b", "c", "d"], 2)).toBe("c\nd");
+    expect(errorText(["    at x (y.ts:1:1)", "Bun v1.4.2 (Linux x64)"])).toBe("");
+  });
+
+  test("reads the same again, so a stored error can be shown through it", () => {
+    const once = errorText(crash);
+    expect(errorText(once.split("\n"), Infinity)).toBe(once);
   });
 });
 

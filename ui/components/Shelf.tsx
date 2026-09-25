@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import type { Scan } from "../types";
 import { isLocate } from "../sources";
 import { basename, bytes, cx, dirname, secs } from "../util";
+import { Icon } from "./Icon";
+import { MiddlePath } from "./Path";
 
 type Props = {
   folders: string[];
@@ -50,10 +52,11 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
             setDir(e.target.value);
             setProblem(undefined);
           }}
+          id="shelf-add"
           placeholder="A folder, or plocate -i '*.pdf'"
           aria-label="Folder of PDFs, or a locate command, to add"
           title="A folder puts every PDF under it on the shelf; a locate command (plocate, locate) puts every PDF it lists. The command runs without a shell, so no pipes."
-          className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-xs placeholder:font-sans placeholder:text-stone-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15"
+          className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 font-mono text-xs placeholder:font-sans placeholder:text-stone-500 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15"
         />
         <button type="submit" disabled={!dir.trim() || adding} className="rounded-lg bg-stone-800 px-2.5 text-xs font-medium text-white hover:bg-stone-700 disabled:opacity-30">
           {adding ? "…" : "Add"}
@@ -72,7 +75,7 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
             onChange={(e) => setFilter(e.target.value)}
             placeholder={`Filter ${total} PDFs`}
             aria-label="Filter the shelf"
-            className="w-full rounded-lg border border-transparent bg-stone-100 px-2.5 py-1.5 text-xs placeholder:text-stone-400 focus:border-stone-200 focus:bg-white focus:outline-none"
+            className="w-full rounded-lg border border-transparent bg-stone-100 px-2.5 py-1.5 text-xs placeholder:text-stone-500 focus:border-teal-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-600/15"
           />
         </div>
       )}
@@ -103,21 +106,21 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
     <section className="mb-2">
       <div className="group flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-stone-100">
         <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={command ? `${dir}\n${scan?.files.length ?? 0} PDFs it lists${root ? `, under ${root}` : ""}` : dir} aria-expanded={open}>
-          <span className={cx("text-[10px] text-stone-400 transition-transform", open && "rotate-90")}>▶</span>
+          <Icon name="chevron" size={12} className={cx("text-stone-500 transition-transform", open && "rotate-90")} />
           {command ? (
             <span className="truncate rounded bg-stone-200/70 px-1 font-mono text-[11px] font-medium text-stone-700">$ {dir}</span>
           ) : (
             <span className="truncate text-xs font-semibold text-stone-700">{basename(dir) || dir}</span>
           )}
-          <span className="shrink-0 text-[11px] text-stone-400">
+          <span className="shrink-0 text-[11px] text-stone-500">
             {!scan ? (command ? "running…" : "scanning…") : scan.error ? "error" : `${scan.files.length}${scan.truncated ? "+" : ""} · ${secs(scan.ms)}`}
           </span>
         </button>
-        <button onClick={onRescan} className="rounded px-1 text-xs text-stone-400 opacity-0 hover:text-stone-700 group-hover:opacity-100" title={command ? "Run again" : "Scan again"} aria-label={`${command ? "Run" : "Scan"} ${dir} again`}>
-          ↻
+        <button onClick={onRescan} className="rounded p-1 text-xs text-stone-500 hover:text-stone-700 fine:opacity-0 group-hover:opacity-100 focus-visible:opacity-100" title={command ? "Run again" : "Scan again"} aria-label={`${command ? "Run" : "Scan"} ${dir} again`}>
+          <Icon name="refresh" size={13} />
         </button>
-        <button onClick={onRemove} className="rounded px-1 text-sm text-stone-400 opacity-0 hover:text-rose-600 group-hover:opacity-100" title="Take off the shelf" aria-label={`Remove ${dir}`}>
-          ×
+        <button onClick={onRemove} className="rounded p-1 text-sm text-stone-500 hover:text-rose-600 fine:opacity-0 group-hover:opacity-100 focus-visible:opacity-100" title="Take off the shelf" aria-label={`Remove ${dir}`}>
+          <Icon name="close" size={14} />
         </button>
       </div>
       {scan?.error && (
@@ -138,7 +141,17 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
           {scan.warning}
         </div>
       )}
-      {open && (
+      {open && !scan && (
+        <ul aria-hidden="true" className="mt-0.5 animate-pulse space-y-2 py-1 pr-2 pl-5">
+          {[0.7, 0.5, 0.6].map((w) => (
+            <li key={w} className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
+              <span className="h-2.5 rounded bg-stone-200" style={{ width: `${w * 100}%` }} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && scan && (
         <ul className="mt-0.5">
           {files.map((f) => {
             const rel = root ? f.path.slice(root.length + 1) : f.path;
@@ -148,20 +161,20 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
               <li key={f.path}>
                 <button
                   onClick={() => onPick(f.path)}
-                  title={`${f.path}\nClick to ask this PDF alone`}
+                  title={`${f.path}\n${f.size === 0 ? "This file is empty: the tools cannot read it" : "Click to ask this PDF alone"}`}
                   className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
                 >
-                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-300")} />
+                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-400")} />
                   <span className="min-w-0 flex-1">
                     <span className={cx("block truncate text-[13px]", on ? "font-medium text-teal-900" : "text-stone-700")}>{f.name}</span>
-                    {sub && <span className="block truncate text-[11px] text-stone-400">{sub}</span>}
+                    {sub && <MiddlePath path={sub} className="text-[11px] text-stone-500" />}
                   </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-stone-400">{bytes(f.size)}</span>
+                  <span className={cx("shrink-0 text-[11px] tabular-nums", f.size === 0 ? "font-medium text-amber-700" : "text-stone-500")}>{bytes(f.size)}</span>
                 </button>
               </li>
             );
           })}
-          {scan && !scan.error && files.length === 0 && <li className="py-1 pl-5 text-xs text-stone-400">{needle ? "no match" : "no PDFs here"}</li>}
+          {scan && !scan.error && files.length === 0 && <li className="py-1 pl-5 text-xs text-stone-500">{needle ? "no match" : "no PDFs here"}</li>}
         </ul>
       )}
     </section>

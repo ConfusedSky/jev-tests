@@ -19,6 +19,11 @@ describe("matchItems", () => {
     expect(matchItems(items, "zzz")).toEqual([]);
   });
 
+  test("matches a path shown beside the label", () => {
+    const pdf: Item = { id: "p", group: "g", label: "guide.pdf", path: "/books/manuals", run: () => {} };
+    expect(matchItems([...items, pdf], "manuals guide").map((i) => i.id)).toEqual(["p"]);
+  });
+
   test("stops at the limit", () => {
     expect(matchItems(items, "", 2).length).toBe(2);
   });

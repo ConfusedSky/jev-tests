@@ -1,30 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Ask, whyBlocked } from "./components/Ask";
+import { Ask, KIND_HINTS, whyBlocked } from "./components/Ask";
 import { Header } from "./components/Header";
 import { History } from "./components/History";
+import { Icon } from "./components/Icon";
 import { Palette } from "./components/Palette";
+import { Notice } from "./components/Result";
 import { RunView } from "./components/RunView";
 import { Shelf } from "./components/Shelf";
 import { Shortcuts } from "./components/Shortcuts";
 import { useToast } from "./components/Toast";
 import { Welcome } from "./components/Welcome";
 import { fileStem, runJson } from "./export";
-import { ordered, recentQuestions, remember } from "./history";
-import { OUTCOME, runSpend, TOOL_LABEL } from "./labels";
-import { spendOf } from "./log";
+import { useFocusInside, useTabTrap } from "./focus";
+import { byTime, ordered, recentQuestions, remember, restore, stepFrom, successor } from "./history";
+import { charge, ledgerOf, OUTCOME, runSpend, spentOver, TOOL_LABEL, type Ledger } from "./labels";
 import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
+import { spendOf } from "./log";
 import type { Item } from "./palette";
-import { outcomeOf, useRun, type Run } from "./run";
+import { leftRun, OFFLINE, outcomeOf, useRun, type Run } from "./run";
 import { isLocate, locateHint, sourceKey } from "./sources";
-import { nextTheme, useTheme } from "./theme";
+import { THEME_LABEL, THEMES, useTheme } from "./theme";
 import type { Config, Health, RunRequest, Scan } from "./types";
 import { hashFor, runInHash } from "./url";
-import { cx, dollars, download, secs, useMediaQuery, useStored } from "./util";
+import { basename, copy, cx, dirname, dollars, download, readStored, secs, useMediaQuery, useStored, writeStored } from "./util";
 
 const HISTORY = 40;
 /** Height a run's header, facts and the top of its answer need to be seen without scrolling. */
 const ANSWER_ROOM = 440;
 const TITLE = document.title;
+const NO_SPEND: Ledger = { dollars: 0, in: 0, runs: 0 };
 
 /** The PDFs a source holds: a folder walked, or a locate command run. Never throws: a failure comes back as the scan's error. */
 async function scanOf(source: string): Promise<Scan> {
@@ -37,21 +41,20 @@ async function scanOf(source: string): Promise<Scan> {
     if (body && "files" in body) return body;
     return failed(body?.error ?? `the server answered ${r.status} ${r.statusText}`);
   } catch {
-    return failed("the UI server did not answer; is it still running?");
+    return failed(OFFLINE);
   }
 }
-
-const ledgerOf = (runs: Run[]) =>
-  runs.reduce((a, r) => ({ dollars: a.dollars + runSpend(r), in: a.in + (r.end?.report?.spent.in ?? spendOf(r.lines).in), runs: a.runs + 1 }), { dollars: 0, in: 0, runs: 0 });
 
 const typing = (e: KeyboardEvent) => {
   const el = e.target;
   return el instanceof HTMLElement && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
 };
 
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
 export function App() {
   const toast = useToast();
-  const [health, setHealth] = useState<Health>();
+  const [health, setHealth] = useState<Health | "down">();
   // History, spend, the shelf and the theme are the browser's, shared by its tabs; the form is each tab's own.
   const [folders, setFolders] = useStored<string[]>("jev.folders", [], true);
   // Sources the server was started with go on the shelf once; taken off, they stay off.
@@ -66,11 +69,17 @@ export function App() {
   const [history, setHistory] = useStored<Run[]>("jev.history", [], true);
   const [side, setSide] = useState<"shelf" | "history">("shelf");
   // What this browser's runs have spent, kept apart from the history so clearing one keeps the other.
-  const [ledger, setLedger] = useStored("jev.ledger", ledgerOf(history), true);
+  const [ledger, setLedger] = useStored<Ledger>("jev.ledger", ledgerOf(history), true);
+  const ledgerNow = useRef(ledger);
+  ledgerNow.current = ledger;
+  const [budget, setBudget] = useStored("jev.budget", 0, true);
+  const budgetNow = useRef(budget);
+  budgetNow.current = budget;
   const [note, setNote] = useState<string>();
-  const [focus, setFocus] = useState(0);
+  const [focus, setFocus] = useState<{ n: number; select?: string }>({ n: 0 });
   const main = useRef<HTMLElement>(null);
   const runView = useRef<HTMLDivElement>(null);
+  const aside = useRef<HTMLElement>(null);
   const { theme, setTheme } = useTheme();
   const [notify, setNotify] = useStored("jev.notify", false);
   const notifyNow = useRef(notify);
@@ -82,12 +91,12 @@ export function App() {
   const [dialog, setDialog] = useState<"palette" | "shortcuts">();
   const [said, setSaid] = useState("");
   const [badge, setBadge] = useState<string>();
+  // Set once the page is going: the run it had is saved as stopped, and its end, if it comes, is not counted again.
+  const leaving = useRef(false);
 
   // The run on screen, named in the address so a reload and the back button return to it; null is the welcome page.
-  const [viewingId, setViewingId] = useState<string | null>(() => {
-    const wanted = runInHash(location.hash);
-    return (wanted && history.some((r) => r.id === wanted) ? wanted : history[0]?.id) ?? null;
-  });
+  // A run the address names that this browser does not have stays named, and the page says so.
+  const [viewingId, setViewingId] = useState<string | null>(() => runInHash(location.hash) ?? byTime(history)[0]?.id ?? null);
   const viewingNow = useRef(viewingId);
   viewingNow.current = viewingId;
   const view = useCallback((id: string | null, push = true) => {
@@ -97,37 +106,43 @@ export function App() {
     else window.history.replaceState(null, "", url);
   }, []);
 
+  const checkHealth = useCallback(() => {
+    fetch("/api/health").then(
+      (r) => (r.ok ? (r.json() as Promise<Health>).then(setHealth, () => setHealth(undefined)) : setHealth(undefined)),
+      () => setHealth("down"),
+    );
+  }, []);
+
   // A run that ends while an older one is on screen leaves word of it until seen.
   const [ended, setEnded] = useState<Run>();
   const { run, setRun, start, stop } = useRun((r) => {
+    if (leaving.current) return;
     if (r.id !== viewingNow.current) setEnded(r);
     setHistory((h) => remember(h, r, HISTORY));
-    setLedger((l) => {
-      const add = ledgerOf([r]);
-      return { dollars: l.dollars + add.dollars, in: l.in + add.in, runs: l.runs + 1 };
-    });
+    setLedger((l) => charge(l, r));
+    const before = spentOver(ledgerNow.current, 1).dollars;
+    if (!r.unsent && budgetNow.current > 0 && before < budgetNow.current && before + runSpend(r) >= budgetNow.current) toast(`Today's spend has passed your daily budget of ${dollars(budgetNow.current)}`, "warn");
+    // A server that could not be reached, or stopped answering mid-run, is looked for again.
+    if (r.unsent === "offline" || r.end?.error?.startsWith("the UI server")) checkHealth();
     const outcome = OUTCOME[outcomeOf(r)].label;
     setSaid(`${outcome}: ${r.request.question}. ${secs(r.end?.ms ?? 0)}, ${dollars(runSpend(r))}.`);
     if (document.hidden) {
       setBadge(outcome);
-      if (notifyNow.current && Notification.permission === "granted") new Notification(`jev: ${outcome}`, { body: r.request.question, tag: r.id }).onclick = () => window.focus();
+      if (notifyNow.current && "Notification" in window && Notification.permission === "granted") new Notification(`jev: ${outcome}`, { body: r.request.question, tag: r.id }).onclick = () => window.focus();
     }
   });
-
-  const checkHealth = useCallback(() => {
-    fetch("/api/health")
-      .then((r) => r.json() as Promise<Health>)
-      .then(setHealth, () => setHealth(undefined));
-  }, []);
+  const runNow = useRef(run);
+  runNow.current = run;
 
   /** Scans or runs a source again; one that fails keeps the list it had, with why it could not be refreshed. */
   const rescan = useCallback(async (dir: string) => {
     const before = scansNow.current[dir];
     setScans((s) => ({ ...s, [dir]: undefined }));
     const scan = await scanOf(dir);
+    if (scan.error === OFFLINE) checkHealth();
     const kept = scan.error && before?.files.length ? { ...before, error: undefined, warning: `could not refresh (${scan.error}); showing the list from before` } : scan;
     setScans((s) => ({ ...s, [dir]: kept }));
-  }, []);
+  }, [checkHealth]);
 
   // Runs once: the address is made to say what is shown, and the server's sources not seen before go on the shelf.
   useEffect(() => {
@@ -145,6 +160,21 @@ export function App() {
     window.addEventListener("popstate", back);
     return () => window.removeEventListener("popstate", back);
   }, []);
+
+  // A server that went away is looked for until it is back, and the sources it could not list are listed again.
+  const wasDown = useRef(false);
+  useEffect(() => {
+    if (health === "down") {
+      wasDown.current = true;
+      const id = setInterval(checkHealth, 5000);
+      return () => clearInterval(id);
+    }
+    if (health && wasDown.current) {
+      wasDown.current = false;
+      // A source that failed keeps its old list with a warning; either way it is listed afresh.
+      for (const f of folders) if (scansNow.current[f]?.error || scansNow.current[f]?.warning) rescan(f);
+    }
+  }, [health, checkHealth]);
 
   useEffect(() => {
     for (const f of folders) if (!(f in scans)) rescan(f);
@@ -170,9 +200,49 @@ export function App() {
     return () => document.removeEventListener("visibilitychange", seen);
   }, []);
 
+  const live = run?.status === "running";
+
+  // Leaving mid-run is asked about first; once the page goes, the run is kept as stopped with what it had logged.
+  useEffect(() => {
+    if (!live) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [live]);
+  useEffect(() => {
+    // No render follows pagehide, so the run goes straight into storage.
+    const save = () => {
+      const r = runNow.current;
+      if (r?.status !== "running") return;
+      leaving.current = true;
+      const left = leftRun(r, Date.now());
+      writeStored("jev.history", remember(readStored<Run[]>("jev.history", []), left, HISTORY));
+      writeStored("jev.ledger", charge(readStored("jev.ledger", NO_SPEND), left));
+    };
+    // A page brought back from the back-forward cache is not leaving after all.
+    const back = (e: PageTransitionEvent) => {
+      if (e.persisted) leaving.current = false;
+    };
+    window.addEventListener("pagehide", save);
+    window.addEventListener("pageshow", back);
+    return () => {
+      window.removeEventListener("pagehide", save);
+      window.removeEventListener("pageshow", back);
+    };
+  }, []);
+
+  /** Moves the cursor into the question, selecting `select` in it; the drawer, if open, gives way. */
+  const focusQuestion = (select?: string) => {
+    setDrawer(false);
+    setFocus((f) => ({ n: f.n + 1, select }));
+  };
+
   // One run at a time: starting another aborts the live one, and that is Stop's job, never a side effect.
   const ask = (request: RunRequest) => {
-    if (run?.status === "running") {
+    if (live) {
       toast("A question is still running. Stop it first, or wait for it to end.");
       return;
     }
@@ -185,7 +255,10 @@ export function App() {
   };
 
   const shown = viewingId === null ? undefined : run?.id === viewingId ? run : history.find((r) => r.id === viewingId);
-  const live = run?.status === "running";
+  // The address names a run this browser does not have: another's link, or one deleted since.
+  const missing = viewingId !== null && !shown;
+  // Word of a finished run goes once it is on screen, or gone from the history.
+  const endedShown = ended && ended.id !== shown?.id && history.some((r) => r.id === ended.id) ? ended : undefined;
 
   // An answer that arrives below the fold is scrolled up under the header; the
   // page is only tall enough to scroll once it is there.
@@ -196,9 +269,10 @@ export function App() {
     if (below + ANSWER_ROOM > box.clientHeight) box.scrollTo({ top: Math.max(0, below + box.scrollTop - 12), behavior: "smooth" });
   }, [run?.id, run?.status]);
 
-  const cacheWhy = tool !== "jevgrep" && options.cache !== "off" ? health?.cache[options.cache] : null;
+  const cacheWhy = tool !== "jevgrep" && options.cache !== "off" && health && health !== "down" ? health.cache[options.cache] : null;
+  const offline = health === "down";
   const target = () => (tool === "jevsec" ? { pdf } : { paths: files.map((f) => f.path) });
-  const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files: files.length, cacheWhy: cacheWhy ?? undefined });
+  const blocked = whyBlocked({ tool, question, options, pdf: pdf || undefined, files: files.length, cacheWhy: cacheWhy ?? undefined, offline });
   const askNow = () => {
     if (live || blocked) return;
     ask({ tool, question: question.trim(), options, ...target() });
@@ -207,6 +281,7 @@ export function App() {
   /** Adds the folder or locate command, or says why not: one that lists no PDFs never goes on the shelf. */
   const addFolder = async (input: string): Promise<string | undefined> => {
     const scan = await scanOf(input);
+    if (scan.error === OFFLINE) checkHealth();
     if (scan.error) return scan.error === "not a folder" ? `${scan.dir} is not a folder` : /ENOENT/.test(scan.error) ? `${scan.dir} does not exist` : scan.error;
     if (scan.files.length === 0) {
       if (!isLocate(input)) return `No PDFs under ${scan.dir}, so it stays off the shelf`;
@@ -215,12 +290,22 @@ export function App() {
     }
     setScans((s) => ({ ...s, [scan.dir]: scan }));
     setFolders((f) => (f.includes(scan.dir) ? f : [...f, scan.dir]));
-    toast(`${scan.files.length} PDF${scan.files.length === 1 ? "" : "s"} on the shelf from ${scan.dir}`);
+    toast(`${plural(scan.files.length, "PDF")} on the shelf from ${scan.dir}`);
   };
 
+  // Its scan is kept, so Undo puts the source back as it was, where it was, with the PDF picked from it.
   const removeFolder = (dir: string) => {
+    const at = folders.indexOf(dir);
+    const picked = pdf;
     setFolders((f) => f.filter((x) => x !== dir));
-    toast(`${dir} taken off the shelf`);
+    toast(`${dir} taken off the shelf`, "ok", {
+      label: "Undo",
+      run: () => {
+        setFolders((f) => (f.includes(dir) ? f : [...f.slice(0, at), dir, ...f.slice(at)]));
+        if (picked) setPdf((p) => p || picked);
+        toast(`${dir} is back on the shelf`);
+      },
+    });
   };
 
   const pick = (path: string) => {
@@ -235,41 +320,64 @@ export function App() {
     if (ended?.id === r.id) setEnded(undefined);
   };
 
-  /** Restores a run's question and options into the form. */
+  /** Restores a run's question and options into the form; a PDF no longer on the shelf is said to be gone. */
   const edit = (r: Run) => {
     const restored = { ...DEFAULTS, ...r.request.options };
     const diff = changed(r.request.tool, restored);
+    const lost = r.request.pdf && !files.some((f) => f.path === r.request.pdf) ? r.request.pdf : undefined;
     setTool(r.request.tool);
     setQuestion(r.request.question);
     setOptions(restored);
-    if (r.request.pdf) setPdf(r.request.pdf);
-    setNote(`Restored from that run: ${diff.length ? diff.map((d) => `${d.label} ${String(restored[d.key])}`).join(", ") : "every option at its default"}.`);
+    if (r.request.pdf && !lost) setPdf(r.request.pdf);
+    const options = diff.length ? diff.map((d) => `${d.label} ${String(restored[d.key])}`).join(", ") : "every option at its default";
+    setNote(`Restored from that run: ${options}.${lost ? ` Its PDF, ${basename(lost)}, is no longer on the shelf: pick another, or add its folder back.` : ""}`);
     main.current?.scrollTo({ top: 0, behavior: "smooth" });
-    setFocus((n) => n + 1);
+    focusQuestion();
   };
 
-  // Clearing takes the shown run off the screen too, unless it is pinned or still going.
+  /** Puts `removed` back in the history, and the run that was on screen back on it if nothing else has been opened since. */
+  const undoRemoval = (removed: Run[], was: string | null, now: string | null, said: string) => ({
+    label: "Undo",
+    run: () => {
+      setHistory((h) => restore(h, removed, HISTORY));
+      if (was && viewingNow.current === now) view(was, false);
+      toast(said);
+    },
+  });
+
+  // Clearing keeps what is pinned or still going; the run on screen, if cleared, gives way to the newest one kept.
   const clearHistory = () => {
     const keep = new Set(history.filter((r) => r.pinned).map((r) => r.id));
     if (live && run) keep.add(run.id);
+    const removed = history.filter((r) => !keep.has(r.id));
+    if (removed.length === 0) {
+      toast("Nothing to clear: every run is pinned or running");
+      return;
+    }
+    const now = viewingId && !keep.has(viewingId) ? (byTime(history.filter((r) => keep.has(r.id)))[0]?.id ?? null) : viewingId;
     setHistory((h) => h.filter((r) => keep.has(r.id)));
     if (run && !keep.has(run.id)) setRun(undefined);
-    if (viewingId && !keep.has(viewingId)) view(null, false);
-    toast(keep.size ? "History cleared, but for what is pinned or running" : "History cleared");
+    if (now !== viewingId) view(now, false);
+    toast(`${plural(removed.length, "run")} cleared${keep.size ? ", but for what is pinned or running" : ""}`, "ok", undoRemoval(removed, viewingId, now, "History restored"));
   };
 
+  // The run on screen, once deleted, gives way to the one that takes its place in the sidebar.
   const deleteRun = (id: string) => {
+    const gone = history.find((r) => r.id === id);
+    if (!gone) return;
+    const now = viewingId === id ? (successor(ordered(history), id)?.id ?? null) : viewingId;
     setHistory((h) => h.filter((r) => r.id !== id));
     if (run?.id === id) setRun(undefined);
-    if (viewingId === id) view(null, false);
-    toast("Run deleted");
+    if (now !== viewingId) view(now, false);
+    toast("Run deleted", "ok", undoRemoval([gone], viewingId, now, "Run restored"));
   };
 
   const pinRun = (id: string) => setHistory((h) => h.map((r) => (r.id === id ? { ...r, pinned: !r.pinned } : r)));
 
+  const canNotify = "Notification" in window;
   const setNotifyAsking = async (on: boolean) => {
-    if (on && Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") {
-      toast("This site is not allowed to show notifications", "warn");
+    if (on && (!canNotify || (Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted"))) {
+      toast(canNotify ? "This site is not allowed to show notifications" : "This browser cannot show notifications", "warn");
       setNotify(false);
       return;
     }
@@ -279,30 +387,52 @@ export function App() {
 
   const toggleSide = () => (narrow ? setDrawer((d) => !d) : setSidebar((s) => !s));
 
-  /** Shows the run before or after the one on screen, in the history's order. */
+  /** Opens the sidebar on the shelf, with the cursor where a source is added. */
+  const showShelf = () => {
+    setSide("shelf");
+    if (narrow) setDrawer(true);
+    else setSidebar(true);
+    requestAnimationFrame(() => document.getElementById("shelf-add")?.focus());
+  };
+
+  /** Starts a question from an example of its kind, its gap selected to type over; the file names mode reads no answers, so it gives way. */
+  const example = (template: string) => {
+    setQuestion(template);
+    const across = KIND_HINTS.find((k) => k.template === template)?.kind === "across";
+    if (tool === "jevgrep" || (across && tool !== "jevfind")) {
+      setTool("jevfind");
+      setNote(across ? "Switched to the whole shelf: a table across the shelf asks every document it names." : "Switched to the whole shelf: the file names mode ranks names and reads no answer.");
+    }
+    focusQuestion("…");
+  };
+
+  /** Shows the run older (1) or newer (-1) than the one on screen, in the order they were asked. */
   const step = (by: 1 | -1) => {
-    const list = ordered(history);
-    const at = list.findIndex((r) => r.id === shown?.id);
-    const next = list[at < 0 ? (by > 0 ? 0 : list.length - 1) : at + by];
+    const next = stepFrom(history, shown?.id, by);
     if (next) open(next);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A popover or dialog that took the key has done with it.
-      if (e.defaultPrevented) return;
+      // A popover or dialog that took the key has done with it; one this page did not open, a page zoomed, keeps every key.
+      if (e.defaultPrevented || (!dialog && document.querySelector('[role="dialog"][aria-modal="true"]'))) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setDialog((d) => (d === "palette" ? undefined : "palette"));
         return;
       }
+      // The drawer shuts on Escape from anywhere in it, a text field too, before any run is stopped.
+      if (e.key === "Escape" && narrow && drawer && !dialog) {
+        e.preventDefault();
+        setDrawer(false);
+        return;
+      }
       if (dialog || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "/") setFocus((n) => n + 1);
+      if (e.key === "/") focusQuestion();
       else if (e.key === "?") setDialog("shortcuts");
       else if (e.key === "b") toggleSide();
       else if (e.key === "[") step(1);
       else if (e.key === "]") step(-1);
-      else if (e.key === "Escape" && drawer) setDrawer(false);
       else if (e.key === "Escape" && live) stop();
       else return;
       e.preventDefault();
@@ -311,6 +441,11 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const sideOpen = narrow ? drawer : sidebar;
+  const covered = narrow && drawer;
+  useFocusInside(aside, covered);
+  useTabTrap(aside, covered && !dialog);
+
   const items = (): Item[] => {
     const act = (id: string, label: string, run: () => void, extra: Partial<Item> = {}): Item => ({ id, group: "Actions", label, run, ...extra });
     const modes: { tool: Tool; label: string }[] = [
@@ -318,9 +453,10 @@ export function App() {
       { tool: "jevsec", label: "Ask one PDF" },
       { tool: "jevgrep", label: "Rank the file names" },
     ];
+    const clearable = history.filter((r) => !r.pinned).length;
     return [
-      live ? act("stop", "Stop the run", stop, { shortcut: "esc" }) : act("ask", "Ask", askNow, { hint: blocked ?? `“${question.trim()}”`, shortcut: "⏎" }),
-      act("focus", "Type a question", () => setFocus((n) => n + 1), { shortcut: "/" }),
+      live ? act("stop", "Stop the run", stop, { shortcut: "esc" }) : act("ask", "Ask", askNow, { hint: `“${question.trim()}”`, disabled: blocked, shortcut: "⏎" }),
+      act("focus", "Type a question", () => focusQuestion(), { shortcut: "/" }),
       ...(shown && shown.status !== "running"
         ? [
             act("again", "Ask again, with that run's question and options", () => edit(shown)),
@@ -329,15 +465,25 @@ export function App() {
               download(name, runJson(shown), "application/json");
               toast(`Saved ${name}`);
             }),
+            act("link", "Copy a link to this run", async () => toast((await copy(location.href)) ? "Link copied. It opens this run only in this browser, which keeps the history" : "Could not reach the clipboard"), { hint: "opens only in this browser" }),
           ]
         : []),
-      act("theme", `Theme: ${theme} → ${nextTheme(theme)}`, () => setTheme(nextTheme(theme)), { keywords: "dark light mode appearance" }),
-      act("sidebar", sidebar || drawer ? "Hide the sidebar" : "Show the sidebar", toggleSide, { shortcut: "b" }),
-      act("notify", notify ? "Desktop notifications: off" : "Desktop notifications: on", () => setNotifyAsking(!notify)),
+      ...THEMES.map((t) => act(`theme-${t}`, `Theme: ${THEME_LABEL[t]}`, () => setTheme(t), { hint: t === theme ? "current" : undefined, keywords: `appearance mode colour ${t === "system" ? "auto os" : ""}` })),
+      act("sidebar", sideOpen ? "Hide the sidebar" : "Show the sidebar", toggleSide, { shortcut: "b" }),
+      ...(canNotify ? [act("notify", notify ? "Turn desktop notifications off" : "Turn desktop notifications on", () => setNotifyAsking(!notify), { keywords: "notify alert background" })] : []),
       act("keys", "Keyboard shortcuts", () => setDialog("shortcuts"), { shortcut: "?" }),
-      act("clear", "Clear the history", clearHistory),
-      ...modes.map<Item>((m) => ({ id: `mode-${m.tool}`, group: "Mode", label: m.label, hint: m.tool, run: () => setTool(m.tool) })),
-      ...files.map<Item>((f) => ({ id: `pdf-${f.path}`, group: "Ask one PDF", label: f.name, hint: f.path, run: () => pick(f.path) })),
+      act("clear", "Clear the history", clearHistory, { disabled: clearable ? undefined : history.length ? "every run in it is pinned" : "the history is empty" }),
+      ...modes.map<Item>((m) => ({ id: `mode-${m.tool}`, group: "Mode", label: m.label, hint: m.tool === tool ? `${m.tool}, current` : m.tool, run: () => setTool(m.tool) })),
+      ...files.map<Item>((f) => ({
+        id: `pdf-${f.path}`,
+        group: "Ask one PDF",
+        label: f.name,
+        path: dirname(f.path),
+        run: () => {
+          pick(f.path);
+          focusQuestion();
+        },
+      })),
       ...ordered(history).map<Item>((r) => ({
         id: `run-${r.id}`,
         group: "History",
@@ -351,13 +497,12 @@ export function App() {
         label: q,
         run: () => {
           setQuestion(q);
-          setFocus((n) => n + 1);
+          focusQuestion();
         },
       })),
     ];
   };
 
-  const sideOpen = narrow ? drawer : sidebar;
   const closeDialog = useCallback(() => setDialog(undefined), []);
 
   return (
@@ -369,47 +514,78 @@ export function App() {
         health={health}
         cache={options.cache}
         spend={ledger}
+        live={live && run ? { dollars: runSpend(run), in: spendOf(run.lines).in } : undefined}
+        budget={budget}
+        onBudget={setBudget}
         onRefresh={checkHealth}
-        onResetSpend={() => setLedger({ dollars: 0, in: 0, runs: 0 })}
+        onResetSpend={() => setLedger(NO_SPEND)}
         sidebar={sideOpen}
         onSidebar={toggleSide}
         theme={theme}
-        onTheme={() => setTheme(nextTheme(theme))}
+        onTheme={setTheme}
         onPalette={() => setDialog("palette")}
         notify={notify}
         onNotify={setNotifyAsking}
+        inert={covered}
       />
       <div className="relative flex min-h-0 flex-1">
-        {narrow && drawer && <div className="fixed inset-0 z-30 bg-black/40" onClick={() => setDrawer(false)} />}
+        {covered && <div className="fixed inset-0 z-30 animate-fade bg-black/40" onClick={() => setDrawer(false)} />}
         <aside
+          ref={aside}
           inert={!sideOpen}
+          aria-label="Sidebar"
           className={cx(
             "flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-50 xl:w-80",
-            narrow ? cx("fixed top-14 bottom-0 left-0 z-40 w-72 shadow-2xl transition-transform", drawer ? "translate-x-0" : "-translate-x-full") : !sidebar && "hidden",
+            narrow ? cx("fixed top-14 bottom-0 left-0 z-40 w-72 shadow-2xl transition-transform duration-200 ease-out", drawer ? "translate-x-0" : "-translate-x-full") : !sidebar && "hidden",
           )}
         >
-          <div role="tablist" className="flex gap-1 border-b border-stone-200 px-3 pt-2">
-            {(["shelf", "history"] as const).map((s) => (
-              <button
-                key={s}
-                role="tab"
-                aria-selected={side === s}
-                onClick={() => setSide(s)}
-                className={cx("-mb-px border-b-2 px-2.5 py-2 text-sm font-medium capitalize", side === s ? "border-teal-700 text-stone-900" : "border-transparent text-stone-500 hover:text-stone-800")}
-              >
-                {s}
-                <span className="ml-1.5 rounded-full bg-stone-200/70 px-1.5 text-[11px] font-semibold text-stone-500">{s === "shelf" ? files.length : history.length}</span>
+          <div className="flex items-end gap-1 border-b border-stone-200 px-3 pt-2">
+            <div role="tablist" aria-label="Sidebar" className="flex gap-1">
+              {(["shelf", "history"] as const).map((s) => (
+                <button
+                  key={s}
+                  id={`side-tab-${s}`}
+                  role="tab"
+                  aria-selected={side === s}
+                  aria-controls="side-panel"
+                  aria-label={s === "shelf" ? `Shelf, ${plural(files.length, "PDF")}` : `History, ${plural(history.length, "run")}`}
+                  onClick={() => setSide(s)}
+                  className={cx("-mb-px border-b-2 px-2.5 py-2 text-sm font-medium capitalize", side === s ? "border-teal-700 text-stone-900" : "border-transparent text-stone-500 hover:text-stone-800")}
+                >
+                  {s}
+                  <span aria-hidden="true" className="ml-1.5 rounded-full bg-stone-200/70 px-1.5 text-[11px] font-semibold text-stone-600">
+                    {s === "shelf" ? files.length : history.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {narrow && (
+              <button onClick={() => setDrawer(false)} aria-label="Close the sidebar" className="mb-1 ml-auto flex h-8 w-8 items-center justify-center self-center rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800">
+                <Icon name="close" size={16} />
               </button>
-            ))}
+            )}
           </div>
-          {side === "shelf" ? (
-            <Shelf folders={folders} scans={scans} picked={pdf} onAdd={addFolder} onRemove={removeFolder} onRescan={rescan} onPick={pick} />
-          ) : (
-            <History runs={history} current={shown?.id} onOpen={open} onClear={clearHistory} onPin={pinRun} onDelete={deleteRun} />
-          )}
+          <div id="side-panel" role="tabpanel" aria-labelledby={`side-tab-${side}`} className="flex min-h-0 flex-1 flex-col">
+            {side === "shelf" ? (
+              <Shelf
+                folders={folders}
+                scans={scans}
+                picked={pdf}
+                onAdd={addFolder}
+                onRemove={removeFolder}
+                onRescan={rescan}
+                onPick={(p) => {
+                  pick(p);
+                  if (narrow) focusQuestion();
+                }}
+              />
+            ) : (
+              <History runs={history} current={shown?.id} onOpen={open} onClear={clearHistory} onPin={pinRun} onDelete={deleteRun} />
+            )}
+          </div>
         </aside>
 
-        <main ref={main} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+        <main ref={main} inert={covered} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl space-y-5 px-3 py-4 md:px-4 md:py-5 xl:px-6 xl:py-6">
             <Ask
               tool={tool}
@@ -419,9 +595,12 @@ export function App() {
               options={options}
               setOptions={setOptions}
               pdf={pdf || undefined}
+              onPickPdf={pick}
+              onShowShelf={showShelf}
               folders={folders}
-              files={files.length}
+              files={files}
               running={live}
+              offline={offline}
               onAsk={askNow}
               onStop={stop}
               note={note}
@@ -430,39 +609,66 @@ export function App() {
               cacheWhy={cacheWhy ?? undefined}
               onCacheOffOnce={() => ask({ tool, question: question.trim(), options: { ...options, cache: "off" }, ...target() })}
               suggestions={recentQuestions(history, question)}
+              onExample={example}
             />
             {live && run && shown?.id !== run.id && (
               <button onClick={() => open(run)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
                 A question is still running. Show it →
               </button>
             )}
-            {ended && ended.id !== shown?.id && (
+            {endedShown && (
               <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
-                <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(ended)].dot)} />
+                <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(endedShown)].dot)} />
                 <span className="min-w-0 flex-1 truncate text-stone-700">
-                  Finished: <span className="font-medium">{OUTCOME[outcomeOf(ended)].label}</span> · {dollars(runSpend(ended))} · “{ended.request.question}”
+                  Finished: <span className="font-medium">{OUTCOME[outcomeOf(endedShown)].label}</span> · {dollars(runSpend(endedShown))} · “{endedShown.request.question}”
                 </span>
-                <button onClick={() => open(ended)} className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">
+                <button onClick={() => open(endedShown)} className="rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">
                   Show it →
                 </button>
-                <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-400 hover:text-stone-700">
-                  ×
+                <button onClick={() => setEnded(undefined)} aria-label="Dismiss" className="text-stone-500 hover:text-stone-700">
+                  <Icon name="close" size={14} />
                 </button>
               </div>
             )}
             {shown ? (
               <div ref={runView}>
                 <RunView
+                  // Each run opens with its own details folded.
+                  key={shown.id}
                   run={shown}
                   onStop={stop}
-                  onPick={pick}
+                  onPick={(p) => {
+                    pick(p);
+                    main.current?.scrollTo({ top: 0, behavior: "smooth" });
+                    focusQuestion();
+                  }}
                   // A retry changes this run only; the saved options stay as they are.
                   onRetry={(patch) => ask({ ...shown.request, options: { ...shown.request.options, ...patch } })}
                   onEdit={() => edit(shown)}
                 />
               </div>
+            ) : missing ? (
+              <Notice tone="amber" title="That run isn't in this browser's history">
+                A run's link opens only in the browser that asked it, since each browser keeps its own history. It may also have been deleted, or have fallen off the end of the history, which keeps the last {HISTORY} unpinned runs.
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {history.length > 0 && (
+                    <button onClick={() => open(byTime(history)[0]!)} className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700">
+                      Show the latest run
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      view(null);
+                      focusQuestion();
+                    }}
+                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-600/40 hover:bg-amber-100"
+                  >
+                    Start a new question
+                  </button>
+                </div>
+              </Notice>
             ) : (
-              <Welcome />
+              <Welcome onExample={example} />
             )}
           </div>
         </main>
