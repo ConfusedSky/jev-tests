@@ -4,13 +4,19 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.3.3"
   },
   "peerDependencies": {
     "typescript": "^7"
   },
   "dependencies": {
-    "@typesafe-ai/sdk": "^0.6.0"
+    "@typesafe-ai/sdk": "^0.6.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "scripts": {
     "fixture:demo": "ls fixture | bun jevgrep.ts -t 0 \"What are the skills in the fallout rpg?\"",
@@ -21,6 +27,7 @@
     "fixture:build": "cd fixture && groff -ms -t -Tpdf table.ms > table.pdf && groff -ms -Tpdf manual.ms > manual.pdf && groff -ms -Tpdf heart.ms > heart.pdf && groff -ms -Tpdf title-only.ms > title-only.pdf && groff -ms -Tpdf catalogue.ms > catalogue.pdf",
     "tables:install": "uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python pdfplumber",
     "semif:install": "uv venv --python 3.12 semif/.venv && uv pip install --python semif/.venv/bin/python 'semif-phase1 @ git+https://github.com/TheoLeeCJ/SemIf@1f2dea3' bitsandbytes",
-    "semif:serve": "semif/.venv/bin/python semif/server.py"
+    "semif:serve": "semif/.venv/bin/python semif/server.py",
+    "ui": "bun ui/server.ts"
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { num, parseFlags } from "./cli";
 import { render } from "./format";
-import { DEFAULT_MODEL, makeClient, rankTitles } from "./shared";
+import { DEFAULT_MODEL, makeClient, rankTitles, snapshot, split } from "./shared";
 
 function usage(code: number): never {
   (code === 0 ? console.log : console.error)(`jevgrep — rank filenames by how likely they answer a question
@@ -47,9 +47,10 @@ if (names.length === 0) {
 }
 
 const client = await makeClient(opts.model);
-const rows = (await rankTitles(client, question, names, opts.batch, "file named"))
-  .filter((r) => r.score >= opts.threshold)
-  .slice(0, opts.top);
+const snap = snapshot();
+const ranked = await rankTitles(client, question, names, opts.batch, "file named");
+console.error(`ranked ${names.length} names in ${split(snap)}`);
+const rows = ranked.filter((r) => r.score >= opts.threshold).slice(0, opts.top);
 
 if (opts.json) console.log(JSON.stringify(rows, null, 2));
 else if (opts.namesOnly) for (const r of rows) console.log(r.name);

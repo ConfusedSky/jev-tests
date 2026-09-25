@@ -3,7 +3,7 @@ import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPa
 import { CACHE_MODELS, embedder, rankingCache as makeRankingCache, unready, type CacheModel } from "./cache";
 import { lone, pageParagraphs, type Para, type Row } from "./layout";
 import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
-import { DEFAULT_MODEL, snapshot, split, timed, type Snapshot } from "./shared";
+import { DEFAULT_MODEL, snapshot, split, spentSince, timed, type Snapshot, type Spent } from "./shared";
 import { terms } from "./search";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -66,6 +66,8 @@ export type ReadOpts = SearchOpts & {
   kind?: Kind;
   /** Piped, a table's rows as tab-separated lines under their heads instead of JSON. */
   tsv: boolean;
+  /** The outcome on stdout as one JsonReport instead of text. */
+  json: boolean;
   /** What jev read off the question, kept for a table to build its searches from. */
   reading?: Reading;
   /** The embedding model whose cache of rankings is looked in first (see cache.ts), or "off". */
@@ -90,6 +92,7 @@ export const readDefaults = (): ReadOpts => ({
   hits: 1,
   search: true,
   tsv: false,
+  json: false,
   cache: "qwen3-4b",
 });
 
@@ -112,6 +115,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--no-toc": (o) => (o.noToc = true),
   "--no-search": (o) => (o.search = false),
   "--tsv": (o) => (o.tsv = true),
+  "--json": (o) => (o.json = true),
   "--cache": (o, next, fail) => {
     const m = next();
     if (m !== "off" && !CACHE_MODELS[m]) fail(`must be off or one of ${Object.keys(CACHE_MODELS).join(", ")}`);
@@ -142,6 +146,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --no-search      rank outline titles only, without searching the text
       --tsv            piped, print a table's rows tab-separated under their heads, not as JSON,
                        and the link on stderr
+      --json           print the outcome on stdout as one JSON document (JsonReport in cli.ts)
       --kind K         force count, number, truth, passage or table instead of asking jev
       --cache MODEL    reuse the ranking of an earlier, similar question, matched by
                        qwen3-4b (default, Ollama), qwen3-0.6b (Ollama) or 3-small
@@ -390,6 +395,46 @@ export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
   return out;
 }
 
+/** A hit as --json prints it: `view` is the copy with the answer highlighted, or `pdf` itself when there is none. */
+export type JsonHit = {
+  pdf: string;
+  view: string;
+  page: number;
+  section: string;
+  /** How sure the gate was that the page answers; the answer's own p is in `answer`. */
+  found: number;
+  answer?: { text: string; p: number; pages?: number[]; passage?: Omit<Para, "lines">[] };
+};
+
+/**
+ * What --json prints on stdout: the hits that answered, or under "below" the
+ * best one read, which did not reach the answer floor; "unanswered" has none
+ * and says why in `message`. A table across the shelf fills `table` instead.
+ */
+export type JsonReport = {
+  kind?: Kind;
+  status: "answered" | "below" | "unanswered";
+  hits: JsonHit[];
+  message?: string;
+  table?: { rows: string[]; columns: string[]; cells: { text: string; kind: Kind; why?: string; hit?: JsonHit }[][] };
+  spent: Spent;
+};
+
+export const jsonHit = (hit: Hit, view = hit.pdf): JsonHit => ({
+  pdf: hit.pdf,
+  view,
+  page: hit.page,
+  section: hit.section,
+  found: hit.p,
+  answer: hit.answer && {
+    text: hit.answer.text,
+    p: hit.answer.p,
+    pages: hit.answer.pages,
+    // The boxes went into the highlight; the reader wants the text and its weights.
+    passage: hit.answer.passage?.map(({ lines, ...p }) => p),
+  },
+});
+
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
 export async function report(
   tool: string,
@@ -401,11 +446,20 @@ export async function report(
 ): Promise<never> {
   ui.clear();
   const walked = ctx.files === undefined ? "" : `, ${ctx.files} files opened, ${r.tried.length} windows read`;
+  const json = (status: JsonReport["status"], hits: JsonHit[], message?: string) => {
+    if (o.json) console.log(JSON.stringify({ kind: o.kind, status, hits, message, spent: spentSince(since) } satisfies JsonReport));
+  };
+  const fail: (message: string) => never = (message) => {
+    console.error(`${tool}: ${message}`);
+    json("unanswered", [], message);
+    process.exit(1);
+  };
 
   if (r.hit) {
     ui.log(`total ${split(since)}${walked}`);
     const hits = await highlightAll(r.hits, o);
-    for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
+    if (o.json) json("answered", hits.map((h, i) => jsonHit(r.hits[i]!, h.pdf)));
+    else for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
   }
@@ -414,29 +468,24 @@ export async function report(
   if (r.rejected.length > 0) {
     const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
     ui.log(`total ${split(since)}${walked}`);
-    console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
-    printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
+    const message = `no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`;
+    console.error(`${tool}: ${message}`);
+    if (o.json) json("below", [jsonHit({ ...hit, answer })], message);
+    else printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
     process.exit(1);
   }
 
-  if (r.tried.length === 0) {
-    console.error(`${tool}: ${ctx.nothing}`);
-    process.exit(1);
-  }
+  if (r.tried.length === 0) fail(ctx.nothing);
   const across = ctx.files === undefined ? "" : ` across ${ctx.files} files`;
   // Dropped windows did pass the gate, so "no window reached the threshold"
   // would be false; say what actually happened.
   if (r.dropped.length > 0) {
     const where = r.dropped.map(({ hit }) => `${hit.section} p.${hit.page}`).join(", ");
-    console.error(
-      `${tool}: ${r.dropped.length} windows${across} held the pages but did not state the answer in ${split(since)}: ${where}`,
-    );
-    process.exit(1);
+    fail(`${r.dropped.length} windows${across} held the pages but did not state the answer in ${split(since)}: ${where}`);
   }
   const best = r.tried.reduce((a, b) => (b.p > a.p ? b : a));
-  console.error(
-    `${tool}: none of ${r.tried.length} windows${across} reached p=${o.threshold} in ${split(since)}; ` +
+  fail(
+    `none of ${r.tried.length} windows${across} reached p=${o.threshold} in ${split(since)}; ` +
       `best was ${best.p.toFixed(2)} at ${best.name} p.${best.page}`,
   );
-  process.exit(1);
 }

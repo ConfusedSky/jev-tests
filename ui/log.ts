@@ -1,0 +1,116 @@
+/**
+ * Reading the tools' stderr log: a line's depth, verdict and cost, the tree
+ * its indentation makes, what jev read off the question, and the spend so
+ * far while a run is still going.
+ */
+export type Cost = { in: number; out: number; dollars: number };
+export type Line = { t: number; depth: number; text: string; header: boolean; verb?: string; cost?: Cost; secs?: number; message: boolean };
+
+const VERBS = new Set(["take", "keep", "drop", "yes", "no", "toc", "excerpt", "section", "file", "--", "total", "ranked", "gated"]);
+const COST = /([\d,]+) tokens in, ([\d,]+) out, \$([\d.]+)/;
+const num = (s: string) => Number(s.replace(/,/g, ""));
+
+export function parseLine(raw: string, t = 0): Line {
+  const text = raw.trimStart();
+  const c = COST.exec(text);
+  const secs = /(\d+(?:\.\d+)?)s \(jev /.exec(text);
+  const first = text.split(/\s+/)[0] ?? "";
+  return {
+    t,
+    depth: Math.floor((raw.length - text.length) / 2),
+    text,
+    header: text.endsWith("…"),
+    verb: VERBS.has(first) ? first : undefined,
+    cost: c ? { in: num(c[1]!), out: num(c[2]!), dollars: Number(c[3]) } : undefined,
+    secs: secs ? Number(secs[1]) : undefined,
+    message: /^(jev|jevsec|jevfind|jevgrep): /.test(text),
+  };
+}
+
+/** A header ending in "…" holds the deeper lines under it and, once they end, the sum at its own depth. */
+export type Node = { line: Line; index: number; children: Node[]; sum?: Line };
+
+export function tree(lines: Line[]): Node[] {
+  const root: Node[] = [];
+  const stack: Node[] = [];
+  lines.forEach((line, index) => {
+    while (stack.length && stack[stack.length - 1]!.line.depth >= line.depth) stack.pop();
+    const siblings = stack.length ? stack[stack.length - 1]!.children : root;
+    const prev = siblings[siblings.length - 1];
+    if (prev && prev.line.header && !prev.sum && prev.children.length && prev.line.depth === line.depth && line.cost && !line.header) {
+      prev.sum = line;
+      return;
+    }
+    const node: Node = { line, index, children: [] };
+    siblings.push(node);
+    stack.push(node);
+  });
+  return root;
+}
+
+/**
+ * Tokens spent so far. A cost line sums the deeper cost lines since the last
+ * line at its depth or shallower, so it replaces them; `total` is the whole.
+ */
+export function spendOf(lines: Line[]): Cost {
+  const counted: { depth: number; cost: Cost }[] = [];
+  for (const l of lines) {
+    if (!l.cost) continue;
+    if (l.depth === 0 && l.text.startsWith("total ")) return l.cost;
+    while (counted.length && counted[counted.length - 1]!.depth > l.depth) counted.pop();
+    counted.push({ depth: l.depth, cost: l.cost });
+  }
+  return counted.reduce((a, { cost }) => ({ in: a.in + cost.in, out: a.out + cost.out, dollars: a.dollars + cost.dollars }), { in: 0, out: 0, dollars: 0 });
+}
+
+/** What the log says jev read off the question and how the run went about answering it. */
+export type Facts = {
+  kind?: string;
+  forced?: boolean;
+  counts?: string;
+  asks?: string;
+  searches?: string;
+  cache?: { question: string; score: string };
+  embedding?: string;
+  across?: { rows: string; columns: string };
+  files?: number;
+  windows?: number;
+  sections?: number;
+};
+
+export function factsOf(lines: Line[]): Facts {
+  const f: Facts = {};
+  let m: RegExpExecArray | null;
+  for (const { text } of lines) {
+    if ((m = /^question (looks like|treated as) an? (\w+) question/.exec(text))) [f.kind, f.forced] = [m[2], m[1] === "treated as"];
+    else if ((m = /^asks for (.+)$/.exec(text))) f.asks = m[1];
+    else if ((m = /^counts (.+)$/.exec(text))) f.counts = m[1];
+    else if ((m = /^searches for (.+)$/.exec(text))) f.searches = m[1];
+    else if ((m = /^ranked from cache in .*?: "(.+)" \((.+)\)$/.exec(text))) f.cache ??= { question: m[1]!, score: m[2]! };
+    else if ((m = /^embedding (\d+) pages of (.+), once/.exec(text))) f.embedding = `${m[1]} pages of ${m[2]}`;
+    else if ((m = /^rows name documents \(p=[\d.]+\): (.+?); asks (.+?)  in /.exec(text))) f.across = { rows: m[1]!, columns: m[2]! };
+    else if ((m = /^total .*, (\d+) files opened, (\d+) windows read/.exec(text))) [f.files, f.windows] = [Number(m[1]), Number(m[2])];
+    if (/^section .*…$/.test(text)) f.sections = (f.sections ?? 0) + 1;
+  }
+  return f;
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001b\[[0-9;]*[A-Za-z]|\u001b\]8;;[^\u0007]*\u0007/g;
+
+/**
+ * Splits stderr as far as it has come into log lines and progress lines, the
+ * latter ended by \r (see makeUi); returns what is left of an unended line.
+ */
+export function drain(buf: string, emit: (e: { type: "log" | "trying"; line: string }) => void): string {
+  let at = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i];
+    if (c !== "\n" && c !== "\r") continue;
+    const text = buf.slice(at, i).replace(ANSI, "");
+    at = i + 1;
+    if (c === "\r") emit({ type: "trying", line: text.replace(/^\s*…\s*/, "") });
+    else if (text.trim()) emit({ type: "log", line: text.trimEnd() });
+  }
+  return buf.slice(at);
+}

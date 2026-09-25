@@ -9,7 +9,7 @@ export const RUBRIC = [
 ] as const;
 
 // Bun only auto-loads .env from the cwd, and these run from any directory.
-async function keyFromScriptEnv(): Promise<string | undefined> {
+export async function keyFromScriptEnv(): Promise<string | undefined> {
   const f = Bun.file(new URL(".env", import.meta.url));
   if (!(await f.exists())) return undefined;
   for (const line of (await f.text()).split("\n")) {
@@ -92,17 +92,29 @@ export function spent(s: Pick<Snapshot, "in" | "out">): string {
 
 export const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
+/** Time in milliseconds and tokens since a snapshot, the figures `split` prints. */
+export type Spent = { in: number; out: number; dollars: number; ms: { total: number; jev: number; read: number; stdin: number; other: number } };
+
+export function spentSince(s: Snapshot): Spent {
+  const total = Date.now() - s.at;
+  const [jev, read, stdin] = [clock.api - s.api, clock.extract - s.extract, clock.wait - s.wait];
+  const i = tokens.in - s.in;
+  return {
+    in: i,
+    out: tokens.out - s.out,
+    dollars: (i / 1e6) * DOLLARS_PER_MILLION_IN,
+    ms: { total, jev, read, stdin, other: Math.max(0, total - jev - read - stdin) },
+  };
+}
+
 /** "1.4s (jev 1.1s, read 0.2s, other 0.1s; 12,345 tokens in, 60 out, $0.00052)" for everything since the snapshot. */
 export function split(s: Snapshot): string {
-  const total = Date.now() - s.at;
-  const api = clock.api - s.api;
-  const extract = clock.extract - s.extract;
-  const wait = clock.wait - s.wait;
-  const parts = [`jev ${secs(api)}`, `read ${secs(extract)}`];
-  if (wait > 0) parts.push(`stdin ${secs(wait)}`);
-  parts.push(`other ${secs(Math.max(0, total - api - extract - wait))}`);
+  const { ms } = spentSince(s);
+  const parts = [`jev ${secs(ms.jev)}`, `read ${secs(ms.read)}`];
+  if (ms.stdin > 0) parts.push(`stdin ${secs(ms.stdin)}`);
+  parts.push(`other ${secs(ms.other)}`);
   const cost = spent(s);
-  return `${secs(total)} (${parts.join(", ")}${cost ? `; ${cost}` : ""})`;
+  return `${secs(ms.total)} (${parts.join(", ")}${cost ? `; ${cost}` : ""})`;
 }
 
 /** One list of candidates for a ranking call, named as the model sees it in `state`. */
