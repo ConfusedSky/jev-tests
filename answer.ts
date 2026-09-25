@@ -1,5 +1,5 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
-import { lone, pageLines, paragraphs, rowText, styledCandidates, type Para } from "./layout";
+import { findOn, lone, pageLines, paragraphs, rowText, styledCandidates, type Box, type Para } from "./layout";
 import { timed } from "./shared";
 
 export const KINDS = ["count", "number", "truth", "passage", "table"] as const;
@@ -144,8 +144,10 @@ export async function readQuestion(client: TypeSafeClient, question: string): Pr
  * `pages` are where the answer was read when that is not the window that
  * passed: the pages a count counted anything on. `passage` is the answering
  * stretch of a page with its weights, for printing; `text` holds it plain.
+ * `marks` are where a value stands, to highlight: the names a count
+ * counted, the figure a number question picked.
  */
-export type Answer = { text: string; p: number; pages?: number[]; passage?: Para[] };
+export type Answer = { text: string; p: number; pages?: number[]; passage?: Para[]; marks?: Box[] };
 /** A window's count with the names it counted, so a section counts each name once across its windows. */
 type Counted = Answer & { names: string[] };
 
@@ -217,7 +219,7 @@ const DOUBT = 0.3;
  * doubt is not, and the least certain of 91 cells says little about either.
  */
 /** Candidate names, each with the type style it is set in (none for a scrap), and the text they sit in. */
-export type CountPart = { cells: { text: string; style: string }[]; text: string };
+export type CountPart = { cells: { text: string; style: string; box?: Box }[]; text: string };
 
 /**
  * Where a window's text is on a PDF, so a count can take its candidates from
@@ -237,20 +239,32 @@ export async function countParts(src: CountSource): Promise<{ parts: CountPart[]
   // list's rows and columns where mutool's reading order put Legend in the
   // Mist's theme kits at 0.5 apiece.
   const layout = src.text.split("\f");
-  const styled = await timed("extract", () =>
+  const read = await timed("extract", () =>
     Promise.all(
       pages.map(async (p, i) => {
         const page = await pageLines(src.pdf!, p);
         const text = layout[i]?.trim() ? layout[i]! : paragraphs(page, p).map((q) => q.text).join("\n\n");
-        return { cells: styledCandidates(page, p), text };
+        return { cells: styledCandidates(page, p), text, lines: page.lines, page: p };
       }),
     ),
   );
+  const styled = read.map(({ cells, text }) => ({ cells, text }));
+  // A scrap is marked where it first stands as a word on the window's pages.
+  const placed = scraps.map((part) => ({
+    ...part,
+    cells: part.cells.map((c) => {
+      for (const p of read) {
+        const box = findOn(p.lines, c.text, p.page);
+        if (box) return { ...c, box };
+      }
+      return c;
+    }),
+  }));
   // A title and a chapter heading are styled runs too; a page whose only
   // styled runs are those, and whose list is inline, is counted from scraps
   // when the runs count nothing.
-  if (styled.reduce((n, p) => n + p.cells.length, 0) < 3) return { parts: scraps };
-  return { parts: styled.filter((p) => p.cells.length > 0), fallback: scraps };
+  if (styled.reduce((n, p) => n + p.cells.length, 0) < 3) return { parts: placed };
+  return { parts: styled.filter((p) => p.cells.length > 0), fallback: placed };
 }
 
 /** Counts from the source's candidates, and from its scraps when the styled runs count nothing. */
@@ -262,7 +276,7 @@ async function countSource(client: TypeSafeClient, question: string, section: st
 
 async function rawCount(client: TypeSafeClient, question: string, section: string, parts: CountPart[], counted: string): Promise<Counted> {
   const one = counted ? `one ${counted}` : "one of the things `question` asks how many there are";
-  const asks = parts.flatMap((part) => part.cells.map((cell) => ({ cell: cell.text, style: cell.style, text: part.text })));
+  const asks = parts.flatMap((part) => part.cells.map((cell) => ({ cell: cell.text, style: cell.style, box: cell.box, text: part.text })));
   if (asks.length === 0) return { text: "not stated", p: 1, names: [] };
   // One call per part, chunked; each cell rides in its own question with
   // its page's text in the state.
@@ -302,11 +316,13 @@ async function rawCount(client: TypeSafeClient, question: string, section: strin
   const styles = new Map<string, number>();
   for (const a of yes) styles.set(a.style, (styles.get(a.style) ?? 0) + 1);
   const list = [...styles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-  const names = [...new Set(yes.filter((a) => a.style === list).map((a) => nameKey(a.cell, counted)))];
+  const listed = yes.filter((a) => a.style === list);
+  const names = [...new Set(listed.map((a) => nameKey(a.cell, counted)))];
   if (names.length === 0) return { text: "not stated", p: 1, names };
   const sure = ps.filter((p) => p >= SURE).length;
   const doubt = ps.filter((p) => p >= DOUBT && p < SURE).length;
-  return { text: String(names.length), p: sure / (sure + doubt), names };
+  const marks = listed.flatMap((a) => (a.box ? [a.box] : []));
+  return { text: String(names.length), p: sure / (sure + doubt), names, ...(marks.length > 0 && { marks }) };
 }
 
 const SMALL: Record<string, number> = {
@@ -342,7 +358,8 @@ function wordsToNumber(s: string): number {
   return total + run;
 }
 
-export type Figure = { value: string; context: string };
+/** A figure, the words around it, and where it stands: the line of the text and its index in the line, spaces single. */
+export type Figure = { value: string; context: string; line: number; at: number };
 
 // A value that recurs on several rows gets each row as its own option, up to
 // this many; the model cannot pick a row it was never shown.
@@ -361,7 +378,7 @@ export function figuresIn(text: string, around = 60): Figure[] {
   const out: Figure[] = [];
   // Line by line: with -layout a table row is a line, so a figure's context is
   // its row, label included, rather than whatever sat above and below it.
-  for (const line of text.split("\n")) {
+  for (const [n, line] of text.split("\n").entries()) {
     const flat = line.replace(/\s+/g, " ").trim();
     const onLine = new Set<string>();
     for (const m of flat.matchAll(NUMBER)) {
@@ -372,7 +389,7 @@ export function figuresIn(text: string, around = 60): Figure[] {
       rows.set(value, (rows.get(value) ?? 0) + 1);
       const at = m.index!;
       const context = flat.slice(Math.max(0, at - around), Math.min(flat.length, at + raw.length + around)).trim();
-      out.push({ value, context });
+      out.push({ value, context, line: n, at });
     }
   }
   return out;
@@ -407,21 +424,22 @@ async function numberFrom(
   section: string,
   text: string,
   wanted: string[],
+  paras?: Para[],
 ): Promise<Answer> {
   const asked = wanted.length > 0 ? wanted : [""];
   const around = 60;
   const figures = figuresIn(text, around).slice(0, figureLimit(text.length, asked.length, around));
   if (figures.length === 0) return { text: "not stated", p: 1 };
   // Option names are sent to the model and must be unique, so a value's
-  // second row is "5 #2"; code maps the pick back to the value.
-  const valueOf = new Map<string, string>();
+  // second row is "5 #2"; code maps the pick back to the figure.
+  const figureOf = new Map<string, Figure>();
   const rows = new Map<string, number>();
   const criteria: Record<string, string> = {};
   for (const f of figures) {
     const n = (rows.get(f.value) ?? 0) + 1;
     rows.set(f.value, n);
     const key = n === 1 ? f.value : `${f.value} #${n}`;
-    valueOf.set(key, f.value);
+    figureOf.set(key, f);
     criteria[key] = `The answer is ${f.value}, as in: …${f.context}…`;
   }
   criteria["not stated"] = "None of these figures is it";
@@ -443,16 +461,25 @@ async function numberFrom(
     const a = res.answers[`q${i}`] as { choice: string; confidence: number; probabilities: Record<string, number> };
     const byValue = new Map<string, number>();
     for (const [key, prob] of Object.entries(a.probabilities)) {
-      const v = valueOf.get(key) ?? key;
+      const v = figureOf.get(key)?.value ?? key;
       byValue.set(v, (byValue.get(v) ?? 0) + prob);
     }
-    const [text, p] = [...byValue.entries()].sort((x, y) => y[1] - x[1])[0] ?? [valueOf.get(a.choice) ?? a.choice, a.confidence];
-    return { name, text, p };
+    const [value, p] = [...byValue.entries()].sort((x, y) => y[1] - x[1])[0] ?? [figureOf.get(a.choice)?.value ?? a.choice, a.confidence];
+    // Of the value's rows, the one jev leaned to is where it stands.
+    const row = Object.entries(a.probabilities)
+      .filter(([key]) => figureOf.get(key)?.value === value)
+      .sort((x, y) => y[1] - x[1])[0]?.[0];
+    return { name, text: value, p, figure: row === undefined ? undefined : figureOf.get(row) };
   });
-  if (parts.length === 1) return { text: parts[0]!.text, p: parts[0]!.p };
+  // The text is the paragraphs a line each, single-spaced as tidy and
+  // tables.py leave them, so a figure's line and index are its paragraph's.
+  const lined = paras !== undefined && paras.length === text.split("\n").length;
+  const found = lined ? parts.flatMap((x) => (x.figure ? boxesAt(paras[x.figure.line]!, x.figure.at) : [])) : [];
+  const marks = found.length > 0 ? { marks: found } : {};
+  if (parts.length === 1) return { text: parts[0]!.text, p: parts[0]!.p, ...marks };
   const stated = parts.filter((x) => x.text !== "not stated");
   if (stated.length === 0) return { text: "not stated", p: Math.min(...parts.map((x) => x.p)) };
-  return { text: parts.map((x) => `${x.name} ${x.text}`).join(", "), p: Math.min(...stated.map((x) => x.p)) };
+  return { text: parts.map((x) => `${x.name} ${x.text}`).join(", "), p: Math.min(...stated.map((x) => x.p)), ...marks };
 }
 
 /**
@@ -479,6 +506,7 @@ export async function countAcross(
   let worst = 1;
   let covered = 0;
   const pages: number[] = [];
+  const marks: Box[] = [];
   for (const [i, part] of parts.entries()) {
     const { names, ...answer } = part;
     const counted = part.p >= floor;
@@ -488,11 +516,12 @@ export async function countAcross(
     if (counted && names.length > 0) {
       for (const name of names) seen.add(name);
       pages.push(windows[i]!.page);
+      marks.push(...(part.marks ?? []));
       worst = Math.min(worst, part.p);
     }
     onPart?.(windows[i]!.page, answer, counted, seen.size);
   }
-  return pages.length === 0 ? { text: "not stated", p: 1 } : { text: String(seen.size), p: worst * (covered / windows.length), pages };
+  return pages.length === 0 ? { text: "not stated", p: 1 } : { text: String(seen.size), p: worst * (covered / windows.length), pages, ...(marks.length > 0 && { marks }) };
 }
 
 /**
@@ -566,6 +595,21 @@ async function truthFrom(client: TypeSafeClient, question: string, section: stri
   return claimVerdict(question, text, [0, 1, 2].map((i) => (res.answers[`c${i}`] as { noul: number }).noul));
 }
 
+/**
+ * The boxes holding a paragraph's character `at`: in a table row, the cell
+ * under the head the row's JSON names just before it; in prose, the line.
+ */
+export function boxesAt(p: Para, at: number): Box[] {
+  if (p.table) {
+    const head = /"((?:[^"\\]|\\.)*)":"(?:[^"\\]|\\.)*$/.exec(p.text.slice(0, at))?.[1];
+    const cell = head === undefined ? -1 : p.table.heads.indexOf(JSON.parse(`"${head}"`));
+    if (cell >= 0) return p.lines.filter((l) => l.cell === cell || l.cell === undefined);
+    return p.lines;
+  }
+  const on = p.lines.filter((l) => l.start <= at && at < l.end);
+  return on.length > 0 ? on : p.lines;
+}
+
 /** `read` supplies what the question named: the quantities a number wants, the kind a count counts. */
 export async function answerFrom(
   client: TypeSafeClient,
@@ -574,13 +618,13 @@ export async function answerFrom(
   section: string,
   text: string,
   read: Partial<Pick<Reading, "quantities" | "counted">> = {},
-  at: Omit<CountSource, "text"> = {},
+  at: Omit<CountSource, "text"> & { paras?: Para[] } = {},
 ): Promise<Answer> {
   if (kind === "count") {
     const { names: _, ...a } = await timed("api", () => countSource(client, question, section, { text, ...at }, read.counted ?? ""));
     return a;
   }
-  if (kind === "number") return numberFrom(client, question, section, text, read.quantities ?? []);
+  if (kind === "number") return numberFrom(client, question, section, text, read.quantities ?? [], at.paras);
   return truthFrom(client, question, section, text);
 }
 

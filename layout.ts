@@ -6,8 +6,8 @@
  */
 
 export type Span = { text: string; bold: boolean; italic: boolean; font: string };
-/** `block` is the mutool block the line came from. */
-export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[]; block: number };
+/** `block` is the mutool block the line came from; `edges` are each character's left and right, when mutool gave them. */
+export type Line = { x0: number; y0: number; x1: number; y1: number; size: number; spans: Span[]; block: number; edges?: [number, number][] };
 /** A line's box, the page it is on, and which characters of its paragraph's text it holds; a table cell's box names its column. */
 export type Box = { page: number; x0: number; y0: number; x1: number; y1: number; start: number; end: number; cell?: number };
 /**
@@ -48,6 +48,8 @@ export function parseStext(xml: string): { width: number; height: number; lines:
       // The line's size is that of most of its characters, so a superscript
       // or a dingbat bullet in a larger font does not make it a heading.
       const sizes = new Map<number, number>();
+      const edges: [number, number][] = [];
+      let placed = true;
       let prevRight: number | undefined;
       for (const [, fontTag, chars] of body!.matchAll(/<font ([^>]*)>(.*?)<\/font>/gs)) {
         const name = attr(fontTag!, "name") ?? "";
@@ -59,11 +61,17 @@ export function parseStext(xml: string): { width: number; height: number; lines:
           // A private-use glyph is a dingbat, a bullet as often as not.
           const c = unescape(attr(tag!, "c") ?? "").replace(/[\uE000-\uF8FF\uFFFD]/g, "•");
           sizes.set(size, (sizes.get(size) ?? 0) + 1);
-          const quad = (attr(tag!, "quad") ?? "").split(" ").map(Number);
+          const at = attr(tag!, "quad");
+          if (at === undefined) placed = false;
+          const quad = (at ?? "").split(" ").map(Number);
           const left = quad[0] ?? 0;
           const right = quad[2] ?? left;
-          if (prevRight !== undefined && c !== " " && !text.endsWith(" ") && left - prevRight > WORD_GAP * size) text += " ";
+          if (prevRight !== undefined && c !== " " && !text.endsWith(" ") && left - prevRight > WORD_GAP * size) {
+            text += " ";
+            edges.push([prevRight, left]);
+          }
           text += c;
+          for (let k = 0; k < c.length; k++) edges.push([left, right]);
           prevRight = right;
         }
         if (!text) continue;
@@ -72,7 +80,7 @@ export function parseStext(xml: string): { width: number; height: number; lines:
         else spans.push({ text, bold, italic, font: name });
       }
       const size = [...sizes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
-      if (spans.some((s) => s.text.trim())) lines.push({ x0, y0, x1, y1, size, spans, block });
+      if (spans.some((s) => s.text.trim())) lines.push({ x0, y0, x1, y1, size, spans, block, ...(placed && { edges }) });
     }
   }
   return { width, height, lines };
@@ -324,8 +332,30 @@ function mode(xs: number[]): number {
   return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]![0];
 }
 
-/** A run of text set in one style, the whole of a line or its lead-in, as a candidate entry name. */
-export type Styled = { style: string; text: string; page: number };
+/** A run of text set in one style, the whole of a line or its lead-in, as a candidate entry name, with where it stands. */
+export type Styled = { style: string; text: string; page: number; box: Box };
+
+/**
+ * The part of a line's box that holds characters `from` to `to` of its text,
+ * so a name before its leaders or among others inline is marked alone: by
+ * the characters' own edges, or by their share of the line without them.
+ */
+export function boxOn(l: Line, page: number, from = 0, to = text(l).length): Box {
+  const n = text(l).length;
+  if (l.edges?.length === n && to > from) return { page, x0: l.edges[from]![0], y0: l.y0, x1: l.edges[to - 1]![1], y1: l.y1, start: 0, end: 0 };
+  const w = (l.x1 - l.x0) / Math.max(1, n);
+  return { page, x0: l.x0 + w * from, y0: l.y0, x1: l.x0 + w * to, y1: l.y1, start: 0, end: 0 };
+}
+
+/** Where `name` first stands as a whole word among a page's lines, or undefined. */
+export function findOn(lines: Line[], name: string, page: number): Box | undefined {
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+  for (const l of lines) {
+    const m = re.exec(text(l));
+    if (m) return boxOn(l, page, m.index, m.index + name.length);
+  }
+  return undefined;
+}
 
 /**
  * The runs a page sets apart by type: a whole line in one font, or the bold
@@ -338,6 +368,11 @@ export type Styled = { style: string; text: string; page: number };
 // since the leaders make a name's line as long as a line of prose.
 const bare = (t: string) => t.replace(/\s*\.{3,}.*$/, "").replace(/\s*\([^)]*\)\s*$/, "").replace(/[:.]$/, "").trim();
 
+const runBox = (l: Line, run: string, page: number) => {
+  const at = Math.max(0, text(l).indexOf(run));
+  return boxOn(l, page, at, at + run.length);
+};
+
 export function styledRuns(lines: Line[], pageNumber: number): Styled[] {
   const out: Styled[] = [];
   for (const l of lines) {
@@ -346,13 +381,13 @@ export function styledRuns(lines: Line[], pageNumber: number): Styled[] {
     const key = (s: Span) => `${s.font} ${Math.round(l.size)}`;
     if (spans.every((s) => s.font === spans[0]!.font)) {
       const text = bare(spans.map((s) => s.text).join(""));
-      if (text && text.length <= 60) out.push({ style: key(spans[0]!), text, page: pageNumber });
+      if (text && text.length <= 60) out.push({ style: key(spans[0]!), text, page: pageNumber, box: runBox(l, text, pageNumber) });
       continue;
     }
     const lead = spans[0]!;
     if (lead.bold && !spans[1]!.bold) {
       const text = bare(lead.text);
-      if (text) out.push({ style: `${key(lead)} lead-in`, text, page: pageNumber });
+      if (text) out.push({ style: `${key(lead)} lead-in`, text, page: pageNumber, box: runBox(l, text, pageNumber) });
     }
   }
   return out;
@@ -366,7 +401,7 @@ export function styledRuns(lines: Line[], pageNumber: number): Styled[] {
  * list. A page with no such runs lists its entries inline, and the count
  * falls back to the text's scraps.
  */
-export function styledCandidates(page: { lines: Line[] }, pageNumber: number): { text: string; style: string }[] {
+export function styledCandidates(page: { lines: Line[] }, pageNumber: number): { text: string; style: string; box: Box }[] {
   const prose = new Map<string, number>();
   let long = 0;
   for (const l of page.lines) {
@@ -379,11 +414,11 @@ export function styledCandidates(page: { lines: Line[] }, pageNumber: number): {
   }
   const body = new Set([...prose.entries()].filter(([, n]) => n >= long * 0.2).map(([k]) => k));
   const seen = new Set<string>();
-  const out: { text: string; style: string }[] = [];
+  const out: { text: string; style: string; box: Box }[] = [];
   for (const r of styledRuns(page.lines, pageNumber)) {
     if (body.has(r.style) || r.text.length < 2 || /^\d+$/.test(r.text) || seen.has(r.text.toLowerCase())) continue;
     seen.add(r.text.toLowerCase());
-    out.push({ text: r.text, style: r.style });
+    out.push({ text: r.text, style: r.style, box: r.box });
   }
   return out;
 }
