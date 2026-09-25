@@ -3,11 +3,9 @@ import { useStored } from "./util";
 
 export type Theme = "system" | "light" | "dark";
 export const THEMES: Theme[] = ["system", "light", "dark"];
+export const THEME_LABEL: Record<Theme, string> = { system: "Follow the system", light: "Light", dark: "Dark" };
 
 export const isDark = (theme: Theme, systemDark: boolean) => (theme === "system" ? systemDark : theme === "dark");
-
-/** The theme after this one, as a toggle cycles them. */
-export const nextTheme = (t: Theme): Theme => THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]!;
 
 const QUERY = "(prefers-color-scheme: dark)";
 

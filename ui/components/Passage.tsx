@@ -39,22 +39,33 @@ function Styled({ text, style }: { text: string; style: string }) {
 
 const lone = (r: Row) => r.cells.filter(Boolean).length === 1;
 
-export function Rows({ rows, first, stem = "table" }: { rows: Row[]; first?: boolean; stem?: string }) {
+/** Where the column headed `head` was read from, its name matched as the log spells it or not. */
+const sourceOf = (columns: Record<string, string> | undefined, head: string) => columns && Object.entries(columns).find(([k]) => k.toLowerCase() === head.trim().toLowerCase())?.[1];
+
+export function Rows({ rows, first, stem = "table", source, columns }: { rows: Row[]; first?: boolean; stem?: string; source?: string; columns?: Record<string, string> }) {
   const keep = rows[0]!.heads.map((_, i) => i).filter((i) => rows.some((r) => !lone(r) && r.cells[i]));
   if (keep.length === 0) return <>{rows.map((r, i) => <p key={i}>{r.cells.find(Boolean)}</p>)}</>;
   return (
     <div className="scroll-thin relative overflow-x-auto rounded-lg ring-1 ring-stone-200">
       <div className="flex justify-end border-b border-stone-100 bg-stone-50 px-1 py-0.5">
-        <GridExport grid={tableGrid(rows)} stem={stem} />
+        <GridExport grid={tableGrid(rows)} stem={stem} source={source} />
       </div>
       <table className="w-full border-collapse font-sans text-[13px]">
         <thead className="bg-stone-50">
           <tr>
-            {keep.map((i) => (
-              <th key={i} className="border-b border-stone-200 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap text-stone-600">
-                {rows[0]!.heads[i]}
-              </th>
-            ))}
+            {keep.map((i) => {
+              const head = rows[0]!.heads[i] ?? "";
+              const from = sourceOf(columns, head);
+              return (
+                <th
+                  key={i}
+                  title={from ? `read from ${from}` : undefined}
+                  className={cx("border-b border-stone-200 px-3 py-2 text-left text-xs font-semibold whitespace-nowrap text-stone-600", from && "cursor-help underline decoration-stone-400 decoration-dotted underline-offset-4")}
+                >
+                  {head}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -81,8 +92,8 @@ export function Rows({ rows, first, stem = "table" }: { rows: Row[]; first?: boo
   );
 }
 
-/** A passage as the page sets it: headings, weights, and a table's rows as a table. */
-export function Passage({ paras, stem }: { paras: Para[]; stem?: string }) {
+/** A passage as the page sets it: headings, weights, and a table's rows as a table; `source` says where, in a saved table, and `columns` where each column of a built one was read. */
+export function Passage({ paras, stem, source, columns }: { paras: Para[]; stem?: string; source?: string; columns?: Record<string, string> }) {
   const blocks: ReactNode[] = [];
   for (let i = 0; i < paras.length; i++) {
     const p = paras[i]!;
@@ -90,7 +101,7 @@ export function Passage({ paras, stem }: { paras: Para[]; stem?: string }) {
       const key = p.table.heads.join("\t");
       const rows = [p.table];
       while (paras[i + 1]?.table?.heads.join("\t") === key) rows.push(paras[++i]!.table!);
-      blocks.push(<Rows key={i} rows={rows} stem={stem} />);
+      blocks.push(<Rows key={i} rows={rows} stem={stem} source={source} columns={columns} />);
     } else if (p.heading)
       blocks.push(
         <h4 key={i} className="pt-1 font-sans text-sm font-semibold tracking-wide text-stone-900 uppercase">

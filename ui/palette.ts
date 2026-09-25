@@ -8,6 +8,10 @@ export type Item = {
   /** Searched, never shown. */
   keywords?: string;
   shortcut?: string;
+  /** A path shown beside the label, cut in the middle; searched too. */
+  path?: string;
+  /** Why it cannot run now; picking it says so and leaves the palette open. */
+  disabled?: string;
   run: () => void;
 };
 
@@ -17,7 +21,7 @@ export function matchItems(items: Item[], query: string, limit = 40): Item[] {
   if (words.length === 0) return items.slice(0, limit);
   const scored = items.flatMap((it, order) => {
     const label = it.label.toLowerCase();
-    const text = `${label} ${it.hint ?? ""} ${it.keywords ?? ""}`.toLowerCase();
+    const text = `${label} ${it.hint ?? ""} ${it.path ?? ""} ${it.keywords ?? ""}`.toLowerCase();
     if (!words.every((w) => text.includes(w))) return [];
     return [{ it, order, rank: label.startsWith(words[0]!) ? 0 : label.includes(words[0]!) ? 1 : 2 }];
   });

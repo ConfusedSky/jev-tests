@@ -7,7 +7,12 @@ export const dirname = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 export const dollars = (d: number) => (d === 0 ? "$0" : `$${d.toFixed(d < 1 ? 5 : 2)}`);
 export const tokens = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en-US"));
 export const secs = (ms: number) => (ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`);
-export const bytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} kB`);
+/** A file's size; a file under a kilobyte that holds anything is "1 kB", so only a truly empty one says so. */
+export const bytes = (n: number) => (n === 0 ? "empty" : n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} kB`);
+
+/** The key shortcuts are held with on `platform`: ⌘ on Apple's systems, Ctrl elsewhere. */
+export const modKey = (platform: string) => (/Mac|iPhone|iPad|iPod/.test(platform) ? "⌘" : "Ctrl");
+export const MOD = modKey(typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent);
 
 export function ago(at: number, now = Date.now()): string {
   const s = Math.round((now - at) / 1000);
@@ -20,7 +25,7 @@ export function ago(at: number, now = Date.now()): string {
 export const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(" ");
 
 /** `key`'s value in localStorage, or `initial` when there is none or it cannot be read. */
-function readStored<T>(key: string, initial: T, text = localStorage.getItem(key)): T {
+export function readStored<T>(key: string, initial: T, text = localStorage.getItem(key)): T {
   try {
     if (text === null) return initial;
     const saved = JSON.parse(text) as T;
@@ -32,6 +37,15 @@ function readStored<T>(key: string, initial: T, text = localStorage.getItem(key)
   }
 }
 
+/** Writes `value` under `key` at once, for when there is no render left to do it, as the page unloads. */
+export function writeStored<T>(key: string, value: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // A full store keeps what it had.
+  }
+}
+
 /**
  * State kept in localStorage under `key`, read once and written on every
  * change. Shared, it follows other tabs' writes, and an update builds on
@@ -40,13 +54,8 @@ function readStored<T>(key: string, initial: T, text = localStorage.getItem(key)
  */
 export function useStored<T>(key: string, initial: T, shared = false): [T, (v: T | ((old: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => readStored(key, initial));
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // A full store keeps the value for this session only.
-    }
-  }, [key, value]);
+  // A full store keeps the value for this session only.
+  useEffect(() => writeStored(key, value), [key, value]);
   useEffect(() => {
     if (!shared) return;
     const onStorage = (e: StorageEvent) => {

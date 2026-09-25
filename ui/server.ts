@@ -15,7 +15,7 @@ import { keyFromScriptEnv } from "../shared";
 import { cacheDir, openAt, pageUrl } from "../pdf";
 import index from "./index.html";
 import { foreign, local } from "./guard";
-import { drain } from "./log";
+import { drain, errorText } from "./log";
 import { argsFor, DEFAULTS, type Tool } from "./options";
 import { isLocate, locateArgs, sourceKey } from "./sources";
 import type { Config, Health, RunEvent, RunRequest, Scan } from "./types";
@@ -200,7 +200,7 @@ function run(req: Request, r: RunRequest): Response {
         end.error = out;
       }
       // A tool that stops before answering (the cache, the key, a missing file) says why on its last lines.
-      if (!end.report && !end.ranked && code !== 0) end.error ??= said.slice(-3).join("\n") || `exited with ${code}`;
+      if (!end.report && !end.ranked && code !== 0) end.error ??= errorText(said) || `exited with ${code}`;
       send(end);
       if (open) controller.close();
       hangUp();

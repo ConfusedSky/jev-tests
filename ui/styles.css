@@ -2,10 +2,46 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Where a mouse can hover on a wide window, a row's own buttons may wait for it; on touch and narrow screens they always show. */
+@custom-variant fine {
+  @media (hover: hover) and (pointer: fine) and (min-width: 48rem) {
+    @slot;
+  }
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Iowan Old Style", "Charter", "Georgia", ui-serif, serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Short moves for what comes and goes over the page; the reduced-motion rule below turns them off. */
+  --animate-rise: rise 160ms ease-out;
+  --animate-sink: sink 150ms ease-in forwards;
+  --animate-pop: pop 140ms ease-out;
+  --animate-fade: fade 140ms ease-out;
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes sink {
+    to {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 /*
@@ -81,10 +117,20 @@ body {
   @apply bg-teal-200;
 }
 
-/* Keyboard focus shows on everything; a mouse click shows nothing. */
-:focus-visible {
-  outline: 2px solid var(--color-teal-600);
-  outline-offset: 2px;
+@layer base {
+  /* Keyboard focus shows on everything; a mouse click shows nothing. In the base layer, so a control that marks focus its own way can say so. */
+  :focus-visible {
+    outline: 2px solid var(--color-teal-600);
+    outline-offset: 2px;
+  }
+
+  /* A code font's ligatures turn "!==" into "≠=", which is not what the tool printed. */
+  code,
+  kbd,
+  pre,
+  .font-mono {
+    font-variant-ligatures: none;
+  }
 }
 
 .scroll-thin {
