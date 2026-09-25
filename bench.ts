@@ -226,6 +226,19 @@ const CASES: Case[] = [
       '"drum magazine size":"3"}',
     ],
   },
+  // The book's own columns kept before the one asked for, and the rows the
+  // standard weapons, not the exotic ones p.95's passage runs on to. The
+  // table stands on p.95 and again on p.342; either is right.
+  {
+    book: "cpr",
+    question: "Show me the standard weapon table. In addition to the normal columns add the extended magazine size",
+    truth: "passage",
+    contains: [
+      '{"Weapon Type":"Medium Pistol","Weapon Skill":"Handgun","Single Shot Damage":"2d6","Standard Magazine":"12 (M Pistol)"',
+      '"Cost":"50eb (Costly)","extended magazine size":"18"}',
+    ],
+    without: ["Air Pistol"],
+  },
   // A table whose rows are documents: each cell its question asked of its
   // row's book over the whole shelf, Legend in the Mist on it but no row.
   {
