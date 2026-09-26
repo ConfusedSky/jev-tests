@@ -119,7 +119,7 @@ test("an empty PDF is left out of the ranking, and said to be", async () => {
   expect(asked).toEqual([manual]);
   expect(opened).toEqual([manual]);
   expect([r.opened, r.above]).toEqual([1, 1]);
-  expect(log[0]).toBe(`--  ${taxes}: empty file, left out of the ranking`);
+  expect(log[0]).toBe(`--  ${taxes}  --  empty file, left out of the ranking`);
   expect(log[1]).toStartWith("ranked 1 paths and 0 excerpts");
 });
 

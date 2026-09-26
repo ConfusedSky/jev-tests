@@ -54,8 +54,9 @@ describe("extra names", () => {
   });
 
   // A proxy such as tailscale serve ends TLS in front of the server, so the page's origin is https.
-  test("let in JSON from their own page over https, not from another site", () => {
+  test("let in JSON from their own page over https alone, not over http nor from another site", () => {
     expect(foreign(post({ ...JSON_, "sec-fetch-site": "same-origin", origin: `https://${TAILNET}` }, TAILNET), PORT, extra)).toBe(false);
+    expect(foreign(post({ ...JSON_, "sec-fetch-site": "same-origin", origin: `http://${TAILNET}` }, TAILNET), PORT, extra)).toBe(true);
     expect(foreign(post({ ...JSON_, origin: "https://evil.example" }, TAILNET), PORT, extra)).toBe(true);
     expect(foreign(post({ ...JSON_, origin: `https://${TAILNET}` }, "evil.example:3217"), PORT, extra)).toBe(true);
   });

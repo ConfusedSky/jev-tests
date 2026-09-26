@@ -194,20 +194,32 @@ export function scrollOf(a: Anchor, { lay, width, pad }: Laid, w: number, h: num
 }
 
 /**
- * The anchor keeping `spot` in sight while the pages change size, when its
- * page is in view: the top left of its marks where it stands, brought in
- * from the view's edges so a zoom in does not push it out. None when nothing
- * is marked or the page is out of view.
+ * The anchor keeping `spot` in sight while the pages grow `scale` times as
+ * wide (a zoom; 1 while the pane settles its width), when one of its marks is
+ * in view; none when nothing is marked or no mark is in view, and the view
+ * holds on its middle. Marks that will fit the view are held by their middle
+ * where it stands, brought in so all of them stay in view; wider or taller
+ * ones by their top left, brought in from the view's edges.
  */
-export function markAnchor(spot: Pick<Spot, "page" | "marks">, size: PageSize, laid: Laid, view: ViewBox): Anchor | undefined {
+export function markAnchor(spot: Pick<Spot, "page" | "marks">, size: PageSize, laid: Laid, view: ViewBox, scale = 1): Anchor | undefined {
   const { lay, width, pad } = laid;
   const i = spot.page - 1;
-  if (spot.marks.length === 0 || i >= lay.tops.length) return undefined;
-  const top = pad + lay.tops[i]!;
-  if (top + lay.heights[i]! < view.top || top > view.top + view.height) return undefined;
-  const [fx, fy] = [Math.min(...spot.marks.map((m) => m.x0)) / size.width, Math.min(...spot.marks.map((m) => m.y0)) / size.height];
+  if (spot.marks.length === 0 || i >= lay.tops.length || view.width <= 0 || view.height <= 0) return undefined;
+  const [left, top, height] = [pageLeft(width, view.width, pad) - view.left, pad + lay.tops[i]! - view.top, lay.heights[i]!];
+  // Where a share of the page stands in the view, in pixels from its top left.
+  const x = (fx: number) => left + fx * width;
+  const y = (fy: number) => top + fy * height;
+  const seen = spot.marks.some((m) => x(m.x1 / size.width) > 0 && x(m.x0 / size.width) < view.width && y(m.y1 / size.height) > 0 && y(m.y0 / size.height) < view.height);
+  if (!seen) return undefined;
+  const [fx0, fy0] = [Math.min(...spot.marks.map((m) => m.x0)) / size.width, Math.min(...spot.marks.map((m) => m.y0)) / size.height];
+  const [fx1, fy1] = [Math.max(...spot.marks.map((m) => m.x1)) / size.width, Math.max(...spot.marks.map((m) => m.y1)) / size.height];
   const at = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-  const x = pageLeft(width, view.width, pad) + fx * width - view.left;
-  const y = top + fy * lay.heights[i]! - view.top;
-  return { page: spot.page, fx, fy, vx: at(x / view.width, 0.05, 0.5), vy: at(y / view.height, 0.1, 0.5) };
+  const [mx, my] = [0.05, 0.1];
+  // Their share of the view once the pages have grown.
+  const [sw, sh] = [((fx1 - fx0) * width * scale) / view.width, ((fy1 - fy0) * height * scale) / view.height];
+  if (sw <= 1 - 2 * mx && sh <= 1 - 2 * my) {
+    const [fx, fy] = [(fx0 + fx1) / 2, (fy0 + fy1) / 2];
+    return { page: spot.page, fx, fy, vx: at(x(fx) / view.width, mx + sw / 2, 1 - mx - sw / 2), vy: at(y(fy) / view.height, my + sh / 2, 1 - my - sh / 2) };
+  }
+  return { page: spot.page, fx: fx0, fy: fy0, vx: at(x(fx0) / view.width, mx, 0.5), vy: at(y(fy0) / view.height, my, 0.5) };
 }

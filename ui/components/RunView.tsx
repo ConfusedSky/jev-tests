@@ -132,7 +132,7 @@ function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
           ))}
         </p>
       </div>
-      {reads > 0 && (
+      {(reads > 0 || w.files.some((f) => f.left)) && (
         <ul className="mt-2 space-y-2">
           {w.files.map((f, i) => {
             const rows = f.reads.slice(0, Math.max(0, left));
@@ -143,8 +143,13 @@ function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
                 {f.under && f.under !== w.files[i - 1]?.under && <div className="mt-1 mb-0.5 text-[11px] font-semibold text-stone-600">{f.under}</div>}
                 {f.path && (
                   <div className="flex min-w-0 items-center gap-2 text-xs">
-                    <MiddlePath path={f.path} className="font-medium text-stone-800" />
-                    <span className="shrink-0 font-mono text-[11px] text-stone-500">score {f.score?.toFixed(2)}</span>
+                    <MiddlePath path={f.path} className={cx("font-medium", f.left ? "text-stone-500" : "text-stone-800")} />
+                    {f.score !== undefined && <span className="shrink-0 font-mono text-[11px] text-stone-500">score {f.score.toFixed(2)}</span>}
+                    {f.left && (
+                      <span className="max-w-[60%] shrink-0 truncate text-[11px] text-stone-500" title={f.left}>
+                        {f.left}
+                      </span>
+                    )}
                   </div>
                 )}
                 {rows.length > 0 && (
@@ -340,52 +345,54 @@ export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props)
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className={cx("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1", o.tone)}>
-          <span className={cx("h-1.5 w-1.5 rounded-full", o.dot)} />
-          {o.label}
-        </span>
-        <div className="min-w-0 flex-1 basis-48">
-          <h2 className="line-clamp-2 font-serif text-lg leading-snug [overflow-wrap:anywhere] text-stone-900" title={req.question}>
-            {req.question}
-          </h2>
-          <div className="text-xs text-stone-500">
-            {TOOL_LABEL[req.tool]}
-            {req.tool === "jevsec" && req.pdf ? (
-              ` · ${basename(req.pdf)}`
-            ) : req.paths ? (
-              <>
-                {" · "}
-                <button onClick={() => setShowPaths((s) => !s)} aria-expanded={showPaths} className="text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900">
-                  {req.paths.length} PDF{req.paths.length === 1 ? "" : "s"}
+      {/* In a narrow column the figures take a row of their own under the question, so the question keeps the width. */}
+      <div className="@container">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 @xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <span className={cx("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1", o.tone)}>
+            <span className={cx("h-1.5 w-1.5 rounded-full", o.dot)} />
+            {o.label}
+          </span>
+          <div className="min-w-0">
+            <h2 className="line-clamp-2 font-serif text-lg leading-snug [overflow-wrap:anywhere] text-stone-900" title={req.question}>
+              {req.question}
+            </h2>
+            <div className="text-xs text-stone-500">
+              {TOOL_LABEL[req.tool]}
+              {req.tool === "jevsec" && req.pdf ? (
+                ` · ${basename(req.pdf)}`
+              ) : req.paths ? (
+                <>
+                  {" · "}
+                  <button onClick={() => setShowPaths((s) => !s)} aria-expanded={showPaths} className="text-stone-600 underline decoration-stone-300 underline-offset-2 hover:text-stone-900">
+                    {req.paths.length} PDF{req.paths.length === 1 ? "" : "s"}
+                  </button>
+                </>
+              ) : (
+                ""
+              )}{" "}
+              · {new Date(run.at).toLocaleTimeString()}
+              {!live && (
+                <button onClick={onEdit} className="ml-2 text-teal-700 hover:underline">
+                  ask again
                 </button>
-              </>
-            ) : (
-              ""
-            )}{" "}
-            · {new Date(run.at).toLocaleTimeString()}
-            {!live && (
-              <button onClick={onEdit} className="ml-2 text-teal-700 hover:underline">
-                ask again
+              )}
+            </div>
+          </div>
+          <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs tabular-nums text-stone-600 @xl:col-start-auto">
+            <span title="wall time">{secs(ms)}</span>
+            <span title={`${spend.in.toLocaleString()} tokens in, ${spend.out.toLocaleString()} out`}>{tokens(spend.in)} tok</span>
+            <span className="font-semibold text-stone-900">{dollars(spend.dollars)}</span>
+            {flying && (
+              <span className="font-sans text-amber-800" title="A call still in flight at the stop is billed by OpenRouter but never reported, so it is not in this count">
+                + ≈1 call uncounted
+              </span>
+            )}
+            {live && (
+              <button onClick={onStop} title={STOP_SAYS} className="ml-auto rounded-lg bg-white px-2.5 py-1 font-sans text-xs font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 @xl:ml-0">
+                Stop
               </button>
             )}
           </div>
-        </div>
-        {/* Under 640px the figures take a row of their own, so the question keeps the width. */}
-        <div className="flex w-full items-center gap-4 font-mono text-xs tabular-nums text-stone-600 sm:w-auto">
-          <span title="wall time">{secs(ms)}</span>
-          <span title={`${spend.in.toLocaleString()} tokens in, ${spend.out.toLocaleString()} out`}>{tokens(spend.in)} tok</span>
-          <span className="font-semibold text-stone-900">{dollars(spend.dollars)}</span>
-          {flying && (
-            <span className="font-sans text-amber-800" title="A call still in flight at the stop is billed by OpenRouter but never reported, so it is not in this count">
-              + ≈1 call uncounted
-            </span>
-          )}
-          {live && (
-            <button onClick={onStop} title={STOP_SAYS} className="ml-auto rounded-lg bg-white px-2.5 py-1 font-sans text-xs font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 sm:ml-0">
-              Stop
-            </button>
-          )}
         </div>
       </div>
 

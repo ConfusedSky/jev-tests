@@ -304,7 +304,7 @@ describe("tables", () => {
 
   // pdfplumber measures from the MediaBox, turned as /Rotate turns the page;
   // stext and the page the UI draws, from the CropBox.
-  describe("a cell's box stands on the cell's text as mutool places it", () => {
+  describe("a table on a page cut, moved or turned", () => {
     const boxes = fixture("boxes.js");
     const variant = async (media: string, crop: string, rotate: number) => {
       const out = `${process.env.XDG_CACHE_HOME}/table-${media}-${crop}-${rotate}.pdf`;
@@ -312,28 +312,45 @@ describe("tables", () => {
       if ((await p.exited) !== 0) throw new Error(await new Response(p.stderr).text());
       return out;
     };
+    const cropped = async () => fixture("table-crop.pdf");
+    const below = () => variant("-50,-50,545,792", "-", 0);
     const cases: [string, () => Promise<string>][] = [
-      ["a CropBox", async () => fixture("table-crop.pdf")],
+      ["a CropBox", cropped],
       ...[90, 180, 270].map((r): [string, () => Promise<string>] => [`a CropBox, turned ${r}`, () => variant("-", "50,60,565,802", r)]),
-      ["a MediaBox off 0,0 and a CropBox", () => variant("20,30,615,872", "40,500,400,700", 0)],
-      ["a MediaBox off 0,0 and a CropBox, turned 90", () => variant("20,30,615,872", "40,500,400,700", 90)],
-      ["a MediaBox below 0,0", () => variant("-50,-50,545,792", "-", 0)],
+      ...[0, 90, 270].map((r): [string, () => Promise<string>] => [`a MediaBox off 0,0 and a CropBox, turned ${r}`, () => variant("20,30,615,872", "40,500,400,700", r)]),
+      ["a MediaBox below 0,0", below],
       ["no CropBox", async () => fixture("table.pdf")],
     ];
-    test.each(cases)("on a page with %s", async (_, made) => {
+    // Turned, pdfplumber can read a cell backwards and stext split a word, so a text is known by its letters.
+    const letters = (s: string) => [...s.replace(/\s/g, "")].sort().join("");
+    const same = (a: string, b: string) => letters(a) === letters(b);
+    type Edges = { x0: number; y0: number; x1: number; y1: number };
+    const inside = (l: Edges, b: Edges) => {
+      const [x, y] = [(l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2];
+      return x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1;
+    };
+
+    test.each(cases)("on a page with %s, each cell is marked where it stands and read as no prose", async (_, made) => {
       const pdf = await made();
-      const [paras, { lines }] = await Promise.all([pageParagraphs(pdf, 1), pageLines(pdf, 1)]);
-      const cells = paras.flatMap((p) => p.lines.filter((b) => b.cell !== undefined).map((b) => ({ b, text: p.table!.cells[b.cell!]! })));
-      expect(cells.length).toBeGreaterThan(8);
-      // Turned, pdfplumber can read a cell backwards and stext split a word; where it stands is what is checked.
-      const letters = (s: string) => [...s.replace(/\s/g, "")].sort().join("");
-      const same = (a: string, b: string) => letters(a) === letters(b);
-      const on = ({ b, text }: (typeof cells)[number]) =>
-        lines.some((l) => {
-          const [x, y] = [(l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2];
-          return same(l.spans.map((s) => s.text).join(""), text) && x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1;
-        });
-      expect(cells.filter((c) => !on(c)).map((c) => c.text)).toEqual([]);
+      const [paras, tables, { lines }] = await Promise.all([pageParagraphs(pdf, 1), pageTables(pdf, [1]), pageLines(pdf, 1)]);
+      const marks = paras.flatMap((p) => p.lines.filter((b) => b.cell !== undefined).map((b) => ({ b, text: p.table!.cells[b.cell!]! })));
+      expect(marks.length).toBeGreaterThan(8);
+      const on = ({ b, text }: (typeof marks)[number]) => lines.some((l) => same(l.spans.map((s) => s.text).join(""), text) && inside(l, b));
+      expect(marks.filter((c) => !on(c)).map((c) => c.text)).toEqual([]);
+      // The heads' cells too, which are no record's.
+      const cells = tables.flatMap((t) => t.rows.flatMap((r) => r.cells.flatMap((text, i) => (text && r.boxes?.[i] ? [{ text, box: r.boxes[i]! }] : []))));
+      expect(cells).toHaveLength(16);
+      const prose = paras.filter((p) => !p.table).flatMap((p) => p.lines.map((b) => ({ b, text: p.text.slice(b.start, b.end) })));
+      const cell = ({ b, text }: (typeof prose)[number]) => cells.some(({ text: t, box: [x0, y0, x1, y1] }) => same(t, text) || inside(b, { x0, y0, x1, y1 }));
+      expect(prose.filter(cell).map((l) => l.text)).toEqual([]);
+    });
+
+    test.each([
+      ["a CropBox", cropped],
+      ["a MediaBox below 0,0", below],
+    ])("on a page with %s that cuts no text, a passage reads as on the page uncut", async (_, made) => {
+      const [plain, moved] = await Promise.all([pageParagraphs(fixture("table.pdf"), 1), made().then((pdf) => pageParagraphs(pdf, 1))]);
+      expect(moved.map((p) => p.text)).toEqual(plain.map((p) => p.text));
     });
   });
 
@@ -358,25 +375,6 @@ describe("tables", () => {
       "Alt. Fire Modes: None",
       "Prose below the table.",
     ]);
-  });
-
-  test("a page's origin moves where its rows are marked, not what a passage reads or where the rows go", () => {
-    const table = (top: number, name: string, origin?: [number, number]): Table => ({
-      page: 1,
-      bbox: [50, top, 400, top + 40],
-      rows: [
-        { cells: ["Item", "Cost"], bbox: [50, top, 400, top + 20], boxes: [[50, top, 200, top + 20], [200, top, 400, top + 20]] },
-        { cells: [name, "5"], bbox: [50, top + 20, 400, top + 40], boxes: [[50, top + 20, 200, top + 40], [200, top + 20, 400, top + 40]] },
-      ],
-      origin,
-    });
-    const body = (y: number, text: string) => stextLine(50, y, 12, "Alegreya-Regular", text);
-    const xml = parseStext(page([body(60, "Prose above."), body(150, "Prose between."), body(250, "Prose below.")]));
-    const plain = paragraphs(xml, 1, [table(90, "Rope"), table(190, "Lamp")]);
-    const moved = paragraphs(xml, 1, [table(90, "Rope", [50, 40]), table(190, "Lamp", [50, 40])]);
-    expect(moved.map((p) => p.text)).toEqual(plain.map((p) => p.text));
-    const rows = (ps: typeof plain) => ps.filter((p) => p.table).flatMap((p) => p.lines.map((l) => [l.x0, l.y0, l.x1, l.y1]));
-    expect(rows(moved)).toEqual(rows(plain).map(([x0, y0, x1, y1]) => [x0! - 50, y0! - 40, x1! - 50, y1! - 40]));
   });
 });
 

@@ -70,13 +70,17 @@ count read, is another thing.)
 
 That space starts at the CropBox's corner and turns with `/Rotate`, while
 pdfplumber measures a table's cells from the MediaBox's, so `tables.py`
-reports where the page mutool draws starts among its boxes (`origin`) and a
-table's cells are marked less it. Which of a page's lines belong to a table,
-and where its rows go in the passage, are still decided in pdfplumber's
-space, so on a page with a CropBox, a MediaBox away from 0,0 or a rotation,
-a table's text can come into the passage as prose too. Setting that right
-changes what a passage reads there, which the bench cannot measure: none of
-its books has such a page.
+moves each table's boxes onto the page mutool draws before they leave it.
+Which of a page's lines belong to a table, where its rows go in the passage
+and what they mark are all decided in that one space. It differs from
+pdfplumber's only on a page with a CropBox, a MediaBox away from 0,0 or a
+rotation, and none of the bench's books has one
+(`experiments/pages/origins.py` lists a book's such pages, free).
+
+On a page turned 180° or 270°, pdfplumber reads each cell's text
+backwards ("efliR tabmoC"), and on a quarter turn it reads the table's
+columns as rows. The boxes are right; the text is not. This is known and
+not fixed.
 
 The web UI runs the tools with `--no-highlight` and draws each run's marks
 over the pages itself, so an older run keeps its own highlight and no book
