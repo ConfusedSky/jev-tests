@@ -4,6 +4,7 @@ const hosts = (port: number) => [`127.0.0.1:${port}`, `localhost:${port}`, `[::1
 /**
  * Extra names from a comma-separated list, as a proxy in front of the server
  * sends them in Host: "box.tailnet.ts.net:3217", or without a port on 443.
+ * The proxy serves them over https; a page on one over plain http is refused.
  */
 export const namesFrom = (list: string | undefined) =>
   (list ?? "")
@@ -28,7 +29,7 @@ export function foreign(req: Request, port: number, extra: string[] = []): boole
   const site = req.headers.get("sec-fetch-site");
   if (site !== null && site !== "same-origin" && site !== "none") return true;
   const origin = req.headers.get("origin");
-  // An extra name sits behind a proxy that may end TLS, so its pages come from https.
-  const own = [...hosts(port).map((h) => `http://${h}`), ...extra.flatMap((h) => [`https://${h}`, `http://${h}`])];
+  // An extra name is reached only through a proxy that ends TLS, so its pages come from https alone.
+  const own = [...hosts(port).map((h) => `http://${h}`), ...extra.map((h) => `https://${h}`)];
   return origin !== null && !own.includes(origin);
 }

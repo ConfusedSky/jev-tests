@@ -148,8 +148,13 @@ export function factsOf(lines: Line[]): Facts {
  * gate made of it; `verdict`, `answer` and `sure` what was read off it.
  */
 export type Read = { kind: "section" | "excerpt" | "window" | "contents"; name: string; p?: number; gate?: "yes" | "no"; verdict?: "take" | "keep" | "drop"; answer?: string; sure?: number; page?: number };
-/** A PDF the walk opened: its score among the paths, how its sections were ranked, what was read in it, and the step it was opened for, such as a cell of a table across the shelf. */
-export type FileWalk = { path?: string; score?: number; ranked?: string; reads: Read[]; under?: string };
+/**
+ * A PDF the walk opened: its score among the paths, how its sections were
+ * ranked, what was read in it, and the step it was opened for, such as a cell
+ * of a table across the shelf. `left` says why one was never opened: left out
+ * of the ranking, or skipped once ranked.
+ */
+export type FileWalk = { path?: string; score?: number; ranked?: string; reads: Read[]; under?: string; left?: string };
 /** `paths` is the latest ranking of the paths; a table across the shelf ranks them `times` over, once a cell. */
 export type Walk = { paths?: { ranked: number; above?: number; floor?: string; times: number; under?: string }; names?: number; files: FileWalk[] };
 
@@ -185,6 +190,10 @@ export function walkOf(lines: Line[]): Walk {
     else if (depth === at && header && (m = /^(\d\.\d\d)\s{2}(.+?)(?:\s{2}\(by p\.\d+\))?…$/.exec(text))) {
       w.files.push((file = { path: m[2], score: Number(m[1]), reads: [], under: open[depth - 1] }));
       cur = undefined;
+    } else if (!header && depth === (at ?? depth) && (m = /^(\d\.\d\d|--)\s{2}(.+?)(?:\s{2}\(by p\.\d+\))?\s{2}--\s{2}(.+)$/.exec(text))) {
+      // A file left out comes before the paths are ranked, so before their depth is known.
+      w.files.push({ path: m[2], ...(m[1] !== "--" && { score: Number(m[1]) }), reads: [], under: open[depth - 1], left: m[3] });
+      file = cur = undefined;
     } else if ((m = /^ranked (\d+) sections and (\d+) excerpts/.exec(text))) here().ranked = `${m[1]} section${m[1] === "1" ? "" : "s"}${m[2] !== "0" ? ` and ${m[2]} excerpt${m[2] === "1" ? "" : "s"}` : ""}`;
     else if (/^ranked from cache/.test(text)) here().ranked = "from the cache";
     else if ((m = /^section (.+?)\s{2}p\.(\d+)-(\d+)…$/.exec(text))) add({ kind: "section", name: `${m[1]} p.${m[2] === m[3] ? m[2] : `${m[2]}-${m[3]}`}` });
@@ -232,16 +241,17 @@ const listed = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0,
 /** The walk in a line of steps: what was ranked, what was opened, what was read, and what was taken. */
 export function flowOf(w: Walk): string[] {
   const out: string[] = [];
+  const opened = w.files.filter((f) => !f.left);
   if (w.names !== undefined) out.push(`ranked ${w.names} names`);
-  if (w.paths && w.paths.times > 1) out.push(`ranked ${w.paths.ranked} paths for each of ${w.paths.times} cells`, `opened ${count(new Set(w.files.map((f) => f.path)).size, "file")}`);
-  else if (w.paths) out.push(`ranked ${w.paths.ranked} paths`, `opened ${w.files.length} of ${w.paths.ranked}${w.paths.above !== undefined ? ` (${w.paths.above} above the file floor ${w.paths.floor})` : ""}`);
+  if (w.paths && w.paths.times > 1) out.push(`ranked ${w.paths.ranked} paths for each of ${w.paths.times} cells`, `opened ${count(new Set(opened.map((f) => f.path)).size, "file")}`);
+  else if (w.paths) out.push(`ranked ${w.paths.ranked} paths`, `opened ${opened.length} of ${w.paths.ranked}${w.paths.above !== undefined ? ` (${w.paths.above} above the file floor ${w.paths.floor})` : ""}`);
   else if (w.files[0]?.ranked) out.push(`ranked ${w.files[0].ranked}`);
   const reads = w.files.flatMap((f) => f.reads);
   const n = (k: Read["kind"]) => reads.filter((r) => r.kind === k).length;
   const parts = [n("contents") ? "the contents" : "", n("section") ? count(n("section"), "section") : "", n("excerpt") ? count(n("excerpt"), "excerpt page") : "", n("window") ? count(n("window"), "window") : ""].filter(Boolean);
   if (parts.length) out.push(`read ${listed(parts)}`);
   const took = w.files.flatMap((f) => f.reads.filter((r) => r.verdict === "take").map((r) => ({ f, r })));
-  const where = ({ f, r }: (typeof took)[number]) => `${w.files.length > 1 && f.path ? `${f.path.split("/").pop()} ` : ""}${r.kind === "contents" ? "the contents" : r.page ? `p.${r.page}` : r.name}`;
+  const where = ({ f, r }: (typeof took)[number]) => `${opened.length > 1 && f.path ? `${f.path.split("/").pop()} ` : ""}${r.kind === "contents" ? "the contents" : r.page ? `p.${r.page}` : r.name}`;
   if (took.length) out.push(`took ${took.slice(0, 3).map(where).join(", ")}${took.length > 3 ? ` and ${took.length - 3} more` : ""}`);
   else if (reads.length) out.push("took nothing");
   return out;
@@ -275,12 +285,12 @@ export function gaugesOf(lines: Line[], trying: string | undefined, limits: { ma
   const w = walkOf(lines);
   const out: Gauge[] = [];
   if (w.paths && limits.maxFiles) {
-    const opened = w.files.filter((f) => f.under === w.paths!.under).length;
+    const opened = w.files.filter((f) => f.under === w.paths!.under && !f.left).length;
     const of = Math.min(limits.maxFiles, w.paths.ranked);
     out.push({ label: `${count(opened, "file")} opened${w.paths.times > 1 ? " for this cell" : ""}, up to ${of}`, done: opened, of, cap: true });
   }
   // The file being read, once the latest ranking of the paths has opened one.
-  const file = w.files.findLast((f) => !w.paths || f.under === w.paths.under);
+  const file = w.files.findLast((f) => !f.left && (!w.paths || f.under === w.paths.under));
   const reads = file?.reads.filter((r) => r.kind === "section" || r.kind === "window") ?? [];
   const noun = reads.length && reads.every((r) => r.kind === "window") ? "window" : "section";
   if (file?.ranked !== undefined || reads.length) out.push({ label: `${count(reads.length, noun)} read${w.paths ? " in this file" : ""}, up to ${limits.max}`, done: reads.length, of: limits.max, cap: true });

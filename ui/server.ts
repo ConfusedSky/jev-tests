@@ -7,11 +7,12 @@
  *                                  "plocate '*.pdf'", to put on the shelf at first
  *
  * PORT sets the port (3217). JEV_UI_HOSTS lists more names to answer to, for
- * a proxy in front of it: JEV_UI_HOSTS=box.tailnet.ts.net:3217 behind
+ * a proxy in front of it that serves them over https (their pages are taken
+ * from https only): JEV_UI_HOSTS=box.tailnet.ts.net:3217 behind
  * `tailscale serve --https=3217 http://127.0.0.1:3217`.
  */
 import { realpathSync } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { CACHE_MODELS, unready } from "../cache";
@@ -36,7 +37,7 @@ const HOSTS = namesFrom(process.env.JEV_UI_HOSTS);
 const BOOT = Date.now();
 const folders = Bun.argv.slice(2).map((a) => (isLocate(a) ? sourceKey(a) : expand(a)));
 const drawings = new PageCache(`${cacheDir()}/ui-pages`, capOf(process.env.JEV_PAGE_CACHE_MB));
-const drawingsLoaded = drawings.load();
+const drawingsLoaded = drawings.sweep();
 
 const real = (p: string) => {
   try {
@@ -143,7 +144,8 @@ async function health(): Promise<Health> {
       tables: await Bun.file(`${ROOT}/.venv/bin/python`).exists(),
     },
     cacheDir: cacheDir(),
-    pages: { bytes: drawings.bytes, cap: drawings.cap },
+    // Read afresh, since another server may share the directory.
+    pages: await drawings.sweep().then(() => ({ bytes: drawings.bytes, cap: drawings.cap })),
     boot: BOOT,
   };
 }
@@ -270,22 +272,22 @@ async function page(req: Request): Promise<Response> {
   const name = drawingName(pdf, doc.mtime, n, w);
   const png = `${drawings.dir}/${name}`;
   if (!(await Bun.file(png).exists())) {
-    const drawn = await slot(async () => {
-      if (req.signal.aborted) return "gone";
-      await mkdir(drawings.dir, { recursive: true });
-      // Drawn aside and moved in place, so a request that comes while it is drawn never reads half a file.
-      const part = `${png}.${crypto.randomUUID()}.part`;
-      const p = Bun.spawn(["mutool", "draw", "-q", "-F", "png", "-w", String(w), "-o", part, pdf, String(n)], { stdout: "ignore", stderr: "pipe" });
-      if ((await p.exited) !== 0) {
-        await rm(part, { force: true });
-        return new Response(await new Response(p.stderr).text(), { status: 500 });
-      }
-      await rename(part, png);
-    });
-    if (drawn === "gone") return new Response(null, { status: 499 });
-    if (drawn) return drawn;
+    let made: boolean;
+    try {
+      made = await drawings.make(name, req.signal, (part, wanted) =>
+        slot(async () => {
+          if (!wanted()) return false;
+          const p = Bun.spawn(["mutool", "draw", "-q", "-F", "png", "-w", String(w), "-o", part, pdf, String(n)], { stdout: "ignore", stderr: "pipe" });
+          if ((await p.exited) !== 0) throw new Error(await new Response(p.stderr).text());
+          return true;
+        }),
+      );
+    } catch (e) {
+      return new Response(e instanceof Error ? e.message : String(e), { status: 500 });
+    }
+    if (!made) return new Response(null, { status: 499 });
   }
-  drawings.use(name, Bun.file(png).size);
+  void drawings.use(name, Bun.file(png).size);
   return new Response(Bun.file(png), { headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=86400" } });
 }
 

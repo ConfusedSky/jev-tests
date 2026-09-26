@@ -169,10 +169,10 @@ describe("holding the view while the pages change size", () => {
     expect([back.left, back.top].map(Math.round)).toEqual([0, 700]);
   });
 
-  test("zooming holds on the highlight while its page is in view, brought in from the view's lower half", () => {
+  test("zooming holds on a highlight too wide for the view by its top left, brought in from the view's lower half", () => {
     const spot = { page: 1, marks: [mark(1, 700)] };
     // Page 1 fills the view from its top; the mark, 7/8 of the way down, is near the view's bottom.
-    const a = markAnchor(spot, size, laid(368), { ...view, height: 500 })!;
+    const a = markAnchor(spot, size, laid(368), { ...view, height: 500 }, 3)!;
     expect([a.page, a.fx, a.fy, a.vy]).toEqual([1, 0.1, 0.875, 0.5]);
     const at3 = scrollOf(a, laid(368 * 3), view.width, 500);
     const y = 16 + 0.875 * layOut(pages, 368 * 3, 12).heights[0]! - at3.top;
@@ -182,5 +182,39 @@ describe("holding the view while the pages change size", () => {
   test("zooming holds on the view's middle when the highlight's page is out of view or nothing is marked", () => {
     expect(markAnchor({ page: 3, marks: [mark(3, 100)] }, size, laid(368), view)).toBeUndefined();
     expect(markAnchor({ page: 1, marks: [] }, size, laid(368), view)).toBeUndefined();
+  });
+
+  // The page is in view, the mark is not: holding it would pull the view back to it.
+  test("zooming holds on the view's middle when the highlight's page is in view but none of its marks", () => {
+    const spot = { page: 1, marks: [mark(1, 100)] };
+    // At 300% page 1 is 1472px tall; its mark stands 200px down, the view 700px below that.
+    const at3 = laid(368 * 3);
+    expect(markAnchor(spot, size, at3, { ...view, top: 900 }, 1 / 3)).toBeUndefined();
+    expect(markAnchor(spot, size, at3, { ...view, top: 0 }, 1 / 3)).toBeDefined();
+    // Nor when the page, wider than the view, is scrolled across past it.
+    const aside = { page: 1, marks: [{ page: 1, x0: 500, y0: 100, x1: 540, y1: 112 }] };
+    expect(markAnchor(aside, size, at3, { ...view, top: 0 }, 1 / 3)).toBeUndefined();
+  });
+
+  // A row's cells toward the right of the page: held by the first, the last went off the view's edge at 300%.
+  test("zooming holds on a highlight that will fit the view by its middle, all of it kept in view", () => {
+    const cell = (x0: number) => ({ page: 1, x0, y0: 400, x1: x0 + 15, y1: 412 });
+    const spot = { page: 1, marks: [cell(400), cell(450), cell(500)] };
+    const a = markAnchor(spot, size, laid(368), view, 3)!;
+    expect(a.fx).toBeCloseTo(457.5 / 600, 9);
+    expect(a.fy).toBeCloseTo(406 / 800, 9);
+    const at3 = laid(368 * 3);
+    const to = scrollOf(a, at3, view.width, view.height);
+    const box = (m: ReturnType<typeof cell>) => [16 + (m.x0 / 600) * 1104 - to.left, 16 + (m.y0 / 800) * at3.lay.heights[0]! - to.top, 16 + (m.x1 / 600) * 1104 - to.left, 16 + (m.y1 / 800) * at3.lay.heights[0]! - to.top];
+    for (const m of spot.marks) {
+      const [x0, y0, x1, y1] = box(m);
+      expect(x0).toBeGreaterThanOrEqual(0);
+      expect(y0).toBeGreaterThanOrEqual(0);
+      expect(x1).toBeLessThanOrEqual(view.width);
+      expect(y1).toBeLessThanOrEqual(view.height);
+    }
+    // Where it fits already, it stays where it stands.
+    const still = markAnchor(spot, size, laid(368), view, 1)!;
+    expect(still.vx).toBeCloseTo((16 + (457.5 / 600) * 368) / 400, 9);
   });
 });

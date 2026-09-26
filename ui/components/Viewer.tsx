@@ -57,8 +57,8 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const name = basename(pdf);
 
   // What the view holds on to while the pages change size (see Anchor): the
-  // highlight shown while its page is in view, so neither a zoom nor the pane
-  // settling its width as it opens moves it out of sight; else the point
+  // highlight shown while a mark of it is in view, so neither a zoom nor the
+  // pane settling its width as it opens moves it out of sight; else the point
   // `vy` down the view, across its middle.
   const anchor = useRef<Anchor>(undefined);
   const laid = useRef({ lay, width, pad: PAD });
@@ -66,12 +66,12 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const shown = useRef({ spot, info: doc.info });
   shown.current = { spot, info: doc.info };
   const viewBox = (el: HTMLElement): ViewBox => ({ left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight });
-  const hold = (vy: number) => {
+  const hold = (vy: number, scale = 1) => {
     const el = scroller.current;
     if (!el || laid.current.lay.tops.length === 0) return;
     const { spot, info } = shown.current;
     const size = spot.size ?? sizeOf(info, spot.page);
-    anchor.current = (size && markAnchor(spot, size, laid.current, viewBox(el))) || anchorAt(laid.current, viewBox(el), 0.5, vy);
+    anchor.current = (size && markAnchor(spot, size, laid.current, viewBox(el), scale)) || anchorAt(laid.current, viewBox(el), 0.5, vy);
   };
 
   // Before the dialog around it, if any, puts the cursor on its first button.
@@ -151,7 +151,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const go = (by: 1 | -1) => onAt(stepSpot(spots.length, at, by));
   const zoomTo = (z: number) => {
     if (z === zoom) return;
-    hold(0.5);
+    hold(0.5, z / zoom);
     setZoom(z);
   };
   const toPage = (n: number) => {
@@ -242,11 +242,10 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
 
   return (
     <div ref={root} onKeyDown={onKey} role="region" aria-label={`Pages of ${name}`} className="flex h-full min-h-0 flex-col bg-stone-50">
-      <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 border-b border-stone-200 bg-white px-1.5 py-1.5">
+      <div className={cx("flex flex-wrap items-center gap-x-0.5 gap-y-1 border-b border-stone-200 bg-white py-1.5", compact ? "px-1" : "px-1.5")}>
         {compact && (
-          <button ref={toggle} onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="viewer-list" title="The run's highlights" className={cx(button, "gap-1 text-xs font-medium", listOpen && "bg-teal-50 text-teal-900")}>
+          <button ref={toggle} onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="viewer-list" aria-label={`The run's highlights, ${spots.length}`} title="The run's highlights" className={cx(button, listOpen && "bg-teal-50 text-teal-900")}>
             <Icon name="list" size={16} />
-            {spots.length}
           </button>
         )}
         <div className="flex items-center">
@@ -254,14 +253,24 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
             <Icon name="chevron" size={14} className="rotate-180" />
           </button>
           <span aria-live="polite" className="px-0.5 text-xs whitespace-nowrap text-stone-700 tabular-nums">
-            highlight {at + 1} of {spots.length}
+            {compact ? (
+              <>
+                <span className="sr-only">highlight </span>
+                {at + 1}
+                <span aria-hidden="true">/</span>
+                <span className="sr-only"> of </span>
+                {spots.length}
+              </>
+            ) : (
+              `highlight ${at + 1} of ${spots.length}`
+            )}
           </span>
           <button onClick={() => go(1)} disabled={at === spots.length - 1} aria-label="Next highlight" title="Next highlight (n)" className={button}>
             <Icon name="chevron" size={14} />
           </button>
         </div>
         <label className="flex items-center gap-1 text-xs whitespace-nowrap text-stone-500">
-          p.
+          {!compact && "p."}
           <input
             value={typed ?? String(page)}
             onChange={(e) => setTyped(e.target.value.replace(/\D/g, ""))}
@@ -279,13 +288,16 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
             disabled={pages.length === 0}
             className="w-10 rounded-md border border-stone-200 bg-white px-1 py-0.5 text-center font-mono text-xs text-stone-800 tabular-nums focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/15"
           />
-          <span className="tabular-nums">of {pages.length || "…"}</span>
+          <span className="tabular-nums">
+            {compact ? "/" : "of "}
+            {pages.length || "…"}
+          </span>
         </label>
         <div className="ml-auto flex items-center">
           <button onClick={() => zoomTo(zoomStep(zoom, -1))} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out (−)" className={button}>
             <Icon name="minus" size={14} />
           </button>
-          <button onClick={() => zoomTo(1)} title="Fit the width (0)" className={cx(button, "w-10 text-xs tabular-nums")}>
+          <button onClick={() => zoomTo(1)} title="Fit the width (0)" className={cx(button, "text-xs tabular-nums", compact ? "w-9" : "w-10")}>
             {zoom === 1 ? "fit" : `${Math.round(zoom * 100)}%`}
           </button>
           <button onClick={() => zoomTo(zoomStep(zoom, 1))} disabled={zoom >= 3} aria-label="Zoom in" title="Zoom in (+)" className={button}>
@@ -337,7 +349,10 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
                     aria-current={i === at ? "true" : undefined}
                     onClick={() => {
                       onAt(i);
-                      if (compact) setListOpen(false);
+                      if (!compact) return;
+                      // The button goes with the list; left to fall to the body, the cursor would take n to a new question.
+                      scroller.current?.focus({ preventScroll: true });
+                      setListOpen(false);
                     }}
                     className={cx("w-full rounded-lg px-2 py-1.5 text-left text-xs", i === at ? "bg-white shadow-sm ring-1 ring-teal-600/30" : "hover:bg-stone-100")}
                   >

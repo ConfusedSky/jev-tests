@@ -30,9 +30,10 @@ const FIND_IO: FindIo = { searchPdf, composeTable };
  */
 export async function findIn(client: TypeSafeClient, shelf: string[], search: FindOpts, ui: Ui, { hard = false } = {}, io: FindIo = FIND_IO): Promise<Walked> {
   // An empty file has nothing to read; ranked, its name alone could clear the
-  // floor and count as a file above it that was never there to open.
+  // floor and count as a file above it that was never there to open. It is
+  // logged as a skipped file is, with "--" for the score it never got.
   const empty = await Promise.all(shelf.map(async (p) => (await Bun.file(p).exists()) && Bun.file(p).size === 0));
-  for (const [i, p] of shelf.entries()) if (empty[i]) ui.log(`--  ${p}: empty file, left out of the ranking`);
+  for (const [i, p] of shelf.entries()) if (empty[i]) ui.log(`--  ${p}  --  empty file, left out of the ranking`);
   const paths = shelf.filter((_, i) => !empty[i]);
   const rankSnap = snapshot();
   // A file's name may say nothing of what it holds, so the pages of every

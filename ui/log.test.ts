@@ -244,6 +244,28 @@ total 5.1s (jev 2.8s, read 0.1s, embed 2.3s, other 0.0s; 20,225 tokens in, 4,025
     expect(flowOf(w)).toEqual(["ranked 9 paths for each of 2 cells", "opened 2 files", "read 1 section and 1 window", "took manual.pdf p.1"]);
   });
 
+  test("list a file left out of the ranking and one skipped once ranked, neither of them opened", () => {
+    const lines = parse(`--  /shelf/taxes.pdf  --  empty file, left out of the ranking
+ranked 2 paths and 0 excerpts in 0.2s (jev 0.2s; 1,319 tokens in, 148 out, $0.00006), 2 above file floor 1.5
+2.90  /shelf/damaged.pdf  --  not a PDF mutool can open (no objects found), skipped
+2.10  /shelf/manual.pdf…
+  ranked 3 sections and 0 excerpts in 0.1s (jev 0.1s; 900 tokens in, 20 out, $0.00004), 1 above title floor 1
+  section Chapter I: Skills  p.1-1…
+    yes  0.81  Chapter I: Skills p.1
+    take  7 (p=1.00)  Chapter I: Skills p.1
+  section 0.5s (jev 0.5s; 2,898 tokens in, 287 out, $0.00012)  Chapter I: Skills
+file 0.6s (jev 0.5s; 2,898 tokens in, 287 out, $0.00012)  1 windows read`);
+    expect(lines[0]!.verb).toBe("--");
+    const w = walkOf(lines);
+    expect(w.files.map((f) => [f.path, f.score, f.left, f.reads.length])).toEqual([
+      ["/shelf/taxes.pdf", undefined, "empty file, left out of the ranking", 0],
+      ["/shelf/damaged.pdf", 2.9, "not a PDF mutool can open (no objects found), skipped", 0],
+      ["/shelf/manual.pdf", 2.1, undefined, 1],
+    ]);
+    expect(flowOf(w)).toEqual(["ranked 2 paths", "opened 1 of 2 (2 above the file floor 1.5)", "read 1 section", "took p.1"]);
+    expect(gaugesOf(lines, undefined, { max: 10, maxFiles: 5 })[0]!.done).toBe(1);
+  });
+
   test("say what became of each read: the verdict, else the gate's, and the one under way while the run goes on", () => {
     const w = walkOf(
       parse(`section A  p.1-1…
