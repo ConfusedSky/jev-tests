@@ -86,3 +86,84 @@ test("a column the rows' own cells state is read from them and never searched; t
   // Each row asked once for each of the two columns, in the own-cells step only.
   expect(rowAsks).toHaveLength(6);
 });
+
+test("asked to keep the normal columns, the rows' table's own come first, and a named one it holds is not repeated", async () => {
+  const client = {
+    systemOne: async ({ questions }: { questions: Record<string, Q> }) => ({
+      answers: Object.fromEntries(
+        Object.entries(questions).map(([k, q]) => {
+          const word = /\("(.*?)"\)/.exec(q.instructions)?.[1] ?? "";
+          if (k === "keep") return [k, noul(true)];
+          if (q.type === "noul" && /^r\d+$/.test(k)) return [k, noul(word === "weapons")];
+          if (q.type === "noul" && /^c\d+$/.test(k)) return [k, noul(["cost", "drum", "magazine", "size"].includes(word))];
+          if (q.type === "noul") return [k, noul(false)];
+          const options = Object.entries(q.criteria ?? {});
+          const head = (h: string) => options.find(([, d]) => d === `The column headed "${h}"`)?.[0];
+          return [k, picked((q.instructions.includes("drum magazine size") && head("Drum")) || (q.instructions.includes("cost") && head("Cost")) || "none")];
+        }),
+      ),
+    }),
+  } as unknown as TypeSafeClient;
+  const io: Io = {
+    answerLayer: (async (_c: unknown, o: unknown) => o) as unknown as Io["answerLayer"],
+    searchPdf: (async (_c: unknown, _pdf: string, o: { question: string }) =>
+      o.question.startsWith("Show me the table") ? found(95, weapons) : found(345, clipChart)) as unknown as Io["searchPdf"],
+    pageCount: async () => 400,
+    pageParagraphs: async () => [],
+  };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  const question = "Show me the weapons table. In addition to the normal columns add the cost and drum magazine size";
+  const out = await composeTable(client, "fixture/catalogue.pdf", { ...readDefaults(), question, cache: "off" }, ui, "", io);
+
+  expect(out.hit?.answer?.passage?.[0]?.table?.heads).toEqual(["Weapon Type", "Standard Magazine", "Cost", "drum magazine size"]);
+  expect(out.hit?.answer?.passage?.map((p) => p.table?.cells)).toEqual([
+    ["Medium Pistol", "12 (M Pistol)", "50eb", "36"],
+    ["Heavy Pistol", "8 (H Pistol)", "100eb", "28"],
+    ["Rocket Launcher", "1 (Rocket)", "500eb", "3"],
+  ]);
+});
+
+test("kept, a column no row fills is left out, and what to add follows its columns to their new places", async () => {
+  const withNotes = table(95, ["Weapon Type", "Standard Magazine", "Notes", "Cost"], [
+    ["Medium Pistol", "12 (M Pistol)", "", "50eb"],
+    ["Heavy Pistol", "8 (H Pistol)", "", "100eb"],
+  ]);
+  const client = {
+    systemOne: async ({ questions }: { questions: Record<string, Q> }) => ({
+      answers: Object.fromEntries(
+        Object.entries(questions).map(([k, q]) => {
+          const word = /\("(.*?)"\)/.exec(q.instructions)?.[1] ?? "";
+          if (k === "keep") return [k, noul(true)];
+          if (/^r\d+$/.test(k)) return [k, noul(word === "weapons")];
+          if (/^c\d+$/.test(k)) return [k, noul(["cost", "drum", "magazine", "size"].includes(word))];
+          if (/^a\d+$/.test(k)) return [k, noul(word === "price")];
+          // The price goes beside both named columns.
+          if (/^k\d+$/.test(k)) return [k, noul(true)];
+          if (q.type === "noul") return [k, noul(false)];
+          const options = Object.entries(q.criteria ?? {});
+          const head = (h: string) => options.find(([, d]) => d === `The column headed "${h}"`)?.[0];
+          return [k, picked((q.instructions.includes("drum magazine size") && head("Drum")) || (q.instructions.includes("cost") && head("Cost")) || "none")];
+        }),
+      ),
+    }),
+  } as unknown as TypeSafeClient;
+  const io: Io = {
+    answerLayer: (async (_c: unknown, o: unknown) => o) as unknown as Io["answerLayer"],
+    searchPdf: (async (_c: unknown, _pdf: string, o: { question: string }) =>
+      o.question.startsWith("Show me the table") ? found(95, withNotes) : found(345, clipChart)) as unknown as Io["searchPdf"],
+    pageCount: async () => 400,
+    pageParagraphs: async () => [],
+  };
+  const ui = { log: () => {}, trying: () => {}, clear: () => {} };
+
+  const question = "Show me the weapons table with its normal columns plus cost and drum magazine size, each with its price in parenthesis";
+  const out = await composeTable(client, "fixture/catalogue.pdf", { ...readDefaults(), question, cache: "off" }, ui, "", io);
+
+  // No table near the rows prices anything, so each priced item reads N/A.
+  expect(out.hit?.answer?.passage?.[0]?.table?.heads).toEqual(["Weapon Type", "Standard Magazine", "Cost", "drum magazine size"]);
+  expect(out.hit?.answer?.passage?.map((p) => p.table?.cells)).toEqual([
+    ["Medium Pistol", "12 (M Pistol)", "50eb (N/A)", "36 (N/A)"],
+    ["Heavy Pistol", "8 (H Pistol)", "100eb (N/A)", "28 (N/A)"],
+  ]);
+});

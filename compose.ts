@@ -191,8 +191,10 @@ export function namesBy(
  * What the table is of, its columns, and what to add beside each item of
  * some of them: "for each Mod column add the cost of the mod in
  * parenthesis" adds `add: "cost"` to the columns named in `annotated`.
+ * `keep` is set when the rows' table's own columns go before the named ones
+ * ("in addition to the normal columns add the extended magazine size").
  */
-export type Request = { things: string; columns: string[]; add?: string; annotated: number[] };
+export type Request = { things: string; columns: string[]; add?: string; annotated: number[]; keep: boolean };
 
 /**
  * What the table is of, which columns it wants and what to add to them, read
@@ -213,8 +215,15 @@ const requests = new Map<string, Promise<Request>>();
 
 async function readRequestOnce(client: TypeSafeClient, question: string): Promise<Request> {
   const words = wordsOf(question);
-  const questions = Object.fromEntries(
-    words.flatMap((w, i) => [
+  const questions = Object.fromEntries([
+    [
+      "keep",
+      noul(
+        "`question` wants the table to have the columns the book's own table of the rows already has, as well as the ones " +
+          'it names, such as "in addition to the normal columns add the extended magazine size". Not when it names every column it wants.',
+      ),
+    ],
+    ...words.flatMap((w, i) => [
       [
         `r${i}`,
         noul(
@@ -240,9 +249,10 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
         ),
       ],
     ]),
-  );
+  ]);
   const res = await timed("api", () => client.systemOne({ state: { question, words: words.map((w) => w.word) }, questions }));
   const p = (prefix: string, i: number) => (res.answers[`${prefix}${i}`] as { noul: number }).noul;
+  const keep = (res.answers.keep as { noul: number }).noul >= 0.5;
   const quantifier = (i: number) => /^(each|every|all)$/i.test(words[i]!.word);
   // A name starts at a word jev is sure of and runs on through words it
   // half believes: "guns" of "small guns" and "Mods" of "Barrel Mods" sit
@@ -262,7 +272,7 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
   const adds = namesBy(words, (i) => !inRows(i) && p("a", i) >= 0.5 && p("a", i) >= p("c", i), (i) => !inRows(i) && p("a", i) >= 0.3, { of: true });
   const surest = (n: { start: number; end: number }) => Math.max(...words.slice(n.start, n.end + 1).map((_, k) => p("a", n.start + k)));
   const add = adds.sort((x, y) => surest(y) - surest(x))[0]?.name;
-  if (!add || columns.length === 0) return { things, columns, annotated: [] };
+  if (!add || columns.length === 0) return { things, columns, annotated: [], keep };
   const which = await timed("api", () =>
     client.systemOne({
       state: { question },
@@ -270,7 +280,7 @@ async function readRequestOnce(client: TypeSafeClient, question: string): Promis
     }),
   );
   const annotated = columns.flatMap((_, j) => ((which.answers[`k${j}`] as { noul: number }).noul >= 0.5 ? [j] : []));
-  return { things, columns, add: annotated.length ? add : undefined, annotated };
+  return { things, columns, add: annotated.length ? add : undefined, annotated, keep };
 }
 
 /** A search for a passage, its question and reading set here rather than asked of jev. */
@@ -299,7 +309,9 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     step = snapshot();
     return t;
   };
-  const { things, columns, add, annotated } = await readRequest(client, o.question);
+  const request = await readRequest(client, o.question);
+  const { things, add, keep } = request;
+  let { columns, annotated } = request;
   // Naming no columns, "show me the exotic weapons table" wants a table the
   // book prints, and jev reads it as one to be made now and then; the
   // table kind reads a page as a passage does, so the search runs as one.
@@ -307,7 +319,7 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
     ui.log(`${indent}${columns.length ? "no rows" : "no columns"} named; read as a passage`);
     return io.searchPdf(client, pdf, o, ui, indent);
   }
-  ui.log(`${indent}table of ${things}: ${columns.join(", ")}${add ? `, ${add} beside each ${annotated.map((j) => columns[j]).join(", ")} item` : ""}  in ${took()}`);
+  ui.log(`${indent}table of ${things}: ${keep ? "its own columns, " : ""}${columns.join(", ")}${add ? `, ${add} beside each ${annotated.map((j) => columns[j]).join(", ")} item` : ""}  in ${took()}`);
   begin(`rows: finding the table of ${things}`);
   const main = await passageSearch(io, client, pdf, o, ui, `${indent}  `, `Show me the table of all the ${things}`, [things]);
   const first = main.hit && tablesIn(main.hit);
@@ -317,15 +329,14 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   }
   const picking = snapshot();
   const ours = first.length === 1 ? first[0]! : await pickTable(client, o.question, things, first);
-  if (first.length > 1) ui.log(`${indent}  of ${count(first.length, "table")}, the one with a row for each: ${ours.heads.join(", ")}  in ${split(picking)}`);
+  if (first.length > 1) ui.log(`${indent}  of ${count(first.length, "table")}, the one the question asks for: ${ours.heads.join(", ")}  in ${split(picking)}`);
   ui.log(`${indent}rows: ${ours.rows.length} ${things} from p.${main.hit.page}  in ${took()}`);
 
   // Each column comes from the first table that holds it, ours first.
   type Source = { table: Found; col: number };
-  const sources: (Source | undefined)[] = columns.map(() => undefined);
+  let sources: (Source | undefined)[] = columns.map(() => undefined);
   const place = async (tables: Found[], question: string, wanted: number[]) => {
-    // A column no row fills is a gap the table's rules leave, not a column.
-    const heads = tables.map((t) => t.heads.map((h, c) => (t.rows.some((r) => r.cells[c]) ? h : "")));
+    const heads = tables.map((t) => t.heads.map((h, c) => (filled(t, c) ? h : "")));
     const cols = await columnsFor(client, question, wanted.map((j) => columns[j]!), heads);
     wanted.forEach((j, k) => {
       const t = cols.findIndex((c) => c[k] !== undefined);
@@ -334,6 +345,16 @@ export async function composeTable(client: TypeSafeClient, pdf: string, o: ReadO
   };
   await place(first, o.question, columns.map((_, j) => j));
   ui.log(`${indent}columns in the rows' table: ${sources.filter(Boolean).length} of ${columns.length}  in ${took()}`);
+  if (keep) {
+    // A named column the table holds, the name column included, is already shown.
+    const kept = ours.heads.flatMap((_, c) => (c > 0 && filled(ours, c) ? [c] : []));
+    const extra = columns.flatMap((_, j) => (sources[j]?.table === ours && (sources[j]!.col === 0 || kept.includes(sources[j]!.col)) ? [] : [j]));
+    const at = columns.map((_, j) => (extra.includes(j) ? kept.length + extra.indexOf(j) : kept.indexOf(sources[j]!.col)));
+    annotated = annotated.map((j) => at[j]!).filter((j) => j >= 0);
+    columns = [...kept.map((c) => ours.heads[c]!), ...extra.map((j) => columns[j]!)];
+    sources = [...kept.map((col) => ({ table: ours, col })), ...extra.map((j) => sources[j])];
+    ui.log(`${indent}the rows' table's own columns kept: ${kept.map((c) => ours.heads[c]).join(", ")}`);
+  }
   const names = ours.rows.map((r) => r.cells[0] ?? "");
   const unplaced = () => columns.flatMap((_, j) => (sources[j] ? [] : [j]));
 
@@ -623,14 +644,17 @@ export async function deriveCells(client: TypeSafeClient, question: string, ours
   return choosePieces(client, question, asks);
 }
 
-/** Of several tables a passage holds, the one with a row for each of `things`. */
+/** A column no row fills is a gap the table's rules leave, not a column. */
+const filled = (t: Found, c: number) => t.rows.some((r) => r.cells[c]);
+
+/** Of several tables a passage holds, the one the question asks for, with a row for each of `things`. */
 export async function pickTable(client: TypeSafeClient, question: string, things: string, tables: Found[]): Promise<Found> {
   const res = await timed("api", () =>
     client.systemOne({
       state: { question },
       questions: {
         table: choice(
-          `Which table has a row for each of the ${things}?`,
+          `Which table is the one \`question\` asks for, with a row for each of the ${things} as \`question\` names them?`,
           Object.fromEntries(
             tables.map((t, k) => [`t${k}`, `The table headed "${t.heads.join(", ")}", with rows such as ${t.rows.slice(0, 3).map((r) => `"${r.cells[0]}"`).join(", ")}`]),
           ),
