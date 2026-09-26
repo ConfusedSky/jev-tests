@@ -11,7 +11,9 @@ directory) and have no tests. Run them from the repo root so Bun loads
 | `ranking-cache/` | the 42-question similarity study | [ranking-cache.md](../docs/ranking-cache.md) |
 | `choice-ranking/` | ranking by one choice question: a patch and its comparison script | [choice-ranking.md](../docs/choice-ranking.md) |
 | `embed/` | page embeddings as a ranking shortlist and as a page check | [token-usage.md](../docs/token-usage.md), [dead-ends.md](../docs/dead-ends.md) |
+| `compose/` | `read-request.ts`: how a table request reads (rows, columns, `keep`); `pick-table.ts`: which of CPR p.95's two tables is taken for the rows | [tables.md](../docs/tables.md) |
 | `across/` | `read.ts`: how jev reads a table request across the shelf, word by word, and each cell question's kind in two wordings; `rows.ts`: one request's row reading repeated | [tables.md](../docs/tables.md) |
+| `pages/` | `origins.py`: a book's pages drawn from a corner off pdfplumber's 0,0 or turned, the only pages where `tables.py` moves a table (`.venv/bin/python`, free) | [pages.md](../docs/pages.md#the-highlight-as-data) |
 
 ## ranking-cache
 
@@ -41,6 +43,20 @@ variants; `PROBE=` prints the near-miss table), `grid.ts`, `sgrid.ts`
 (threshold grids), `combo.ts` (AND/OR/weighted, e.g.
 `bun experiments/ranking-cache/combo.ts ollama_qwen3-embedding-4b 0.49,0.59`),
 `ortx.ts` (fixed OR rules and the Fallout→CPR check).
+
+When to offer ranking afresh after a miss off a cached ranking:
+
+- `margin.ts`: good and bad pairs by distance over the adopted OR rule, in
+  sample and with the bars refitted without each question or on the other
+  book. Free.
+- `trace.ts`: a preload that logs every ranking-cache lookup and store of a
+  run to `$JEV_TRACE`, since the bench runs quiet:
+  `JEV_TRACE=/tmp/on.jsonl bun --preload ./experiments/ranking-cache/trace.ts bench.ts --cache qwen3-4b --no-save`.
+  `afresh.ts TRACE ON.out OFF.out` joins that run's stdout with runs
+  ranking afresh, case by case.
+- `walks.ts`: each labelled pair near or over the rule walked afresh and on
+  the partner's kept ranking (~$0.13), kept in `walks.json`; with no
+  argument it prints the outcomes by distance over the rule.
 
 ## choice-ranking
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { num, parseFlags, readDefaults, readFlags, renderPassage, tsvRows } from "./cli";
+import { jsonHit, marksOf, num, parseFlags, readDefaults, readFlags, renderPassage, sizedHits, tsvRows } from "./cli";
+import { snapshot, split, spentSince } from "./shared";
 import type { Para } from "./layout";
 
 const usage = (code: number): never => {
@@ -141,5 +142,89 @@ describe("tsvRows", () => {
     const heads = ["Weapon", "Damage"];
     const row = (cells: string[]): Para => ({ heading: false, text: JSON.stringify(cells), style: "", lines: [], table: { heads, cells } });
     expect(renderPassage([row(["SMG", "2d6"]), row(["Shotgun", "5d6"])], 80, false, true)).toBe("Weapon\tDamage\nSMG\t2d6\nShotgun\t5d6");
+  });
+});
+
+describe("jsonHit", () => {
+  const box = { page: 3, x0: 0, y0: 0, x1: 1, y1: 1, start: 0, end: 4 };
+  const hit = { pdf: "/b/book.pdf", section: "A > B", page: 3, p: 0.9, text: "", answer: { text: "Skills", p: 0.8, passage: [{ heading: true, text: "Skills", style: "bbbbbb", lines: [box] }] } };
+  const size = { width: 612, height: 792 };
+
+  test("keeps the passage's text and weights, and its boxes as marks with their page's size", () => {
+    expect(jsonHit(hit, "/cache/x-book.pdf", { 3: size, 4: size })).toEqual({
+      pdf: "/b/book.pdf",
+      view: "/cache/x-book.pdf",
+      page: 3,
+      section: "A > B",
+      found: 0.9,
+      answer: { text: "Skills", p: 0.8, pages: undefined, passage: [{ heading: true, text: "Skills", style: "bbbbbb" }] },
+      marks: [{ page: 3, x0: 0, y0: 0, x1: 1, y1: 1 }],
+      sizes: { 3: size },
+    });
+  });
+
+  test("views the book itself when there is no highlighted copy", () => {
+    expect(jsonHit({ ...hit, answer: undefined }).view).toBe("/b/book.pdf");
+  });
+
+  test("marks a passage's lines and cells across its pages, each box once", () => {
+    const cell = (x0: number, page = 3) => ({ ...box, page, x0, x1: x0 + 10, cell: 1 });
+    const passage = [
+      { heading: false, text: "a", style: " ", lines: [box, cell(40)] },
+      { heading: false, text: "b", style: " ", lines: [cell(40), cell(40, 4)] },
+    ];
+    const j = jsonHit({ ...hit, answer: { text: "a b", p: 0.9, passage } }, undefined, { 3: size, 4: size });
+    expect(j.marks.map((m) => [m.page, m.x0])).toEqual([
+      [3, 0],
+      [3, 40],
+      [4, 40],
+    ]);
+    expect(Object.keys(j.sizes)).toEqual(["3", "4"]);
+    // Only the box itself: the characters it holds are the passage's business.
+    expect(Object.keys(j.marks[0]!)).toEqual(["page", "x0", "y0", "x1", "y1"]);
+  });
+
+  test("marks where a count's names or a figure stand, and nothing for a statement", () => {
+    expect(marksOf({ text: "2", p: 1, marks: [box, { ...box, x0: 5, x1: 9 }] })).toHaveLength(2);
+    const truth = jsonHit({ ...hit, answer: { text: "true", p: 0.9 } }, undefined, { 3: size });
+    expect([truth.marks, truth.sizes]).toEqual([[], {}]);
+  });
+
+  test("leaves out a size it was not given rather than guessing one", () => {
+    expect(jsonHit(hit).sizes).toEqual({});
+  });
+});
+
+describe("sizedHits", () => {
+  const manual = Bun.fileURLToPath(new URL("fixture/manual.pdf", import.meta.url));
+  const on = (page: number) => ({ text: "7", p: 1, marks: [{ page, x0: 72, y0: 100, x1: 90, y1: 112, start: 0, end: 1 }] });
+
+  test("reads each marked page's size off the PDF, and the time split names the reading", async () => {
+    const before = snapshot();
+    const [a, b] = await sizedHits([{ hit: { pdf: manual, section: "s", page: 2, p: 0.9, text: "", answer: on(2) } }, { hit: { pdf: manual, section: "s", page: 3, p: 0.9, text: "", answer: on(3) }, view: "/cache/m.pdf" }]);
+    expect([a!.sizes, b!.sizes, b!.view]).toEqual([{ 2: { width: 595, height: 842 } }, { 3: { width: 595, height: 842 } }, "/cache/m.pdf"]);
+    expect(spentSince(before).ms.sizes).toBeGreaterThan(0);
+    expect(split(before)).toMatch(/, sizes \d+\.\ds, other /);
+  });
+
+  test("still answers when the PDF's sizes cannot be read", async () => {
+    const [j] = await sizedHits([{ hit: { pdf: "/nowhere/gone.pdf", section: "s", page: 2, p: 0.9, text: "", answer: on(2) } }]);
+    expect([j!.marks.length, j!.sizes]).toEqual([1, {}]);
+  });
+});
+
+describe("jevsec", () => {
+  const here = (f: string) => Bun.fileURLToPath(new URL(f, import.meta.url));
+  // Run with no key and away from .env, so a check that let the file through could not reach jev either.
+  test("refuses a file mutool cannot open before anything is asked, in a line and no trace", async () => {
+    const pdf = here("fixture/damaged.pdf");
+    const p = Bun.spawn([process.execPath, here("jevsec.ts"), pdf, "How much does it cost?"], {
+      cwd: process.env.XDG_CACHE_HOME,
+      env: { ...process.env, OPENROUTER_API_KEY: "" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+    expect([code, out, err]).toEqual([2, "", `jevsec: not a PDF mutool can open (no objects found): ${pdf}\n`]);
   });
 });

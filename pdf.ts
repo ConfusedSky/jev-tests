@@ -1,7 +1,7 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
-import { rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
+import { clock, rank, secs, snapshot, split, timed, type List, type Ranked } from "./shared";
 import type { RankingCache } from "./cache";
 import { pageSim } from "./embed";
 import { excerpts, type Term } from "./search";
@@ -39,7 +39,8 @@ export type Outcome = { hit?: Hit; hits: Hit[]; tried: Tried[]; rejected: Candid
 export type Ui = { log: (line: string) => void; trying: (line: string) => void; clear: () => void };
 
 export function makeUi(quiet: boolean): Ui {
-  const live = !quiet && process.stderr.isTTY;
+  // JEV_PROGRESS=1 keeps the \r-ended progress line on a pipe, for a reader like ui/server.ts.
+  const live = !quiet && (process.stderr.isTTY || process.env.JEV_PROGRESS === "1");
   return {
     log: (line) => {
       if (!quiet) console.error(line);
@@ -53,8 +54,8 @@ export function makeUi(quiet: boolean): Ui {
   };
 }
 
-export function run(cmd: string[]): Promise<string> {
-  return timed("extract", async () => {
+export function run(cmd: string[], kind: keyof typeof clock = "extract"): Promise<string> {
+  return timed(kind, async () => {
     const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     if ((await p.exited) !== 0) throw new Error(`${cmd[0]} failed: ${err.trim()}`);
@@ -172,19 +173,57 @@ export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
 }
 
 /**
+ * Why mutool cannot open `pdf`, or undefined when it can: a damaged file
+ * otherwise fails only once the walk opens it, after a call has been paid for.
+ */
+export async function unopenable(pdf: string): Promise<string | undefined> {
+  try {
+    await run(["mutool", "pages", pdf, "1"]);
+  } catch (e) {
+    // mutool warns as it tries to repair the file; its last error is why it gave up.
+    const said = (e instanceof Error ? e.message : String(e)).split("\n").findLast((l) => /error:/.test(l));
+    return said?.replace(/^.*error:\s*/, "").trim() || "mutool could not open it";
+  }
+}
+
+/** A box to highlight, in PDF points from its page's top left, where stext puts it. */
+export type Mark = Pick<Box, "page" | "x0" | "y0" | "x1" | "y1">;
+export type PageSize = { width: number; height: number };
+
+/**
+ * The size of each of `pages`, or of every page when none are named, in the
+ * space stext reports positions in and mutool draws, so a mark scales onto a
+ * page rendered at any width.
+ */
+export async function pageSizes(pdf: string, pages?: number[]): Promise<Record<number, PageSize>> {
+  if (pages?.length === 0) return {};
+  const script = Bun.fileURLToPath(new URL("sizes.js", import.meta.url));
+  const out = await run(["mutool", "run", script, pdf, ...(pages ?? []).map(String)], "sizes");
+  return Object.fromEntries(
+    out
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        const [page, width, height] = l.split("\t").map(Number) as [number, number, number];
+        return [page, { width, height }];
+      }),
+  );
+}
+
+/**
  * A copy of the PDF with the passage's lines highlighted on its page, in the
  * cache, for a link to land on the answer rather than the page. Every run
  * copies afresh, since a highlight saved into the copy stays there; several
  * hits in one file each add theirs to the same copy.
  */
-export async function highlighted(pdf: string, lines: Box[], fresh = true): Promise<string> {
+export async function highlighted(pdf: string, lines: Mark[], fresh = true): Promise<string> {
   // Two shelves may each hold a manual.pdf; the path's hash keeps them apart.
   const copy = `${cacheDir()}/${Bun.hash(pdf).toString(36).slice(0, 6)}-${pdf.split("/").pop()}`;
-  if (fresh) await Bun.write(copy, Bun.file(pdf));
+  if (fresh) await timed("highlight", () => Bun.write(copy, Bun.file(pdf)));
   const script = Bun.fileURLToPath(new URL("highlight.js", import.meta.url));
   // A passage read across a window's pages is marked on each of them.
   for (const page of new Set(lines.map((l) => l.page))) {
-    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quadsOn(lines, page))]);
+    await run(["mutool", "run", script, copy, String(page), JSON.stringify(quadsOn(lines, page))], "highlight");
   }
   return copy;
 }
@@ -194,7 +233,7 @@ export async function highlighted(pdf: string, lines: Box[], fresh = true): Prom
  * uses one mod's cost cell for every gun that takes the mod, and a viewer
  * blends overlapping highlights, so repeats would darken it by use.
  */
-export function quadsOn(lines: Box[], page: number): number[][] {
+export function quadsOn(lines: Mark[], page: number): number[][] {
   const seen = new Set<string>();
   return lines.flatMap((l) => {
     const key = `${l.x0} ${l.y0} ${l.x1} ${l.y1}`;
@@ -681,8 +720,11 @@ export async function searchPdf(
     const left = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
     const ws = left.slice(0, o.max);
     if (left.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
-    else ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order, read in ${split(scanSnap)}`);
-    await scan(ws);
+    else {
+      ui.log(`${indent}no outline: scanning ${ws.length} of ${left.length} windows in page order…`);
+      await scan(ws);
+      ui.log(`${indent}no outline ${split(scanSnap)}`);
+    }
   }
   return finish();
 }

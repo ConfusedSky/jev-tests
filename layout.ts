@@ -18,7 +18,11 @@ export type Para = { heading: boolean; text: string; style: string; lines: Box[]
 /** A table row with its table's heads, a cell a head, so a passage can print its rows as a grid. */
 export type Row = { heads: string[]; cells: string[] };
 
-/** A table as tables.py reads it: rows of cells, each row with its box on the page, the first row the heads. */
+/**
+ * A table as tables.py reads it: rows of cells, each row with its box on the
+ * page, the first row the heads. Its boxes are in the space of a page's
+ * lines, the page as mutool draws it, whatever the page's boxes and /Rotate.
+ */
 type Rect = [number, number, number, number];
 export type Table = { page: number; bbox: Rect; rows: { cells: string[]; bbox: Rect; boxes?: (Rect | null)[] }[] };
 

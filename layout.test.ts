@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { findOn, pageParagraphs, pageTables, paragraphs, parseStext, styledCandidates, type Table } from "./layout";
+import { findOn, pageLines, pageParagraphs, pageTables, paragraphs, parseStext, styledCandidates, type Table } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 
@@ -300,6 +300,58 @@ describe("tables", () => {
     const boxes = paras[3]!.lines;
     expect(boxes.map((b) => b.cell)).toEqual([0, 1, 2, 3]);
     expect(boxes.every((b, i) => b.page === 1 && (i === 0 || b.x0 >= boxes[i - 1]!.x1 - 1))).toBe(true);
+  });
+
+  // pdfplumber measures from the MediaBox, turned as /Rotate turns the page;
+  // stext and the page the UI draws, from the CropBox.
+  describe("a table on a page cut, moved or turned", () => {
+    const boxes = fixture("boxes.js");
+    const variant = async (media: string, crop: string, rotate: number) => {
+      const out = `${process.env.XDG_CACHE_HOME}/table-${media}-${crop}-${rotate}.pdf`;
+      const p = Bun.spawn(["mutool", "run", boxes, fixture("table.pdf"), out, media, crop, String(rotate)], { stderr: "pipe" });
+      if ((await p.exited) !== 0) throw new Error(await new Response(p.stderr).text());
+      return out;
+    };
+    const cropped = async () => fixture("table-crop.pdf");
+    const below = () => variant("-50,-50,545,792", "-", 0);
+    const cases: [string, () => Promise<string>][] = [
+      ["a CropBox", cropped],
+      ...[90, 180, 270].map((r): [string, () => Promise<string>] => [`a CropBox, turned ${r}`, () => variant("-", "50,60,565,802", r)]),
+      ...[0, 90, 270].map((r): [string, () => Promise<string>] => [`a MediaBox off 0,0 and a CropBox, turned ${r}`, () => variant("20,30,615,872", "40,500,400,700", r)]),
+      ["a MediaBox below 0,0", below],
+      ["no CropBox", async () => fixture("table.pdf")],
+    ];
+    // Turned, pdfplumber can read a cell backwards and stext split a word, so a text is known by its letters.
+    const letters = (s: string) => [...s.replace(/\s/g, "")].sort().join("");
+    const same = (a: string, b: string) => letters(a) === letters(b);
+    type Edges = { x0: number; y0: number; x1: number; y1: number };
+    const inside = (l: Edges, b: Edges) => {
+      const [x, y] = [(l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2];
+      return x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1;
+    };
+
+    test.each(cases)("on a page with %s, each cell is marked where it stands and read as no prose", async (_, made) => {
+      const pdf = await made();
+      const [paras, tables, { lines }] = await Promise.all([pageParagraphs(pdf, 1), pageTables(pdf, [1]), pageLines(pdf, 1)]);
+      const marks = paras.flatMap((p) => p.lines.filter((b) => b.cell !== undefined).map((b) => ({ b, text: p.table!.cells[b.cell!]! })));
+      expect(marks.length).toBeGreaterThan(8);
+      const on = ({ b, text }: (typeof marks)[number]) => lines.some((l) => same(l.spans.map((s) => s.text).join(""), text) && inside(l, b));
+      expect(marks.filter((c) => !on(c)).map((c) => c.text)).toEqual([]);
+      // The heads' cells too, which are no record's.
+      const cells = tables.flatMap((t) => t.rows.flatMap((r) => r.cells.flatMap((text, i) => (text && r.boxes?.[i] ? [{ text, box: r.boxes[i]! }] : []))));
+      expect(cells).toHaveLength(16);
+      const prose = paras.filter((p) => !p.table).flatMap((p) => p.lines.map((b) => ({ b, text: p.text.slice(b.start, b.end) })));
+      const cell = ({ b, text }: (typeof prose)[number]) => cells.some(({ text: t, box: [x0, y0, x1, y1] }) => same(t, text) || inside(b, { x0, y0, x1, y1 }));
+      expect(prose.filter(cell).map((l) => l.text)).toEqual([]);
+    });
+
+    test.each([
+      ["a CropBox", cropped],
+      ["a MediaBox below 0,0", below],
+    ])("on a page with %s that cuts no text, a passage reads as on the page uncut", async (_, made) => {
+      const [plain, moved] = await Promise.all([pageParagraphs(fixture("table.pdf"), 1), made().then((pdf) => pageParagraphs(pdf, 1))]);
+      expect(moved.map((p) => p.text)).toEqual(plain.map((p) => p.text));
+    });
   });
 
   // Cyberpunk Red's ranged weapons: a row of one cell under each weapon, an

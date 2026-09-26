@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { terms } from "./search";
-import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, pageSizes, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+import { pageLines } from "./layout";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 const manual = fixture("manual.pdf"); // three pages, one outline entry per page
@@ -469,11 +470,21 @@ describe("a gate of several nouls", () => {
 
 describe("highlighted", () => {
   test("copies the PDF into the cache with the lines marked on the page", async () => {
-    const copy = await highlighted(manual, [{ page: 3, x0: 72, y0: 130, x1: 540, y1: 142, start: 0, end: 1 }]);
+    const copy = await highlighted(manual, [{ page: 3, x0: 72, y0: 130, x1: 540, y1: 142 }]);
     expect(copy).toMatch(/\/jev\/[0-9a-z]+-manual\.pdf$/);
     const count = `${copy}.js`;
     await Bun.write(count, "var d = Document.openDocument(scriptArgs[0]); print(d.loadPage(2).getAnnotations().length);");
     expect((await run(["mutool", "run", count, copy])).trim()).toBe("1");
+  });
+});
+
+describe("pageSizes", () => {
+  // A mark is where stext put it, so the size it is scaled by must be stext's too.
+  test("gives each page's size as stext does, the pages asked for or every page", async () => {
+    const { width, height } = await pageLines(manual, 2);
+    expect(await pageSizes(manual, [2])).toEqual({ 2: { width, height } });
+    expect(Object.keys(await pageSizes(manual))).toEqual(["1", "2", "3"]);
+    expect(await pageSizes(manual, [])).toEqual({});
   });
 });
 

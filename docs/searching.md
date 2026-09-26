@@ -287,8 +287,11 @@ calls; the lookups of several columns run side by side and are one line.
 ## Where the time goes
 
 Every span splits into `jev` (inference), `read` (mutool/pdftotext), `stdin`
-(waiting on whatever is feeding the pipe) and `other`. That split exists because
-this is I/O bound, not inference bound:
+(waiting on whatever is feeding the pipe) and `other`, with `embed` (the
+ranking cache's embeddings), `highlight` (copying the book to mark the
+answer) and `sizes` (reading the marked pages' sizes for `--json`) named
+when they took any time; the total counts the last two, which come after the
+walk. That split exists because this is I/O bound, not inference bound:
 
 ```
 total 105.4s (jev 3.3s, read 15.9s, stdin 86.2s, other 0.0s)

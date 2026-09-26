@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { answerLayer, parseFlags, READ_USAGE, readDefaults, readFlags, report } from "./cli";
-import { makeUi, searchPdf } from "./pdf";
+import { makeUi, searchPdf, unopenable } from "./pdf";
 import { composeTable } from "./compose";
 import { makeClient, snapshot } from "./shared";
 
@@ -25,6 +25,15 @@ opts.question = words.join(" ").trim();
 if (!pdf || !opts.question) usage(1);
 if (!(await Bun.file(pdf).exists())) {
   console.error(`jevsec: no such file: ${pdf}`);
+  process.exit(2);
+}
+if (Bun.file(pdf).size === 0) {
+  console.error(`jevsec: empty file, nothing to read: ${pdf}`);
+  process.exit(2);
+}
+const broken = await unopenable(pdf);
+if (broken) {
+  console.error(`jevsec: not a PDF mutool can open (${broken}): ${pdf}`);
   process.exit(2);
 }
 

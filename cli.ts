@@ -1,9 +1,9 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
 import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
 import { CACHE_MODELS, embedder, rankingCache as makeRankingCache, unready, type CacheModel } from "./cache";
-import { lone, pageParagraphs, type Para, type Row } from "./layout";
-import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageUrl, type Hit, type Outcome, type SearchOpts, type Section, type Ui } from "./pdf";
-import { DEFAULT_MODEL, snapshot, split, timed, type Snapshot } from "./shared";
+import { lone, pageParagraphs, type Box, type Para, type Row } from "./layout";
+import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageSizes, pageUrl, type Hit, type Mark, type Outcome, type PageSize, type SearchOpts, type Section, type Ui } from "./pdf";
+import { DEFAULT_MODEL, snapshot, split, spentSince, timed, type Snapshot, type Spent } from "./shared";
 import { terms } from "./search";
 
 /** A flag's handler; `next` consumes the following argument, `fail` rejects its value. */
@@ -66,6 +66,8 @@ export type ReadOpts = SearchOpts & {
   kind?: Kind;
   /** Piped, a table's rows as tab-separated lines under their heads instead of JSON. */
   tsv: boolean;
+  /** The outcome on stdout as one JsonReport instead of text. */
+  json: boolean;
   /** What jev read off the question, kept for a table to build its searches from. */
   reading?: Reading;
   /** The embedding model whose cache of rankings is looked in first (see cache.ts), or "off". */
@@ -90,6 +92,7 @@ export const readDefaults = (): ReadOpts => ({
   hits: 1,
   search: true,
   tsv: false,
+  json: false,
   cache: "qwen3-4b",
 });
 
@@ -112,6 +115,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
   "--no-toc": (o) => (o.noToc = true),
   "--no-search": (o) => (o.search = false),
   "--tsv": (o) => (o.tsv = true),
+  "--json": (o) => (o.json = true),
   "--cache": (o, next, fail) => {
     const m = next();
     if (m !== "off" && !CACHE_MODELS[m]) fail(`must be off or one of ${Object.keys(CACHE_MODELS).join(", ")}`);
@@ -142,6 +146,8 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --no-search      rank outline titles only, without searching the text
       --tsv            piped, print a table's rows tab-separated under their heads, not as JSON,
                        and the link on stderr
+      --json           print the outcome on stdout as one JSON document (JsonReport in cli.ts),
+                       each hit with the boxes its answer highlights
       --kind K         force count, number, truth, passage or table instead of asking jev
       --cache MODEL    reuse the ranking of an earlier, similar question, matched by
                        qwen3-4b (default, Ollama), qwen3-0.6b (Ollama) or 3-small
@@ -177,11 +183,10 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
   // Reading the question is a call of its own, so it says what it spent.
   ui.log(`${o.kind ? `question treated as a ${kind} question` : `question looks like a ${kind} question`}  in ${split(asked)}`);
   // A count, number or statement has one answer; only a passage question has
-  // several places worth reading.
-  if (o.hits > 1 && kind !== "passage") {
-    console.error(`--hits ${o.hits} only applies to a passage question; this is a ${kind} question`);
-    process.exit(2);
-  }
+  // several places worth reading. The kind is known only once the reading is
+  // paid for, so a stray -n costs a note, not the run.
+  const hits = kind === "passage" ? o.hits : 1;
+  if (hits < o.hits) ui.log(`-n ${o.hits} applies to passage questions only; one ${kind} answer`);
   // "the cost, weight and damage rating of a combat rifle" is three figures off one page.
   const wanted = kind === "number" ? read.quantities : [];
   if (wanted.length > 1) ui.log(`asks for ${wanted.join(", ")}`);
@@ -250,7 +255,7 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
   const gate = kind === "count" ? GATE.list : kind === "truth" ? GATE.claim : GATE.answer;
   const m = CACHE_MODELS[o.cache];
   const rankingCache = m && rankingCacheFor(m, o.question, read.subject);
-  return { ...o, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
+  return { ...o, hits, kind, verify, fromOutline, countAcross: across, gate, terms: found, reading: read, rankingCache };
 }
 
 export const hitLine = (h: { pdf: string; page: number; section: string; p: number }) =>
@@ -373,12 +378,26 @@ function printHit(kind: Kind | undefined, hit: { pdf: string; page: number; sect
   else console.log(`${answer.text}  ${conf}  ${hitLine(hit)}`);
 }
 
+/** What an answer highlights: a passage's lines, its table cells' included, else where a count's names or a figure stand. */
+const boxesOf = (a: Answer | undefined): Box[] => a?.passage?.flatMap((p) => p.lines) ?? a?.marks ?? [];
+
+/** The boxes an answer highlights, each once: a built table can use one cell for many rows. */
+export function marksOf(a: Answer | undefined): Mark[] {
+  const seen = new Set<string>();
+  return boxesOf(a).flatMap(({ page, x0, y0, x1, y1 }) => {
+    const key = `${page} ${x0} ${y0} ${x1} ${y1}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ page, x0, y0, x1, y1 }];
+  });
+}
+
 /** Unless --no-highlight, each hit with passage lines or marks moved to a highlighted copy of its PDF, one copy per file marking every hit's. */
 export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
   const copies = new Set<string>();
   const out: Hit[] = [];
   for (const hit of hits) {
-    const lines = hit.answer?.passage?.flatMap((p) => p.lines) ?? hit.answer?.marks ?? [];
+    const lines = boxesOf(hit.answer);
     if (!o.highlight || lines.length === 0) {
       out.push(hit);
       continue;
@@ -388,6 +407,68 @@ export async function highlightAll(hits: Hit[], o: ReadOpts): Promise<Hit[]> {
     out.push({ ...hit, pdf: copy });
   }
   return out;
+}
+
+/** A hit as --json prints it: `view` is the copy with the answer highlighted, or `pdf` itself when there is none. */
+export type JsonHit = {
+  pdf: string;
+  view: string;
+  page: number;
+  section: string;
+  /** How sure the gate was that the page answers; the answer's own p is in `answer`. */
+  found: number;
+  answer?: { text: string; p: number; pages?: number[]; passage?: Omit<Para, "lines">[] };
+  /** What the answer highlights, each box once, in PDF points from its page's top left (see Mark); none for a statement. */
+  marks: Mark[];
+  /** The size of each page `marks` fall on, in their units, to scale them onto the page drawn at any size. */
+  sizes: Record<number, PageSize>;
+};
+
+/**
+ * What --json prints on stdout: the hits that answered, or under "below" the
+ * best one read, which did not reach the answer floor; "unanswered" has none
+ * and says why in `message`. A table across the shelf fills `table` instead.
+ */
+export type JsonReport = {
+  kind?: Kind;
+  status: "answered" | "below" | "unanswered";
+  hits: JsonHit[];
+  message?: string;
+  table?: { rows: string[]; columns: string[]; cells: { text: string; kind: Kind; why?: string; hit?: JsonHit }[][] };
+  spent: Spent;
+};
+
+export function jsonHit(hit: Hit, view = hit.pdf, sizes: Record<number, PageSize> = {}): JsonHit {
+  const marks = marksOf(hit.answer);
+  return {
+    pdf: hit.pdf,
+    view,
+    page: hit.page,
+    section: hit.section,
+    found: hit.p,
+    answer: hit.answer && {
+      text: hit.answer.text,
+      p: hit.answer.p,
+      pages: hit.answer.pages,
+      // The boxes are in `marks`; the passage keeps its text and weights.
+      passage: hit.answer.passage?.map(({ lines, ...p }) => p),
+    },
+    marks,
+    sizes: Object.fromEntries([...new Set(marks.map((m) => m.page))].flatMap((p) => (sizes[p] ? [[p, sizes[p]]] : []))),
+  };
+}
+
+/**
+ * jsonHits with the size of each page they mark, read off each PDF once, a
+ * file at a time so the time split counts them as they took. A size mutool
+ * cannot read is left out rather than losing the answer.
+ */
+export async function sizedHits(hits: { hit: Hit; view?: string }[]): Promise<JsonHit[]> {
+  const pages = new Map<string, Set<number>>();
+  for (const { hit } of hits) for (const m of marksOf(hit.answer)) pages.set(hit.pdf, (pages.get(hit.pdf) ?? new Set()).add(m.page));
+  const sizes = new Map<string, Record<number, PageSize>>();
+  for (const [pdf, marked] of pages) sizes.set(pdf, await pageSizes(pdf, [...marked]).catch(() => ({})));
+  return hits.map(({ hit, view }) => jsonHit(hit, view, sizes.get(hit.pdf)));
 }
 
 /** Prints the outcome the way every tool does and exits: 0 on a hit, 1 otherwise. */
@@ -401,11 +482,23 @@ export async function report(
 ): Promise<never> {
   ui.clear();
   const walked = ctx.files === undefined ? "" : `, ${ctx.files} files opened, ${r.tried.length} windows read`;
-
-  if (r.hit) {
+  const json = (status: JsonReport["status"], hits: JsonHit[], message?: string) => {
+    if (o.json) console.log(JSON.stringify({ kind: o.kind, status, hits, message, spent: spentSince(since) } satisfies JsonReport));
+  };
+  const fail: (message: string) => never = (message) => {
     ui.log(`total ${split(since)}${walked}`);
+    console.error(`${tool}: ${message}`);
+    json("unanswered", [], message);
+    process.exit(1);
+  };
+
+  // The marked copy and the page sizes are made before the total, so it counts them.
+  if (r.hit) {
     const hits = await highlightAll(r.hits, o);
-    for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
+    const out = o.json ? await sizedHits(hits.map((h, i) => ({ hit: r.hits[i]!, view: h.pdf }))) : [];
+    ui.log(`total ${split(since)}${walked}`);
+    if (o.json) json("answered", out);
+    else for (const hit of hits) printHit(o.kind, hit, hit.answer, "", o.tsv);
     if (o.open) await openAt(pageUrl(hits[0]!.pdf, hits[0]!.page));
     process.exit(0);
   }
@@ -413,30 +506,26 @@ export async function report(
   // Nothing cleared the floor, so report the best of what was read and say so.
   if (r.rejected.length > 0) {
     const { hit, answer } = r.rejected.reduce((a, b) => (b.answer.p > a.answer.p ? b : a));
+    const out = o.json ? await sizedHits([{ hit: { ...hit, answer } }]) : [];
     ui.log(`total ${split(since)}${walked}`);
-    console.error(`${tool}: no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`);
-    printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
+    const message = `no answer reached p=${o.answerFloor} in ${r.rejected.length} windows; best follows`;
+    console.error(`${tool}: ${message}`);
+    if (o.json) json("below", out, message);
+    else printHit(o.kind, hit, answer, `, below ${o.answerFloor}`, o.tsv);
     process.exit(1);
   }
 
-  if (r.tried.length === 0) {
-    console.error(`${tool}: ${ctx.nothing}`);
-    process.exit(1);
-  }
+  if (r.tried.length === 0) fail(ctx.nothing);
   const across = ctx.files === undefined ? "" : ` across ${ctx.files} files`;
   // Dropped windows did pass the gate, so "no window reached the threshold"
   // would be false; say what actually happened.
   if (r.dropped.length > 0) {
     const where = r.dropped.map(({ hit }) => `${hit.section} p.${hit.page}`).join(", ");
-    console.error(
-      `${tool}: ${r.dropped.length} windows${across} held the pages but did not state the answer in ${split(since)}: ${where}`,
-    );
-    process.exit(1);
+    fail(`${r.dropped.length} windows${across} held the pages but did not state the answer in ${split(since)}: ${where}`);
   }
   const best = r.tried.reduce((a, b) => (b.p > a.p ? b : a));
-  console.error(
-    `${tool}: none of ${r.tried.length} windows${across} reached p=${o.threshold} in ${split(since)}; ` +
+  fail(
+    `none of ${r.tried.length} windows${across} reached p=${o.threshold} in ${split(since)}; ` +
       `best was ${best.p.toFixed(2)} at ${best.name} p.${best.page}`,
   );
-  process.exit(1);
 }
