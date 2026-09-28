@@ -1,0 +1,343 @@
+{
+  "at": "2026-09-28T15:10:10.249Z",
+  "commit": "c0222f9",
+  "model": "~typesafe/jev-latest",
+  "results": [
+    {
+      "book": "heart",
+      "question": "How many classes are there in heart?",
+      "truth": 9,
+      "got": "DOMAINS: Wild\nTIER: Fracture\nDEFAULT STRESS: D8\nHAUNTS: None\n…\nTHE GRAIL ROAD\nDOMAINS: Desolate, Religion TIER: Fracture\nDEFAULT STRESS: D6\nHAUNTS: None\n…\nDEFAULT STRESS: D8\nHAUNTS:",
+      "p": 0.76345,
+      "page": 173,
+      "score": 0,
+      "ms": 40667,
+      "tokens": 414199
+    },
+    {
+      "book": "heart",
+      "question": "How many callings are there in heart?",
+      "truth": 5,
+      "got": "TIER: Fracture\nDEFAULT STRESS: D8\nHAUNTS: None\n…\nCounts as a Mend Blood D6, BLOCK item when worn)\nTHE GRAIL ROAD\nDOMAINS: Desolate, Religion TIER: Fracture\nDEFAULT STRESS: D6\nHAUNTS: None\n…\nDOMAINS: Desolate\nTIER: Fracture\nDEFAULT STRESS: D4 HAUNTS: None\n…\nThe Moon’s Faces THE DARK CITY\nDOMAINS: Desolate, Religion, Warren TIER: Fracture\nDEFAULT STRESS: D8\nHAUNTS:",
+      "p": 0.7835133333333334,
+      "page": 173,
+      "score": 0,
+      "ms": 57114,
+      "tokens": 454847
+    },
+    {
+      "book": "heart",
+      "question": "how many skills are there in heart?",
+      "truth": 9,
+      "got": "ABOVE US, THE CITY, SPIRE, STRETCHES INTO THE SKY. BENEATH US, THE CITY, HEART, STRETCHES INTO THE EARTH. DOWN THROUGH DIRT AND ROCK AND WATER, DOWN INTO THE DEPTHS OF DARKNESS, DOWN INTO MADNESS AND SICKNESS, DOWN INTO SOMETHING ANCIENT AND OTHER.\nFOLK GO INTO THAT PLACE LOOKING FOR SOMETHING. SECRETS OF MAGIC LONG-LOST OR NEVER DISCOVERED. SPELLS THAT ITCH IN YOUR BLOOD. UNKNOWABLE CREATURES TO HUNT AND HARVEST. SOMEWHERE TO HIDE OR START AGAIN. FORGIVENESS FROM A GOD THAT CAN’T HEAR THEM BEG FOR IT.\nAND NOW: YOU, THINKING YOU’VE GOT IT ALL FIGURED OUT. WONDER WHAT YOU’RE LOOKING FOR.\nTHE HEART CAN SMELL YOU. THE HEART KNOWS YOU’RE COMING. WHEN YOU WALK OUT OF THAT DOOR, WHEN YOU CLIMB DOWN THE CHASM AT THE END OF THE ROAD, WHEN YOU CRAWL ON YOUR BELLY THROUGH THE WRITHING PRESS OF ROCK, WHEN YOU EMERGE BEATEN AND BLOODY, IT’LL HAVE YOU.\nTHE HEART KNOWS WHAT YOU WANT, AND BY THE GODDESS, IT’LL GIVE IT TO YOU OR KILL YOU TRYING.\nHEART: The City Beneath\nWritten by Grant Howitt and Christopher Taylor\nIllustrated by Felix Miall\nEdited by Helen Gould and Mary Hamilton\nLayout and design by Jay Iles\nProduced by Mary Hamilton\nCopyright © 2020 by Grant Howitt and Christopher Taylor.\nPublished by Rowan, Rook and Decard Ltd.\nFirst Edition (2020)\nAll rights reserved. No part of this publication may be reproduced,distributed, or transmitted in any form or by any means, including photocopying, recording, or other electronic or mechanical methods, without the prior written permission of the publisher, except in the case of brief quotations embodied in critical reviews and certain other noncommercial uses permitted by copyright law. For permission requests, write to the publisher at the address below.\nRowan, Rook and Decard\n15 Tufnell Court, Old Ford Road\nE3 5JJ, United Kingdom\nwww.rowanrookanddecard.com\nContentwarnings:Heart is a horror game,and as such,there are some unpleasant things in the text.These include but are not limited to: violence,drug use,addiction,ghosts,unwanted bodily transformation,and monsters that used to be people.We can assure you that there is no rape or sexual assault in this game.\nIntroduction\nHow to play\nRESISTANCES SKILLS, DOMAINS and Knacks Rules in Brief\nCHARACTERS\nAncestries DROW, OR DARK ELVES HUMANS AELFIR, OR HIGH ELVES GNOLLS\nCallings ADVENTURE ENLIGHTENMENT FORCED HEARTSONG PENITENT\nClasses Cleaver DEADWALKER Deep Apiarist Heretic Hound Incarnadine Junk Mage VERMISSIAN KNIGHT Witch\n5 6 8\n12 12 13 14 15\n16 16 18 20 22 24\n26 26 31 36 41 46 51 56 61 66\nRules in detail\nSUCCESS & FAILURE HEALING COMBAT FALLOUT RESOURCES & EQUIPMENT BONDS EXPLORATION The Map\nRunning the game\nTHE WORLD OF HEART\nGeneral Society The Vermissian The Heart Itself Geography of the Heart\nLANDMARKS\nLANDMARKS BY TIER TIER 0 TIER 1 TIER 2 TIER 3 ROGUE FRACTURES\nADVERSARIES\nLEGENDARY ADVERSARIES\nAppendices\nRULES SUMMARY Suggested media THANKS INDEX Character Sheet\n104\n130\n175\n207",
+      "p": 0.8457913793103451,
+      "page": 2,
+      "score": 0,
+      "ms": 7953,
+      "tokens": 87183
+    },
+    {
+      "book": "heart",
+      "question": "how many domains are there in heart?",
+      "truth": 8,
+      "got": "THE FOREST\nDOMAINS: Wild\nTIER: Fracture\nDEFAULT STRESS: D8\nHAUNTS: None\n…\nNo one’s found it and come back yet.\nRESOURCE:\n• Godbeast pelt (D10, Religion. Counts as a Mend Blood D6, BLOCK item when worn)\nTHE GRAIL ROAD\nDOMAINS: Desolate, Religion TIER: Fracture\nDEFAULT STRESS: D6\nHAUNTS: None\n…\n• Grave goods from a fallen noble (D8, Desolate, Religion)\nTHE GREY\nDOMAINS: Desolate\nTIER: Fracture\nDEFAULT STRESS: D4 HAUNTS: None\nBetween the lands of the living and the lands of the dead, the Grey persists. A pale and shadowy replication of the real world, the Grey is a\nLandmarks catch-all purgatory for the souls of the recently departed.\n…\nThe Moon’s Faces THE DARK CITY\nDOMAINS: Desolate, Religion, Warren TIER: Fracture\nDEFAULT STRESS: D8\nHAUNTS:\n• Nameless gutter bar run by a dozen or so dark elf shades (D6, Mind)\n• The Night Market (D8, Supplies)\nOn the edges of the Moon Garden, on the dark side of the moon, the Dark City waits: a twisted",
+      "p": 0.7215107142857142,
+      "page": 173,
+      "score": 0,
+      "ms": 11960,
+      "tokens": 130376
+    },
+    {
+      "book": "heart",
+      "question": "Is witch a class in heart?",
+      "truth": "true",
+      "got": "Skills, Domains and Knacks\nSKILLS, DOMAINS and Knacks\nSkills are things you can do; domains are areas of knowledge and experience. Skills apply specifically to actions, while domains are broader and might affect your contacts and/or your ability to function in different areas of the Heart. Both are ways of giving your character a particular flavour and specific types of expertise. A character with the Mend skill and the Religion domain will likely have a very different personality and play style than one with the Kill skill and the Cursed domain. Your character will have access to skills and domains when the game begins, and will have the opportunity to gain more through advancement. Your character class and calling may automatically give you certain skills and domains,and others may be available as choices. There are no levels or values in these – you either have them or you don’t.\nSKILLS\nCOMPEL: Make people do what you want via threats, lies, flattery or reasoned argument.\nDELVE: Progress into dangerous or unknown territory.\nDISCERN: Understand the world by drawing on accessible information.\nENDURE: Resist the effects of the Heart on your body and mind.\nEVADE: Get away from someone or something that’s trying to track you down.\nHUNT: Track down someone or something that’s trying to get away from you.\nKILL: End the lives of people and things with weapons or your bare hands.\nMEND: Repair something or someone that is broken; build something new.\nSNEAK: Hide yourself or things from the attention of others.\nIf you have a skill, you add one D10 to your dice pool and pick the highest result when you perform the action associated with the skill. There’s no such thing as an “untrained” skill; everyone can attempt most actions without penalty. Having a skill denotes a serious devotion to the practice.\nDOMAINS\nCURSED: Actively harmful locations. Places touched by the Heart.\nDESOLATE: Wastelands and abandoned towns.\nHAVEN: Settlements where people live, work and form communities.\nOCCULT: Hidden knowledge and black magic.\nRELIGION: Gods, and things worshipped like gods.\nTECHNOLOGY: Machines, buildings and devices\nWARREN: Cramped, dense corridors.\nWILD: Wilderness, vegetation and animals.\nIf you possess the relevant domain for a situation, add one D10 to your dice pool and pick the highest result. Domains aren’t intrinsically linked to action types, but to areas of the Heart, broad subjects of knowledge and connections you might have with the people of the City Beneath.\nKNACKS\nIf you possess a skill or domain and gain it a second time, you get a knack. This is proficiency with a particular facet of the broad spectrum covered by the skill or domain. Using a knack allows you to roll with mastery, but you cannot gain more than one dice from mastery per roll.",
+      "p": 0.6970236842105265,
+      "page": 11,
+      "score": 0,
+      "ms": 8961,
+      "tokens": 97539
+    },
+    {
+      "book": "heart",
+      "question": "Is knight a class in heart?",
+      "truth": "false",
+      "got": "Skills, Domains and Knacks\nSKILLS, DOMAINS and Knacks\nSkills are things you can do; domains are areas of knowledge and experience. Skills apply specifically to actions, while domains are broader and might affect your contacts and/or your ability to function in different areas of the Heart. Both are ways of giving your character a particular flavour and specific types of expertise. A character with the Mend skill and the Religion domain will likely have a very different personality and play style than one with the Kill skill and the Cursed domain. Your character will have access to skills and domains when the game begins, and will have the opportunity to gain more through advancement. Your character class and calling may automatically give you certain skills and domains,and others may be available as choices. There are no levels or values in these – you either have them or you don’t.\nSKILLS\nCOMPEL: Make people do what you want via threats, lies, flattery or reasoned argument.\nDELVE: Progress into dangerous or unknown territory.\nDISCERN: Understand the world by drawing on accessible information.\nENDURE: Resist the effects of the Heart on your body and mind.\nEVADE: Get away from someone or something that’s trying to track you down.\nHUNT: Track down someone or something that’s trying to get away from you.\nKILL: End the lives of people and things with weapons or your bare hands.\nMEND: Repair something or someone that is broken; build something new.\nSNEAK: Hide yourself or things from the attention of others.\nIf you have a skill, you add one D10 to your dice pool and pick the highest result when you perform the action associated with the skill. There’s no such thing as an “untrained” skill; everyone can attempt most actions without penalty. Having a skill denotes a serious devotion to the practice.\nDOMAINS\nCURSED: Actively harmful locations. Places touched by the Heart.\nDESOLATE: Wastelands and abandoned towns.\nHAVEN: Settlements where people live, work and form communities.\nOCCULT: Hidden knowledge and black magic.\nRELIGION: Gods, and things worshipped like gods.\nTECHNOLOGY: Machines, buildings and devices\nWARREN: Cramped, dense corridors.\nWILD: Wilderness, vegetation and animals.\nIf you possess the relevant domain for a situation, add one D10 to your dice pool and pick the highest result. Domains aren’t intrinsically linked to action types, but to areas of the Heart, broad subjects of knowledge and connections you might have with the people of the City Beneath.\nKNACKS\nIf you possess a skill or domain and gain it a second time, you get a knack. This is proficiency with a particular facet of the broad spectrum covered by the skill or domain. Using a knack allows you to roll with mastery, but you cannot gain more than one dice from mastery per roll.",
+      "p": 0.6694631578947368,
+      "page": 11,
+      "score": 0,
+      "ms": 11230,
+      "tokens": 120980
+    },
+    {
+      "book": "heart",
+      "question": "Is witch hunter a class in heart?",
+      "truth": "false",
+      "got": "Skills, Domains and Knacks\nSKILLS, DOMAINS and Knacks\nSkills are things you can do; domains are areas of knowledge and experience. Skills apply specifically to actions, while domains are broader and might affect your contacts and/or your ability to function in different areas of the Heart. Both are ways of giving your character a particular flavour and specific types of expertise. A character with the Mend skill and the Religion domain will likely have a very different personality and play style than one with the Kill skill and the Cursed domain. Your character will have access to skills and domains when the game begins, and will have the opportunity to gain more through advancement. Your character class and calling may automatically give you certain skills and domains,and others may be available as choices. There are no levels or values in these – you either have them or you don’t.\nSKILLS\nCOMPEL: Make people do what you want via threats, lies, flattery or reasoned argument.\nDELVE: Progress into dangerous or unknown territory.\nDISCERN: Understand the world by drawing on accessible information.\nENDURE: Resist the effects of the Heart on your body and mind.\nEVADE: Get away from someone or something that’s trying to track you down.\nHUNT: Track down someone or something that’s trying to get away from you.\nKILL: End the lives of people and things with weapons or your bare hands.\nMEND: Repair something or someone that is broken; build something new.\nSNEAK: Hide yourself or things from the attention of others.\nIf you have a skill, you add one D10 to your dice pool and pick the highest result when you perform the action associated with the skill. There’s no such thing as an “untrained” skill; everyone can attempt most actions without penalty. Having a skill denotes a serious devotion to the practice.\nDOMAINS\nCURSED: Actively harmful locations. Places touched by the Heart.\nDESOLATE: Wastelands and abandoned towns.\nHAVEN: Settlements where people live, work and form communities.\nOCCULT: Hidden knowledge and black magic.\nRELIGION: Gods, and things worshipped like gods.\nTECHNOLOGY: Machines, buildings and devices\nWARREN: Cramped, dense corridors.\nWILD: Wilderness, vegetation and animals.\nIf you possess the relevant domain for a situation, add one D10 to your dice pool and pick the highest result. Domains aren’t intrinsically linked to action types, but to areas of the Heart, broad subjects of knowledge and connections you might have with the people of the City Beneath.\nKNACKS\nIf you possess a skill or domain and gain it a second time, you get a knack. This is proficiency with a particular facet of the broad spectrum covered by the skill or domain. Using a knack allows you to roll with mastery, but you cannot gain more than one dice from mastery per roll.",
+      "p": 0.6767157894736843,
+      "page": 11,
+      "score": 0,
+      "ms": 8139,
+      "tokens": 88392
+    },
+    {
+      "book": "heart",
+      "question": "Is heretic a calling in heart?",
+      "truth": "false",
+      "got": "Landmarks A landmark is a point of interest and conflict within the Heart. It could be a town built in the bowels of a creaking, ancient machine; a grave site for a legendary witch, bubbling with occult power; or an ash lake, dotted with stilt-walking scavengers. Unlike the events that occur whilst exploring or uncovering a trail between them, landmarks are where things happen. There’s no defined size for a landmark: the smallest is the size of a room and the largest the size of a small town. What defines them, instead, is their importance with regards to the surrounding area.\nPLACES THAT AREN’T LANDMARKS\nThe events that occur en route to a landmark have to take place somewhere, but the areas around each landmark are far less stable. Each landmark remains in place only as long as the inhabitants of the Heart believe it to be there; once it slips from mortal minds, it falls back into the shifting chaos of the City Beneath. Anywhere that isn’t a landmark is protean and unstable – if player characters visit it a second time, there’s no guarantee that it’ll be the same.\nFor example: on the way to one landmark, the party encounter a druid carefully tending to a grove of mushrooms. Walking back a week later, they see that she’s been completely subsumed into her fungal horde; she whispers to them with a thousand voices that are felt, not heard. Or her grove has become a stone circle, inscribed with pictographs of mushrooms and unreadable glyphs; or a cave where bandits, tripping on hallucinogens, fight enemies that only they can see (but might actually be there); or a dry river of silt and ash, full of fingerbones wearing corroded wedding rings. Even areas marked in place to make connections are strange, and operate around a theme rather than the laws of time and space.\n130\nHAUNTS\nHaunts – individual areas within havens – can remove stress from your character’s resistances. Listed next to each haunt are the resistances that they can access and the maximum amount of stress they can remove. For example:\nGRIP STATION DOMAINS: Haven, Technology TIER: 1 DEFAULT STRESS: D4 HAUNTS: • Frumious, an alchemist and technically a doctor (D8 Blood, D8 Echo) • Singing crystalline caves (D6 Mind, Fortune) • Trading with the sages (D4 Supplies)\nWhen you access a haven’s haunts, you have to pay for using the services. The most common way of doing this is to trade: you can exchange resources (treasure, monster parts, etc.) to access an equivalent dice worth of refresh up to the dice size listed next to the haunt. If your resources are of a higher rank than the haunt you’re accessing, and it makes narrative sense to do so, you can downgrade them by an equivalent number of steps instead of trading them entirely. For example, you have a sack of narcotic mushrooms (D8) and want to access the Doktor’s surgery; instead of removing the resource entirely to access the D6 refresh, it’s downgraded by two steps (a D6), leaving it as a Handful of Shrooms (D4). However, you can’t break down a single valuable item (a painting, for example) into smaller parts. If you don’t have resources to trade, you can choose to take equivalent stress to a different resistance. Most commonly this is Supplies (spending spare cash or trading items) or Fortune (pushing your luck), but you could also use Blood\n(engaging in hard/dangerous work for goods and services), Echo (being subject to someone’s weird experiments or scavenging materials from unstable areas) or Mind (doing something reprehensible in exchange for what you need). Whether or not these are viable options is up to the GM and dictated by the fiction.\nUPGRADING\nWhen you use a haunt, make a mark next to it. When a haunt has six marks against it, remove all marks and increase the refresh dice by one size. Improvements take time – when you upgrade a haunt, it won’t take effect until the next time you visit this haven. You can invest your time and money in the haunt, too. If you sacrifice resources or mark stress as though you were using the haunt at its full refresh value, but don’t remove stress, make three marks on the improvement track.\nDAMAGING OR DESTROYING A HAUNT\nSome fallout results (most commonly Fortune) will damage haunts or havens; generally, they’ll downgrade one or all of the haunts in the haven. A D4 haunt that is downgraded is removed entirely. Characters may also voluntarily damage a haven (e.g. as part of a ritual, an act required for their calling or out of vindictiveness) – play out the scene as normal and downgrade the haunt/s if the action is successful.\nEmployment\nAs delvers, the player characters’ primary means of economic survival in the Heart is acting as agents for those with resources but without skills. Delvers are often contracted as a postal service, delivering goods and missives between havens; or they might be hired as guards for a caravan travelling through a dangerous area; or they could be asked to hunt a heartsblood creature that’s been threatening the inhabitants of a settlement. Cartography, field botany, acquisition of rare artefacts (theft), defence, research, education, assassination; there’s no\nend to the jobs that those of means will deposit on those unafraid to get their hands dirty. All NPCs want something right now; often, it’s the sort of thing that delvers could help with (if they don’t want anything right now, consider replacing them with a different NPC). Depending on the resources and obsession available to them, they’ll go to varying lengths to achieve their goals. Most are willing to trade a little of what they have (coin, valuable goods or things that the player characters specifically desire) in exchange for services performed; others can only offer their thanks or a favour in kind. The arrival of a group of delvers in a haven is seen as a mixed blessing: while they bring news from outside, fresh faces and much-needed skills, they also have a tendency to cause trouble. Desperate people will contact them (perhaps secretly to avoid the suspicion of other residents) begging them for assistance. Generally, an NPC will offer a reward equivalent to one dice size up from the default stress dice for their current tier for basic tasks; tasks that require multiple people will see all of them paid. (So: an NPC on Tier 1, which has a default stress dice of D6, will offer a D8 resource reward.) It’s always possible to haggle with an NPC for a better rate, but this has its own risks. As a GM, you can leverage the players’ need for resources by offering them quests to distant or interesting landmarks. This gives all the player characters a shared short-term goal, a semi-reliable source of income and most importantly, a reason to explore the wilder and more dangerous parts of the Heart.\nLandmarks LANDMARKS BY TIER Strange machines that grind and screech for some unknown purpose; crumbling temples to dead gods, haunted by the rotting spectres of their angels; caverns ringed with luminous fungi that grant revelations when eaten… the Heart is full of landmarks. Even though the environment of the Heart is unstable and unreal, landmarks are infamous or well-travelled enough that they maintain a semi-permanent state of existence. While their exact location may change from year to year, their essence remains.\nHOW TO USE LANDMARKS\nThere is no definitive map of the Heart, apart from what you make for yourself. Your Heart (the one that your group adventures through, and which builds around them through their desires and by choosing beats from their callings) is the only map you need to worry about. It is exactly as true as it needs to be. Listed in the following chapter are ideas for landmarks that can define your adventure and provide respite, resources, excitement or danger. We would like to make it clear up front that there is no version of the Heart where all of these landmarks are present or important; choose the ones that interest you and build on them. For more information on constructing your Heart and mapping it in a semisensible fashion, please see p. 102. Remember that you can (and should) change the landmarks you find here to reflect what happens in your campaign. Have them bleed into one another; take a detail from one place and put it somewhere else; destroy them in-game; have them develop and react to player actions; do whatever you decide might be interesting. Delves are an especially great place to showcase the interaction between two landmarks as they overlap onto one another. These are not the limits of what is in the Heart. It is strange, and the deeper a delver goes, the less authority logic or reason will have over the world around them. You are encouraged to create the landmarks that will best serve the story that you and the players are going to tell.\n132\nMAKING YOUR OWN LANDMARKS\nEach landmark should provide one or more of the following things:\nSANCTUARY: Visiting haunts gives player characters a chance to remove stress and fallout far more reliably and effectively than they can attempt on their own. In addition, haunts provide an excellent way to drop non-player characters into the story. You’ll notice that many of our haunts lead with a person, rather than a location, for ease of roleplaying.\nMATERIALS: Landmarks provide an opportunity to harvest resources (or acquire items) that aren’t available in other parts of the City Beneath. Some character classes rely on resources to access their abilities, so give the players a chance to collect them.\nADVANCEMENT: Each player will have a set of beats tied to their calling that they’ll need to complete in order to advance. Many of these will be made possible by visiting havens, as a lot of them rely on NPCs. When your players tell you their beats, come up with opportunities to fulfil those beats in landmarks. For example: a Penitent character will need opportunities to witness the effects of their betrayal, so making landmarks that tie into their order will help them explore that part of their calling.\nEMPLOYMENT: Landmarks provide work for delvers, and it’s work that ties the player group together as they adventure through the City Beneath. Every important non-player character should want something that they can’t get, but which the player group might be able to help with for the right price.\nDANGER: If the player characters are exploring a landmark as part of a job – rescuing someone from a cult or locating an item – then the landmark can provide an exciting challenge. Some landmarks are just horrible places to be, and\nas long as the delvers have a reason to visit them, that’s often enough.\nWONDER: Some landmarks are just amazing in and of themselves, and give you a chance to flex your creative muscles. They can also allow players to explore the mysteries of the Heart without worrying about travel like they would on a delve.\nIf your landmark doesn’t really provide any of the above, change it so it does, or sideline it into something that crops up on a delve. Not every idea is strong enough to develop into an entire landmark, but that doesn’t mean you should get rid of it!\nDELVES\nDelves are, by necessity, between two landmarks. They take elements from both, acting as a transition between them. That means it’s impossible to create a list of pre-written delves that you can slot seamlessly into your campaign like landmarks; instead, we’ve put together a guide to creating your own.\nCREATING DELVES\nWhen creating delves, you’ve got a few different things to think about. Thankfully, as these are mainly notes for your own use, you can be as scrappy and vague as you like; in fact, the looser you keep your descriptions, the easier a time you’ll have responding to player actions. A delve breaks down into the following elements:\nROUTE: A delve will be between two (or more) landmarks – decide which ones at the start of the creation process, as this will inform the rest of your design.\nTIER(S): A delve might remain within a single tier of the Heart or branch between them. Make a note of which ones it runs through and adjust the weirdness levels appropriately.\nDOMAINS: The domains most commonly encountered on the journey. The primary domains of the two landmarks that it joins up are an obvious choice, but don’t feel limited by them.\nSTRESS: The default dice size of stress inflicted on characters when they fail or partially succeed whilst on the journey. The larger the dice, the more dangerous the delve is. You can always adjust this once play has started, so it’s better to start low and work upwards from there. You can find the default stresses for each tier on p. 73.\nRESISTANCE: The amount of stress the player characters must collectively inflict on the journey before it’s completed. The higher this number is, the longer the delve will take. For your first few delves, don’t worry about adjusting this on the fly to make a delve longer or shorter – it’s going to take you a while to get a feel for the right number for your group. As a rough guide, if a player character has the appropriate equipment, they’ll remove 4 resistance from a delve every time they make a roll against it. A resistance 12 delve should consist of about three major actions, a resistance 16 of four and so on. Characters without equipment will move slower, and those with equipment that inflicts D8 stress or higher on delves will travel much quicker.\nDESCRIPTION: A brief outline of the area. Focus on the senses and how it feels to experience it as a delver. You might also want to note down the recent history of the area if it’s going to be important to the game.\nEVENTS: Typical events, obstacles and curiosities that might occur on the journey. These will generally result in one of the players making a roll of some kind to remove resistance from the delve, so think of them as challenges to be overcome. Physical barriers are a good start, as are tricky social encounters, detrimental environmental conditions or uniquely difficult navigation. You don’t need more than a handful of ideas about interesting things you’re going to throw at the player characters. If you’re planning on putting a particular kind of adversary on the delve, make a note of their stats (or write down the page number of the book they’re on).\nLandmarks CONNECTION: An optional objective that, if completed, allows the player characters to halve the resistance of the delve if they use it again in future. If correctly themed, these side-plots give you ample opportunity to allow players to fulfil their characters’ beats too.\nOnce you know these things about the delve, you’re good to go!\nEXAMPLE OF DELVE CREATION\nROUTE: Between Swinefall and Highrise TIER: 2 DOMAINS: Warren, Desolate STRESS: D6\nRESISTANCE: 14\nDESCRIPTION: A vertical ascent through a reeking maze of pulsing red magelights and territorial pig spectres before climbing the blasted, half-ruined tower blocks of Highrise. It smells like old blood and rust, then mothballs and damp.\nEVENTS: A mob of exiled pig ghosts howl their\nbestial support for a dethroned king; Creaking metal walkways, slick with ever-wet blood; Renegade groups of cull-priests from the Highrise cult are covered in protective charms and looking for sacrifices to the ghosts that plague their homes; A great butcher shop with rusted iron machinery where pig and humanoid ghosts vie for control; Eyeless spectres (p. 187) haunting the abandoned flats in the lower floors of Highrise.\nCONNECTION: Help the exiled Pig King reclaim his throne, and he’ll allow you and those of your blood safe(ish) passage\nNOTES: The pig ghosts of Swinefall are at war with the humanoid ghosts of Highrise over territory, and the place is filled with unnatural shrieks and screams from distended spectral mouths.\n134\nGENERIC LANDMARKS\nYou won’t find much in the way of generic landmarks in here (i.e. the sort of place that fills a gap between two other more interesting places, or which acts as a mundane location to start an adventure). All the landmarks we’ve listed are unique, but that doesn’t mean that they’re the only landmarks in the Heart or that generic landmarks don’t serve a useful purpose. To have everything weird all the time can be exhausting in terms of plot and pacing, and it can be refreshing to take a break into (relative) normality every now and again to keep the weirdness fresh. Feel free to come up with your own small landmarks to fill in the gaps between stories. Read through the locations below to get an idea of what sort of thing makes sense for your campaign, and go for it. What follows is a list of quick concepts for non-unique landmarks that you can expand:\n• A watchtower with a trio of beleaguered Hounds, offering relative safety. • A chapel to a goddess whose worship is forbidden in the City Above. • A maintenance shaft for the Vermissian, converted into a cramped library-tunnel. • A settlement built around an ever-turning paternoster and a half-decent pub. • A hunting lodge, far from anything else, which hasn’t been used for years. • A coven of witches living in the shadow of a fallen monolith who trade magic for blood. • A Labyrinthine colony built around important secret, never to be told. • A small dark-farm of goats, fowl and mushrooms tended to by a long-suffering family. • A magical sanctum filled with bickering occultists. • A weirdly normal house that resets itself, and those who live in it, once every 24 hours. • A peaceful grove where the trees and ground breathe in time with the visitors.\nWHAT’S IN A LANDMARK?\nEach landmark is written out according to a template. Here’s everything you need to know about it:\nNAME: The landmark’s name. All landmarks have names, otherwise they wouldn’t be able to exist; if it doesn’t have a name, put it on a delve instead.\nDOMAINS: The most commonly-encountered domains in the landmark.\nTIER: The tier of the Heart on which you’ll most likely find the landmark: 0,1,2,3 or Fracture. (Fractures are otherworlds that don’t reside on any particular tier.) The deeper something is in the Heart, the weirder it’ll be.\nHAUNTS: Places where the delvers can exchange resources for removing stress or downgrading fallout. The maximum dice size and relative resistances are listed in brackets after the description.\nDESCRIPTION OF LANDMARK: A longform area description that talks about the history and current state of the landmark, including any hooks that might draw player characters into the location.\nSPECIAL RULES: Any special rules that are in effect within the landmark. Usually these are dangers to be avoided, but not all of them. Fallout specific to the area will be listed here as well, and you can choose to apply it to characters if it makes sense for the story.\nDEFAULT STRESS: The standard amount of stress inflicted on player characters if they fail or partially succeed on an action. Each roll is still figured out on a case-by-case basis, but this provides a baseline to work from.\nRESOURCES: Valuable materials that the delvers can harvest or steal from this landmark. The higher a resource’s value, the harder it will be to safely acquire.\nPOTENTIAL PLOTS: Some story ideas to bring player characters to the landmark or propel them on to another once they arrive. Some have an NPC listed who offers a reward for completion (this is listed in brackets after the job description), but this isn’t a hard and fast rule. Figure out what your player characters want and give it to them in exchange for dangerous work.\nLandmarks TIER 0 DERELICTUS, THE CITY BETWEEN DOMAINS: Haven DEFAULT STRESS: D4 HAUNTS: Any, D10\nDerelictus has been a waypoint for travellers between the two cities for centuries. In its centre, the aelfir architects who built the Vermissian commissioned an enormous station to link the City Above and the City Beneath and allow travel between them. Haven station, as it was to be called, was built but never connected to the line. After decades of delays, it was abandoned and the inhabitants of Derelictus moved in.\n136\nHuge, arching ceilings of broken and filthy glass tower above the central plaza. There are three platforms that extend downwards into the void below, each housing hundreds of people, and the station continues into the outskirts of Derelictus proper. Here, the racial tensions of Spire are relaxed somewhat by the interzone feel of the place; aelfir associate with – and on occasion marry – dark elves. The central platforms form the crux of the City Between, as Derelictus is sometimes called – they cater to delvers, thrill-seekers, occultists, vagabonds and explorers all keen to descend into the Heart.\nPlatform 1 is a warren devoted to the very serious business of selling people things that will help them survive in the Heart. Workshops and traders boast the keenest swords, the warmest coats and\nthe cleanest-burning\nspireblack. The goods for sale are expensive; the owners have a captive audience, after all. Platforms 2 and 3 cater to the baser needs of delvers – the roughest ale, the greasiest food, the cheapest beds and the cheapest company. Finally, platform 4 holds representatives from most of the factions who have a vested interest in Heart exploration. The Vermissian Collective boasts an intact ticket office here; the Hounds have a recruitment office; and the Gryndel Hunting Clubs offer farewell drinks to members before a delve. Any number of paramilitary, religious, occult or trade-related organisations have offices on the platform, whether publically or not.\nSPECIAL RULES: Spending a few days in Derelictus automatically removes all stress from a character’s resistances.\nRESOURCES:\n• There’s work to be had for able-bodied people and those who can read and write. Doesn’t pay very well though (D4, Haven).\n• Various dark magicians kicked out of the City Above but not quite ready for the City Below practice their dark arts on the crumbling streets of Derelictus. If you can break into their hovels you can make off with their valuables – sacrificial animals, sheafs of arcane research notes, scrying-bones and so on (D8, Occult).\n• Hunting the verminous swine that snuffle through the open sewers here is a popular pastime, and if you get a big one someone will generally buy it off you (D6, Wild).\nPOTENTIAL PLOTS: • Verrex, a shifty retro-technologist with a tumbledown workshop lit by flickering magelights, sends delvers off to rescue an escaped mechanical copy of himself. Whether it’s real or not is another matter. (D10, Technology) • A mystery cult made up of street kids approaches the party; the leader asks them to rescue his sister after she disappeared into the City Below looking for the Moon Beneath. (D4, Religion – plus a blessing from the Goddess)\n• Insouciance Gryndel is a moneyed drow dilettante looking for guides to help her explore the City Beneath and maybe bag a legendary trophy (she’s actually just looking for her father). She’s offering a good price (D10, Haven) and she carries herself like she means business.\nTIER 1\nTier 1 runs from the edge of Derelictus into the depths of the undercity. There are people here – some of them normal, most of them weird, but all still people. Havens are more commonplace than on the tiers beneath, and there are occasional pathways that can be used by anyone. Here, sects to forbidden gods and secret orders of occultists hide themselves from the attentions of the surface world in rebuilt temples; hustlers manufacture narcotics for distribution in the City Above out of sight of the law; and those not welcome in polite society make a home (and a name) for themselves. Tier 1 is relatively stable compared to the lower depths of the Heart. Buildings tend to stay in one place (unless they’re hungry), maps only need to be updated every six months or so and connections between landmarks are only hazardous rather than outright deadly.\nTHE GOD OF CORPSES\nDOMAINS: Haven, Religion DEFAULT STRESS: D4 HAUNTS:\n• Galen Guides-the-Pulse and Doctor Haverick, Avid Chirurgeons (D10, Blood).\n• Madb, Rheumy-eyed Hierophant of Ribcage Market (D8, Supplies).\nThis landmark is a huge corpse of no particular beast: a whale, perhaps, or some sort of titanic ox. It died down here, and in dying it became a god. People live in it and worship it, praying that it will keep them alive a little longer. There are Seven Sacred Ailments which it is considered good to die from. These are: Weeping Ague, Azur’s Touch, Grackling-Cough, Quivering Buboes, Cluttered Lung, Degeneracy of the Bone and Quickening Blood. All others are the work of demons of\nLandmarks\nsin and must be eradicated. The physickers here are many, zealous and skilled, but they often take more interest in the disease than the person they’re saving. There is a sect here that seeks to awaken the god: to have it throw off its cthonic shackles and bear them, bodiless and free as a virus, into the heavens. There is another sect who believes that this is heresy, and that to bring it to life would shatter its divinity. They are at quiet war, concocting diseases and spreading them to one another in the vain hope of gaining power, but at present they seem to have reached a standstill.\nRESOURCES:\n• Vial of one of the Seven Sacred Ailments (D8, Religion, Dangerous).\n• Face-rot Capsule (D6, Cursed, Dangerous. Can be used as a Kill D8, Spread, Ranged, Degenerating, Limited 1 weapon in a pinch.)\n• Panaceaic Inhaler (D8, Religion)\n138\nGRIP STATION\nDOMAINS: Haven, Technology DEFAULT STRESS: D6\nHAUNTS:\n• Frumious, an alchemist and technically a doctor (D8, Blood; D8, Echo)\n• Singing crystalline caves (D6, Mind; D4, Fortune)\n• Trading with the sages (D4 Supplies)\nAround a hundred feet above the train tracks around Grip Station, glittering crystalline stalactites creak and shudder gently in response to the vibrations of those who move beneath them. It was the hope of the aelfir constructors that travellers on the line could marvel at the crystals as they were illuminated by huge spotlights mounted on the carriages, but the lights proved too expensive to maintain, and any time a train went over 10 miles an hour the stalactites started to fall from the ceiling. Journeys through Grip Station subsequently came with\nfifteen minutes of agonisingly slow, pitch-black travel accompanied by the “singing” of crystals threatening to detach overhead. Of late, the Vermissian Sages have established a local base of operations in the original station house, shoring up the fragile crystal structures above their heads with scaffolding.\nRESOURCES: Particularly resonant crystal (D8, Wild, Beacon. Can be rigged into a wayfinding device that functions as a Delve D8, Unreliable item)\nLABYRINTH\n…\nRESOURCES:\n• At least a dozen treasures that vary from D8 to D12 in value and possess the Occult, Cursed or Religion domains. These are well-protected, as mentioned above, and navigating the area successfully uses the rules for delves (p. 100).\nPOTENTIAL PLOTS:\n• The Minotaur, That-Which-Escapes (p. 205), begins to crawl through its extra-dimensional\nLandmarks prison to the streets of Labyrinth.\n…\nDruids don’t do well in the City Above; it is a place of rules and walls, science and enlightenment, art and industry. Exposure to the world’s largest metropolis drives them mad after a year or two. A few wild-eyed men and women pray to the spirits of the birds or commune with the majesty of a bee swarm’s hive-mind, but most end up dead or in the City Beneath, where civilisation comes undone and their bestial sides can flourish. The druids of Redcap are, unlike the ones you’d find in your average sacred stone circle or wilderness grove, unrepentant criminals. Realising that their arcane arts gave them access to a) fastgrowing plants, no matter the location, and b) the ability to turn into dangerous predators when they needed to, they established the undercity’s most prolific and best-guarded drug farm and flooded the market with magic mushrooms. Anyone who tried to muscle in on their racket (or who tried to stop them for noble reasons) ended up on the wrong side of a hit squad of half-animal, half-drow assassins (p. 183). Redcap, which looks to be built upon the ruins of an ancient cathedral, is now a lurid smear of fungal blooms and the air is thick with spores. The druids (and a few ungifted lackeys) keep watch over their stocks of mushrooms and escort shipments up to Red Row in the City Above. On occasion, they also release a few luckless sacri‐\n140\nfices into the caverns beneath that they can hunt and kill, ensuring another good harvest as their blood soaks into the porous rock.\n…\nThe Deep Apiarists carved a plinth out of solid bedrock and installed a buzzing network of bees in hives that cover the great pillar. They broadcast the hum – the signal that lets the bees communicate with one another over great distances – through the resonant structure. Any wandering\nApiarist will be sure to pay it a visit and commune with the intelligence at its core. The resonance chambers act as a communications network for Deep Apiarists. They post messages of encouragement and warning for one another, stash supplies and even inter their dead here. The corpse’s inhabitants simply add to the subaudible murmur that reverberates through the very bones of the City Beneath.\nRESOURCES:\n• A jar of glyph-marked deep bees (D4, Occult, Fragile, Mobile)\n• A nascent queen, plucked from within a hive (D8, Occult, Fragile, Mobile)\n• Research notes on the Hive left by a fatallywounded apiarist (D8, Occult, Niche)\nSUMP STATION\nDOMAINS: Technology, Warren DEFAULT STRESS: D4 HAUNTS: None.\nAncient pumps, several storeys high, used to suck the brackish water out of this place: the walls are porous and unstable, and water would seep in. Now the pumps are long-broken and the furnaces powering them are cold. The station is flooded at least waist-high.\nThe flooding – and the creatures that scud malevolently around the abandoned tracks (Wretches, p. 199) – keep people out, meaning that there are untouched airtight rooms, lockers, tunnels and even a vending machine that are presumably full of Vermissian artefacts. The fact that no-one’s been stupid or competent enough to get into them yet doesn’t stop tens of delvers drowning in here every year.\nRESOURCES:\n• Intact vending machine from The Vermissian Company (D12, Awkward).\n• A box of damp information pamphlets: The Pulse Line and You, Proper Train Etiquette, something purporting to be a timetable that descends into a madman’s prophetic scrawl (D8, Occult)\nPOTENTIAL PLOTS:\n• Athelren, a jaunty Vermissian Sage, dispatches the delvers to salvage the research notes from a lost exploration team in the bowels of Sump station. But why were they lost? (D8, Occult)\n• This old guy with one eye and fewer teeth at the back of the bar won’t shut up about a giant “eel with legs” that lives in Sump. Says the Signal-Box cultists (p. 196) there worship it like a carnivorous god.\nTHE TEMPLE OF THE MOON BENEATH\nDOMAINS: Haven, Religion DEFAULT STRESS: D4 HAUNTS:\n• Sister Griswold’s Clinic (D10 Blood)\n• Altar of Our Many Mothers (D8 Fortune)\n• Purification Chambers (D6 Echo)\nTwo hundred years ago, the Church of the Moon was driven out of the City Above in a week-long purge of fire and terror by the occupying aelfir forces: it was a relic of the old powers and a threat to the new regime. Battered and burned, the remnants of the church fled to the lawless depths of the Heart and sought to rebuild what they had lost in the darkness of the undercity. Now, centuries later, they have rebuilt their onceglorious temple in the City Beneath. The stones and beams of the structure were smuggled down by pilgrims or recreated by blind artisans. The temple stands once more – mismatched and patched together, but surviving. The clerics there will pay handsomely for parts of the original grand temple or accurate reproductions should they be offered. After their descent, the drow of the Temple of the Moon began to distrust the sky, believing it to be distant, changeable and uncaring. Their nowuseless telescopes were dismantled, and followers instead sought wisdom in the true moon they had dreamed of since they arrived in the Heart. This moon dwelled far beneath the earth, a luminous and fecund mistress, of which the flitting phantom in the heavens was but a pale imitation. The Church of the Moon Beneath, as it was now called, sent the faithful down into the depths",
+      "p": 0.6691664536741215,
+      "page": 135,
+      "score": 0,
+      "ms": 38975,
+      "tokens": 374742
+    },
+    {
+      "book": "heart",
+      "question": "What are the skills available to a character?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 11432,
+      "tokens": 120923
+    },
+    {
+      "book": "heart",
+      "question": "what are the equipment tags",
+      "truth": "passage",
+      "got": "Soon, your body will warp and distend into that of a beast. Sometimes it’s a specific animal, but she likes to be creative and will often meld traits from different creatures into a single chimera. She will leave your hands intact and give you weapons that she has made herself: things of wood and sinew and metal scavenged from those she has fought before. She will sound her horn, and then the glorious hunt will begin.",
+      "p": 0.7176499999999999,
+      "page": 210,
+      "score": 0.2857142857142857,
+      "ms": 16468,
+      "tokens": 177740
+    },
+    {
+      "book": "fallout",
+      "question": "How many perks are there?",
+      "truth": 94,
+      "score": 0,
+      "ms": 32700,
+      "tokens": 239277
+    },
+    {
+      "book": "fallout",
+      "question": "How many skills are there?",
+      "truth": 17,
+      "score": 0,
+      "ms": 40229,
+      "tokens": 280324
+    },
+    {
+      "book": "fallout",
+      "question": "How many origins are there?",
+      "truth": 6,
+      "score": 0,
+      "ms": 24852,
+      "tokens": 177141,
+      "known": "the contents list five; Brotherhood Initiate has no bookmark"
+    },
+    {
+      "book": "fallout",
+      "question": "Is Gunslinger a perk?",
+      "truth": "true",
+      "score": 0,
+      "ms": 19728,
+      "tokens": 114007
+    },
+    {
+      "book": "fallout",
+      "question": "Is Lockpick a perk?",
+      "truth": "false",
+      "got": "true",
+      "p": 0.7813,
+      "page": 123,
+      "score": 0,
+      "ms": 17890,
+      "tokens": 93296
+    },
+    {
+      "book": "fallout",
+      "question": "How is radiation treated?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 17465,
+      "tokens": 85444
+    },
+    {
+      "book": "fallout",
+      "question": "What is the cost, weight and damage rating of a combat rifle?",
+      "truth": "cost 117, weight 11, damage rating 5",
+      "score": 0,
+      "ms": 19908,
+      "tokens": 122708
+    },
+    {
+      "book": "fallout",
+      "question": "What is the cost, weight and damage rating of a hunting rifle?",
+      "truth": "cost 55, weight 10, damage rating 6",
+      "score": 0,
+      "ms": 20191,
+      "tokens": 122708
+    },
+    {
+      "book": "litm",
+      "question": "How many theme types are there?",
+      "truth": 20,
+      "score": 0,
+      "ms": 10536,
+      "tokens": 106558,
+      "known": "some runs miss p.75 and count 1 to 6 on p.104 or p.125, or find nothing (issue #14)"
+    },
+    {
+      "book": "litm",
+      "question": "How many theme kits are there?",
+      "truth": 153,
+      "score": 0,
+      "ms": 19947,
+      "tokens": 213853,
+      "known": "the second page sits at the answer floor and is counted one run, refused the next"
+    },
+    {
+      "book": "litm",
+      "question": "How many tropes are there?",
+      "truth": 30,
+      "score": 0,
+      "ms": 10564,
+      "tokens": 93152,
+      "known": "the contents list the ten trope groups"
+    },
+    {
+      "book": "litm",
+      "question": "How does hero creation work in Legend in the Mist?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 7964,
+      "tokens": 100522
+    },
+    {
+      "book": "cpr",
+      "question": "How many skills are there in the game?",
+      "truth": 66,
+      "got": "RUNNING CYBERPUNK\nof Philip Marlowe and Sam Spade on the Silver Screen are good examples) who are often prone to having shady pasts and failures to live down. A good GM should assume the Players have basic skills but are not totally badass.\nIt’s Always a Caper\nA \"Caper\" is a time-honored part of the crime genre, although sometimes (like in the venerable Mission Impossible franchise) it can be in the spy genre instead. The Caper involves getting a team of professionals with rather dubious skills together to steal, kidnap, sabotage, or even assassinate a particular person, place, or thing. Sometimes called \"The Heist,\" a Caper is the best way to get a play group together, keep them focused, and make sure they all get a great payoff at the end.\nCapers almost always involve a Caper Crew: a team assembled to pull off the Job. Often a Caper Crew will get a rep and be hired over and over by a succession of clients, with the terms worked out by their Fixer. A good Caper should use as many Character Roles as possible in their Caper Crew. Good Role choices include:\nThe Mastermind: This is the Player organizing the Job. Most often a Fixer as they have the cash to bankroll under the table jobs, but an Exec can fill this slot too. Either way, a Caper Crew often has someone paying to get the job done. The Mastermind may not be going along on the Job, but they have a stake and they’re not going to be happy if it all goes sideways.\nThe Runner: This is the Player who provides your NET cover, opening remote doors, spying out cyberspace traps, taking control of security systems, and always scanning ahead of the Caper Crew for problems.\nThe Tech: This is the Player who brings the Gear. It can be specialized stuff, or off the rack—no matter; this is the Player who keeps it running and comes up with on the fly solutions when unexpected tech problems crop up.\nThe Medtech: Because sometimes things do go wrong, and you end up full of holes this Role needs to patch up. The Job may also involve kidnapping, extraction or some other element that will have a medical function. (Like how much sodium pentathol should we give this guy to find out where he hid the microchip we want?)\nBY EDDIE MENDOZA\nRUNNING CYBERPUNK\nSide Quest Ideas\nHere are a few good Side Quest concepts to get your brain churning.\nPerhaps the Characters come into possession of a piece of experimental tech and quickly discover that the Corp—or Tech—who built it has hired a Crew of Solos to get it back. Now the PCs get to decide what to do with it.\nMaybe the Crew gets hired by the NCPD to help hunt down a dangerous cyberpsycho who's been killing civilians across Night City. The problem? This psycho's stealthy and methodical.\nIf you happen to have a Nomad in the Crew, they could receive word from their Pack that a close family member's gone rogue and must be hunted down. Now the Nomad Character has to decide whether they're going to hunt down their packmate or try to figure out what happened.\nA new musical act hits Night City and hires the PCs to act as muscle and support while they play their gigs. Build two or three interesting Rockerboys and their manager and let your Crew get to know them as they defend the band from the dangers of Night City.\n394\nThe Ninja: This role is usually a variation of a Solo, but one who specializes in getting into places and silently taking out the opposition. They’re also competent muscle, but they’re usually sneakier about it.\nThe Face: This Role is the Player who deliberately puts themselves out in front of the target of a Job. Sometimes they’re there as a distraction. Sometimes they’re there to pump the opposition for info. Sometimes they’re the one to smooth talk the bad guys into doing something advantageous for the team. Rockers are naturally good at playing the Face role; they can often rely on a guard or secretary to be too starstruck by their arrival to think clearly.\nThe Driver: This is the Player who provides the transport. Probably best as a Nomad, as that’s the Role with the most vehicular options. You may also have to drive several types of vehicles in a single caper.\nThe Muscle: This Player provides raw strength and violence. Often whomever is best at hand-to-hand beatdowns. If a Player doesn’t fit one of the other Roles on the Caper Crew, they can probably find something to do as the Muscle.\nThe Killer: This Role also deals with violence, but usually using guns, swords, or other types of weapons. They’re the snipers, hit men, and drive-by guys who take out the guards or the rival gangs.\nThe Scrounger: This Player is there to come up with whatever the Caper Crew is going to need; a good place for a Fixer, a Tech, or an Exec. He always has a cousin who knows a guy who has a brother, who knows a guy whose uncle can turn up with something useful, no matter how obscure it is. How they got it? Don’t ask.\nAdd Some Twists\nA good adventure will have many twists, turns, and unexpected events. We use an ascending arc of danger/opportunity as the way to propel the Main Plot.\nIt’s Always Personal\nThe Main Plot should always be personal, but may eventually involve larger world threats. In other words, the Crew might find themselves involved in a major fight between two Corps but they should have an intimate and personal reason for getting involved. If you need a hook, don't forget their Lifepaths. Those are full of good ways to snag a Character.\nThe start of each \"story spike\" can begin based on orientation of individual Character roles.\nTechnical: New technology or using Tech Skills to fix a problem.\nCombat: A threat or other physical danger (like in an action movie)\nPersuasion: Conning or otherwise getting around danger without throwing fists or playing with gadgets.\nDon't Lose the Main Plot\nNo matter how big the plot gets, Jabba the Hutt still wants his 5,000 credits.\nAnd he will keep showing up with bigger and bigger threats to get it. (After all, it is personal.)\nSomething for Everyone\nSide Quests are linked to main plots for each Player Type. However, you can also look at doing Side Quests that fall between two or more Types. Side Quests are a great way to add depth to a story and help it extend beyond a basic plotline. Who knows, you might even get some Character development out of it!\nBeat Charts\nMaximum Mike's Secret Weapon\nYou’ve got Edgerunners and an idea for your Cyberpunk RED campaign. Now it’s time to write the Script.\nScripting the Game\nWhether for a show, movie, or RPG adventure, you need a script to tell you where the action’s going. And pacing is the most important part of that script. You not only have to tell a story, but also break it up into manageable chunks for your Edgerunners. Each \"chunk\" of story should convey information, be entertaining, and help provide excitement by pushing the plot along in some visible way. One way to do this is by using a writing trick called a Beat Chart; a framework in which certain actions or scenes take place in a certain order. The order of the scenes helps both maintain dramatic tension and allows the storyline to make sense. Each Beat Chart has five aspects, or Beats: the Hook, the Development, the Cliffhanger, the Climax, and the Resolution.\nSome Beats, like the Hook, Climax, and Resolution occur only once. Other Beats, like the Development and the Cliffhanger, are used over and over, but in alternating order.\nThere are Three Rules for Setting up a Beat Chart\n1. The story always begins with a Hook. The Hook is a short piece of action or suspense that is used to involve the reader, viewer, or Edgerunner in the story.\n2. The story always ends on a Climax, followed by a Resolution. The Climax is the big finale of the story—the battle where the protagonists complete their mission (maybe), or where the murderer is revealed. The Resolution is the tag line: it’s the part at the end that tells what happens as a result of the Climax. It’s the part in the show or movie where we see the supposedly dead antagonist flying away in their AV, the Nomad\nRUNNING CYBERPUNK\nPack driving off into the night, or the protagonists living (as much as anyone can in the Time of the Red) happily ever after.\n3. Alternate Developments and Cliffhangers throughout the story. Developments are basically non-action Beats that move the story along; they involve clues, revelations, conversations, and Character Developments. Cliffhangers are always action scenes: chases, dogfights, battles, and so on. Developments and Cliffhangers always appear in alternating order; you should never have two Cliffhangers or two Developments in a row. As a general rule, if your Hook has a lot of action and battle, you’ll start the rest of the story with a Development; if the Hook was more cerebral and inactive, you’ll want to start with a Cliffhanger to liven things up. You also want to make sure to end on a Development if your Climax is on active one, and a Cliffhanger if your Climax is more mental.\nA Beat Chart Example\nLet’s take a look at a Beat Chart with the Beats in place, in this case, from the opening story of this book, Never Fade Away. You can reread it on pg. 5.\nHook: The story starts with a Cliffhanger, in which Johnny and Alt are attacked. Johnny goes down and Alt is Kidnapped.\nDevelopment: After he’s patched up, Johnny meets Thompson who provides information in the form of a Revelation. Johnny learns who kidnapped Alt (Arasaka) and why (they want her to make a new Soulkiller).\nCliffhanger: Johnny and Thompson travel to the Atlantis to recruit Rogue and Nomad Santiago. The meet gets interrupted by Arasaka agents and a Battle breaks out.\nDevelopment: The focus switches to Alt, who wakes up in the office of Toshiro, an Arasaka exec who launches into a Monologue about why she was kidnapped.\nCliffhanger: While they fought off the first wave of attackers, Johnny and crew know they are the subject of a Pursuit by a force much bigger than\nRUNNING CYBERPUNK\ntheirs. They run away and take refuge on a fire escape and try to figure a way out of their present predicament.\nDevelopment: Alt and Johnny hit the Advantage Revealed Development at the same time. He shows how his music can inspire and direct legions by raising a mob and unleashing them on Arasaka Tower. Alt, meanwhile, cooperates with Arasaka and creates a new Soullkiller, but ensures it will remain loyal to her.\nClimax: The Final Battle happens on two fronts. Johnny and friends take advantage of the chaos to slip into the building and fight their way to where Alt's being held. Alt, meanwhile, uses Soulkiller to brain fry the Techs watching her and steal a whole lot of money.\nResolution: Johnny arrives, and; in the commotion, connections are cut. Alt can’t return to her body and becomes a ghost in the machine. Johnny kills Toshiro but, in the end, this is a Pyrrhic Victory.\nAs you can see, the Beat Chart for a story is designed to make sure all the scenes happen in an orderly manner, and that things stay interesting throughout. If our protagonists moved from fighting one group of opponents in the Atlantis to fighting\n396\nanother group of opponents on the street, you’d groan and ask, \"Is that all they ever do?\" Likewise, if Johnny spent the entire first half of the episode staring at a screen while he researched Arasaka, you’d get bored and wander off. A good Beat Chart keeps a balance of action to introspection and makes everything flow smoothly.\nMaking a Beat Chart\nGrab a scrap of paper (or the digital equivalent), and quickly jot down a rough idea of the Beat Chart for your adventure. You know you’ll start with a Hook, and end on a Climax and a Resolution. But how many Developments and Cliffhangers are you going to need? One way to determine this is to decide just how long you want your adventure to be. A good rule of thumb is that each Beat in the chart should take about one half-hour of game play. Your Hook, Climax, and Resolution automatically account for one-and-ahalf-hours; subtract this from the total hours of play, then divide this remainder between Developments and Cliffhangers.\n1 Beat = ½ Hour of Real-World Time",
+      "p": 0.7855319148936168,
+      "page": 394,
+      "score": 0,
+      "ms": 31092,
+      "tokens": 230561,
+      "known": "counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead"
+    },
+    {
+      "book": "cpr",
+      "question": "Show me the exotic weapons table",
+      "truth": "passage",
+      "score": 0,
+      "ms": 30880,
+      "tokens": 237102
+    },
+    {
+      "book": "cpr",
+      "question": "How much do each type of magazine cost in cyberpunk red?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 20347,
+      "tokens": 124737,
+      "known": "p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page or take the ammunition page"
+    },
+    {
+      "book": "cpr",
+      "question": "What is the damage of all the standard ranged weapons?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 28516,
+      "tokens": 202562
+    },
+    {
+      "book": "fallout",
+      "question": "What is the cost and weight of every small gun?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 21363,
+      "tokens": 119752
+    },
+    {
+      "book": "fallout",
+      "question": "What is the damage of every small gun?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 23495,
+      "tokens": 134620
+    },
+    {
+      "book": "fallout",
+      "question": "What are the skills in fallout?",
+      "truth": "passage",
+      "score": 0,
+      "ms": 47238,
+      "tokens": 325071
+    },
+    {
+      "book": "cpr",
+      "question": "Show me the exotic weapons table (as a table request)",
+      "truth": "passage",
+      "score": 0,
+      "ms": 32737,
+      "tokens": 234476
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, and Ammo Type",
+      "truth": "passage",
+      "score": 0,
+      "ms": 2,
+      "tokens": 0
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Stock Mods, Barrel Mods and Ammo Type",
+      "truth": "passage",
+      "score": 0,
+      "ms": 1,
+      "tokens": 0
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Sight Mods, and Ammo Type. For each Mod column add the cost of the mod in parenthesis.",
+      "truth": "passage",
+      "score": 0,
+      "ms": 1,
+      "tokens": 0
+    },
+    {
+      "book": "fallout",
+      "question": "Show me a table of the small guns with columns Damage and Barrel Mods. For each Mod column add the cost of the mod in parenthesis.",
+      "truth": "passage",
+      "score": 0,
+      "ms": 1,
+      "tokens": 0
+    },
+    {
+      "book": "cpr",
+      "question": "Give me a table that contains each of the standard ranged weapons as a row. For each row give me single shot damage, ammo type, weapon skill, rate of fire, standard magazine size, extended magazine size and drum magazine size",
+      "truth": "passage",
+      "score": 0,
+      "ms": 1,
+      "tokens": 0
+    },
+    {
+      "book": "cpr",
+      "question": "Show me the standard weapon table. In addition to the normal columns add the extended magazine size",
+      "truth": "passage",
+      "score": 0,
+      "ms": 0,
+      "tokens": 0
+    },
+    {
+      "book": "shelf",
+      "question": "Give me a table with Heart, Fallout and Cyberpunk Red as rows and ask how many skills are there for each row?",
+      "truth": "table",
+      "score": 0,
+      "ms": 1620,
+      "tokens": 17499,
+      "known": "Cyberpunk Red's skills count varies run to run, as its own case does"
+    }
+  ]
+}

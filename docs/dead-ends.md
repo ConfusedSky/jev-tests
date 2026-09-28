@@ -135,6 +135,25 @@ replaced them. Numbers are from the runs at the time (September 2026).
   whose walk stopped with some of its ranking unread
   (docs/ranking-cache.md, "Offering to rank afresh").
 
+## Other backends
+
+- **laya-serve** (a local encoder speaking jev's `/v1/systemone`, reached
+  with `JEV_BASE_URL`). Scored 0.29 of 37 on the bench, run at the bench's
+  defaults (`experiments/laya/bench-run.json`). It asks each question
+  alone, over one sequence of at most `max_len` tokens (512 in the
+  checkpoints served): the question and its options take up to 192, and the
+  state fills the rest and is cut from the end without an error. Every
+  page-sized call hit exactly 512 tokens per question, so it judged about
+  the first 1,200 characters of whatever it was shown, and a batch of
+  pages scored each against the first page's text. Cutting pages into
+  pieces of 1,200 characters at sentence ends (`--chars 1200`) and asking
+  questions in groups (`--group 8`) brought the gate calls to 400–414
+  tokens a question, but the readouts still read whole pages or sections,
+  and a count or a passage read in pieces cannot tell one item or sentence
+  from its neighbours. Not pursued; the patch was dropped. A checkpoint
+  with a `max_len` of several thousand is the only thing likely to change
+  this.
+
 ## Known flaky, not fixed
 
 - CPR "How much do each type of magazine cost?": p.344 gates between 0.61 and
