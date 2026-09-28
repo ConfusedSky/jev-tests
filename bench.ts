@@ -14,6 +14,7 @@
  *   bun bench.ts --cache qwen3-4b  walk cached rankings (off by default: the bench measures ranking)
  *   bun bench.ts --no-search  titles only, to see what the text search adds
  *   bun bench.ts --chars 1200  characters of text per call, for a backend that reads less; not saved
+ *   JEV_BASE_URL=... bun bench.ts  answered by another server; not saved
  */
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
 import { composeTable } from "./compose";
@@ -311,8 +312,8 @@ if (chars !== undefined && !(chars > 0)) {
   process.exit(2);
 }
 const sized = chars === undefined ? {} : { chars };
-// A run at other settings than the CLI's defaults is not a baseline.
-const save = !args.includes("--no-save") && !args.includes("--no-search") && chars === undefined;
+// A run at other settings than the CLI's defaults, or against another server, is not a baseline.
+const save = !args.includes("--no-save") && !args.includes("--no-search") && chars === undefined && !process.env.JEV_BASE_URL;
 const search = !args.includes("--no-search");
 const only = args.filter((a) => !a.startsWith("--"));
 const picked = CASES.filter((c) => only.length === 0 || only.some((o) => c.book.includes(o) || c.question.toLowerCase().includes(o.toLowerCase())));
@@ -400,4 +401,5 @@ if (save && only.length === 0 && skipped === 0) {
   console.log("wrote bench/latest.json");
 } else if (skipped) console.log("not saved: a book was skipped");
 else if (chars !== undefined) console.log("not saved: --chars");
+else if (process.env.JEV_BASE_URL) console.log(`not saved: answered by ${process.env.JEV_BASE_URL}`);
 process.exit(regressions > 0 ? 1 : 0);
