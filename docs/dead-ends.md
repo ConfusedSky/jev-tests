@@ -158,7 +158,9 @@ replaced them. Numbers are from the runs at the time (September 2026).
   the cut was not what held it back. 7 to 10 cases never ran: laya refuses
   more than 64 questions a call (`413 too many questions`, the tables and
   some counts) and a state over 50,000 characters. Not pursued; both
-  patches were dropped. A checkpoint with a `max_len` of several thousand
+  patches are kept in `experiments/laya/`: `page-split.patch` (pages cut at
+  sentence ends to `--chars`) and `group.patch` (`--group N`, at most N
+  questions a call). A checkpoint with a `max_len` of several thousand
   is the only thing likely to change this.
 
 ## Known flaky, not fixed

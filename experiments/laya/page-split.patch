@@ -1,0 +1,229 @@
+diff --git a/pdf.test.ts b/pdf.test.ts
+index 1172da4..ef6538a 100644
+--- a/pdf.test.ts
++++ b/pdf.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, test } from "bun:test";
+ import { terms } from "./search";
+-import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, pageSizes, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
++import { batches, bookText, pieces, cacheDir, confine, GATE, coarse, highlighted, outline, pageSizes, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
+ import { pageLines } from "./layout";
+ 
+ const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
+@@ -488,6 +488,31 @@ describe("pageSizes", () => {
+   });
+ });
+ 
++describe("pieces", () => {
++  test("a text within the limit stays whole", () => {
++    expect(pieces("One. Two.", 100)).toEqual(["One. Two."]);
++    expect(pieces("One. Two.", 0)).toEqual(["One. Two."]);
++  });
++
++  test("cuts at sentence ends, losing nothing", () => {
++    const text = "First one here. Second one here! Third one here? Fourth.";
++    const out = pieces(text, 35);
++    expect(out).toEqual(["First one here. Second one here! ", "Third one here? Fourth."]);
++    expect(out.join("")).toBe(text);
++  });
++
++  test("cuts at a blank line when a paragraph has no sentence end", () => {
++    expect(pieces("Heading one\n\nHeading two\n\n", 15)).toEqual(["Heading one\n\n", "Heading two\n\n"]);
++  });
++
++  test("cuts a sentence longer than the limit at a space", () => {
++    const out = pieces("aaaa bbbb cccc dddd.", 10);
++    expect(out.every((p) => p.length <= 10)).toBe(true);
++    expect(out.join("")).toBe("aaaa bbbb cccc dddd.");
++    expect(out[0]).toBe("aaaa bbbb");
++  });
++});
++
+ describe("batches", () => {
+   const page = (n: number, len: number) => ({ page: n, end: n, text: "x".repeat(len) });
+ 
+@@ -530,6 +555,30 @@ describe("per page", () => {
+     expect(tried.length).toBeLessThan(24);
+   });
+ 
++  test("a page longer than the cap is cut into windows of that page, none over it", async () => {
++    const whole = (await bookText(manual))[0]!;
++    const ws = await windows(manual, { path: "", start: 1, end: 1 }, 0, 300);
++    expect(ws.length).toBeGreaterThan(1);
++    expect(ws.every((w) => w.page === 1 && w.end === 1 && w.text.length <= 300)).toBe(true);
++    expect(ws.map((w) => w.text).join("")).toBe(whole);
++  });
++
++  test("gates every piece of a cut page, no call over the cap", async () => {
++    const sent: number[] = [];
++    const inner = stubClient();
++    const recording = {
++      systemOne: async (r: { state: { pages?: Record<string, string> } }) => {
++        if (r.state.pages) sent.push(Object.values(r.state.pages).join("").length);
++        return inner.systemOne(r as never);
++      },
++    } as unknown as typeof inner;
++    const opts = { question: "q", threshold: 2, titleFloor: 1, max: 12, chars: 300, batch: 40, perPage: true };
++    const { tried } = await searchPdf(recording, manual, opts, ui);
++    expect(tried.filter((t) => t.page === 1).length).toBeGreaterThan(1);
++    expect(sent.length).toBeGreaterThan(3);
++    expect(sent.every((n) => n <= 300)).toBe(true);
++  });
++
+   test("a chars of 0 puts every page in its own window", async () => {
+     const ws = await windows(manual, { path: "", start: 1, end: 3 }, 0);
+     expect(ws.map((w) => w.page)).toEqual([1, 2, 3]);
+diff --git a/pdf.ts b/pdf.ts
+index ac7ee6a..17dcc3e 100644
+--- a/pdf.ts
++++ b/pdf.ts
+@@ -133,26 +133,70 @@ export function bookText(pdf: string): Promise<string[]> {
+   return pages;
+ }
+ 
++/** Runs of text ending at a sentence end or a blank line, trailing space included. */
++const SENTENCES = /[\s\S]*?(?:[.!?]+["')\]]*(?=\s|$)|\n[ \t]*\n|$)\s*/g;
++
++/**
++ * `text` cut into pieces of at most `chars`, at sentence or paragraph ends;
++ * only a sentence longer than a piece is cut inside, at a space.
++ */
++export function pieces(text: string, chars: number): string[] {
++  if (!(chars > 0) || text.length <= chars) return [text];
++  const out: string[] = [];
++  let buf = "";
++  for (let run of text.match(SENTENCES)!) {
++    if (buf && buf.length + run.length > chars) {
++      out.push(buf);
++      buf = "";
++    }
++    while (run.length > chars) {
++      const at = run.lastIndexOf(" ", chars);
++      const cut = at > 0 ? at : chars;
++      out.push(run.slice(0, cut));
++      run = run.slice(cut);
++    }
++    buf += run;
++  }
++  if (buf) out.push(buf);
++  return out;
++}
++
+ /**
+  * Section text split into windows small enough for one call, each tagged with
+  * its first page. A `chars` of 0 puts every page in a window of its own, so a
+- * hit names the exact page rather than the first of a span.
++ * hit names the exact page rather than the first of a span. A page longer
++ * than `cap` is cut into pieces (see pieces), each a window of that page.
+  */
+-export async function windows(pdf: string, s: Section, chars: number): Promise<Window[]> {
++export async function windows(pdf: string, s: Section, chars: number, cap = Infinity): Promise<Window[]> {
+   const pages = (await bookText(pdf)).slice(s.start - 1, s.end);
+   const out: Window[] = [];
++  // A short piece of a long page is still text; only near-empty pages are dropped.
++  const parts = new Set<Window>();
+   let buf = "";
++  let part = false;
+   let first = s.start;
++  let last = s.start;
++  const flush = (end: number) => {
++    const w = { page: first, end, text: buf };
++    out.push(w);
++    if (part) parts.add(w);
++  };
+   pages.forEach((page, i) => {
+-    if (buf && buf.length + page.length > chars) {
+-      out.push({ page: first, end: s.start + i - 1, text: buf });
+-      buf = "";
+-      first = s.start + i;
++    const ps = pieces(page, cap);
++    for (const piece of ps) {
++      if (buf && buf.length + piece.length > chars) {
++        flush(last);
++        buf = "";
++        part = false;
++        first = s.start + i;
++      }
++      buf += piece;
++      part ||= ps.length > 1;
++      last = s.start + i;
+     }
+-    buf += page;
+   });
+-  if (buf.trim()) out.push({ page: first, end: s.end, text: buf });
+-  return out.filter((w) => w.text.trim().length > 200);
++  if (buf.trim()) flush(s.end);
++  return out.filter((w) => parts.has(w) ? w.text.trim() !== "" : w.text.trim().length > 200);
+ }
+ 
+ /** Page count, for turning an outline-less PDF into one synthetic section. */
+@@ -166,10 +210,10 @@ export async function pageCount(pdf: string): Promise<number> {
+  * a credits page above the body) and the walk stops at the first yes anyway,
+  * so they are simply read in page order.
+  */
+-export async function pageScan(pdf: string, chars: number): Promise<Window[]> {
++export async function pageScan(pdf: string, chars: number, cap = Infinity): Promise<Window[]> {
+   const pages = await pageCount(pdf);
+   if (pages === 0) return [];
+-  return windows(pdf, { path: "", start: 1, end: pages }, chars);
++  return windows(pdf, { path: "", start: 1, end: pages }, chars, cap);
+ }
+ 
+ /**
+@@ -302,7 +346,14 @@ async function askWindow(client: TypeSafeClient, question: string, section: stri
+  * page sat at 0.03 this way and at 0.33 when each page was asked alone.
+  */
+ async function askPages(client: TypeSafeClient, question: string, section: string, pages: Window[], gate: Gate) {
+-  const key = (w: Window) => `p${w.page}`;
++  // Pieces of one page each need a key of their own.
++  const seen = new Map<number, number>();
++  const keys = pages.map((w) => {
++    const n = seen.get(w.page) ?? 0;
++    seen.set(w.page, n + 1);
++    return n ? `p${w.page}_${n + 1}` : `p${w.page}`;
++  });
++  const key = (w: Window) => keys[pages.indexOf(w)]!;
+   const res = await client.systemOne({
+     state: { question, section, pages: Object.fromEntries(pages.map((w) => [key(w), w.text])) },
+     questions: Object.fromEntries(pages.flatMap((w) => keyed(key(w), gate, `\`pages.${key(w)}\``))),
+@@ -630,7 +681,7 @@ export async function searchPdf(
+     if (read.has(`${s.start}-${s.end}`)) return undefined;
+     read.add(`${s.start}-${s.end}`);
+     const sectionSnap = snapshot();
+-    const all = await windows(pdf, s, chars);
++    const all = await windows(pdf, s, chars, o.chars);
+     // A count needs every window of the section, fragments read before included.
+     const ws = o.countAcross ? all : all.filter((w) => !(w.page === w.end && readPages.has(w.page)));
+     if (ws.length === 0) {
+@@ -667,12 +718,20 @@ export async function searchPdf(
+   const gateExcerpts = async (): Promise<Map<number, Gated>> => {
+     const pages = await bookText(pdf);
+     const todo = [...new Set(ranked.filter((r) => r.list === "excerpts").map((r) => ex[r.index]!.page))].filter((p) => !readPages.has(p));
+-    const groups = batches(todo.map((page) => ({ page, end: page, text: pages[page - 1]! })), o.chars);
++    const groups = batches(todo.flatMap((page) => pieces(pages[page - 1]!, o.chars).map((text) => ({ page, end: page, text }))), o.chars);
+     const gateSnap = snapshot();
+     const res = await timed("api", () => Promise.all(groups.map((g) => askPages(client, o.question, pdf.split("/").pop()!, g, gate))));
+     // A step of its own between sections; each excerpt it passes is read as one after it.
+     ui.log(`${indent}excerpts: gated ${todo.length} pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"})  in ${split(gateSnap)}`);
+-    return new Map(groups.flatMap((g, i) => g.map((w, j) => [w.page, { w, p: Math.max(...res[i]![j]!), nouls: res[i]![j]! }] as const)));
++    // A page cut into pieces stands for its best piece.
++    const best = new Map<number, Gated>();
++    groups.forEach((g, i) =>
++      g.forEach((w, j) => {
++        const p = Math.max(...res[i]![j]!);
++        if (p > (best.get(w.page)?.p ?? -1)) best.set(w.page, { w, p, nouls: res[i]![j]! });
++      }),
++    );
++    return best;
+   };
+ 
+   let below = false;
+@@ -717,7 +776,7 @@ export async function searchPdf(
+   // and then read every page of both, seven minutes for no answer.
+   if (sections.length === 0 && hits.length < wanted) {
+     const scanSnap = snapshot();
+-    const left = (await pageScan(pdf, chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
++    const left = (await pageScan(pdf, chars, o.chars)).filter((w) => !(w.page === w.end && readPages.has(w.page)));
+     const ws = left.slice(0, o.max);
+     if (left.length === 0 && readPages.size === 0) ui.log(`${indent}  --  no outline and no extractable text  ${pdf}`);
+     else {

@@ -1,0 +1,154 @@
+diff --git a/cli.ts b/cli.ts
+index 3cdba8e..e30078b 100644
+--- a/cli.ts
++++ b/cli.ts
+@@ -53,6 +53,8 @@ const PASSAGE_REACH = 2;
+ /** Options every PDF-reading tool shares; jevfind adds its file-level floors on top. */
+ export type ReadOpts = SearchOpts & {
+   model: string;
++  /** Questions per call; 0 asks a call's questions all at once. */
++  group: number;
+   quiet: boolean;
+   open: boolean;
+   highlight: boolean;
+@@ -82,6 +84,7 @@ export const readDefaults = (): ReadOpts => ({
+   chars: 48000,
+   batch: 40,
+   model: DEFAULT_MODEL,
++  group: 0,
+   quiet: false,
+   open: false,
+   highlight: true,
+@@ -106,6 +109,7 @@ export const readFlags = (): Flags<ReadOpts> => ({
+   "--answer-floor": num("answerFloor"),
+   "--max-answers": num("maxAnswers"),
+   "--model": (o, next) => (o.model = next()),
++  "--group": num("group"),
+   "-q|--quiet": (o) => (o.quiet = true),
+   "--open": (o) => (o.open = true),
+   // The default; still taken, so a command line written before is not refused.
+@@ -133,10 +137,13 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
+       --title-floor F  read sections scoring below F on title only while nothing has
+                        answered, 0-3 (default 1.0)
+       --max N          read at most N sections per file, or N windows of a book with no outline (default 12)
+-      --chars N        characters of text per call (default 48000)
++      --chars N        characters of text per call (default 48000); a longer page is cut
++                       at sentence or paragraph ends
+       --whole-windows  gate a window of text at a time instead of every page
+       --batch N        names per ranking call (default 40)
+       --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
++      --group N        ask at most N questions per call, the text sent again with each
++                       group (default 0: all at once)
+   -q, --quiet          only print the hit
+       --open           open the hit in your PDF viewer, at the page
+       --no-highlight   link to the PDF itself, not a copy with the answer highlighted
+diff --git a/jevfind.ts b/jevfind.ts
+index ccc056d..5594ea2 100755
+--- a/jevfind.ts
++++ b/jevfind.ts
+@@ -67,7 +67,7 @@ if (paths.length === 0) {
+   process.exit(2);
+ }
+ 
+-const client = await makeClient(opts.model);
++const client = await makeClient(opts.model, opts.group);
+ const ui = makeUi(opts.quiet);
+ 
+ /** Builds the table across the shelf when the rows name documents, or when told to; returns when it does not. */
+diff --git a/jevsec.ts b/jevsec.ts
+index e52ea8e..1cca55a 100755
+--- a/jevsec.ts
++++ b/jevsec.ts
+@@ -37,7 +37,7 @@ if (broken) {
+   process.exit(2);
+ }
+ 
+-const client = await makeClient(opts.model);
++const client = await makeClient(opts.model, opts.group);
+ const ui = makeUi(opts.quiet);
+ const search = await answerLayer(client, opts, ui);
+ const outcome = search.kind === "table" ? await composeTable(client, pdf, search, ui) : await searchPdf(client, pdf, search, ui);
+diff --git a/shared.test.ts b/shared.test.ts
+index dd579a1..dcc58ac 100644
+--- a/shared.test.ts
++++ b/shared.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, test } from "bun:test";
+ import type { TypeSafeClient } from "@typesafe-ai/sdk";
+-import { counted, DOLLARS_PER_MILLION_IN, rank, rankTitles, snapshot, spent, split } from "./shared";
++import { counted, DOLLARS_PER_MILLION_IN, grouped, rank, rankTitles, snapshot, spent, split } from "./shared";
+ 
+ /** Records each call's state and scores an item by its label's digit. */
+ function client(calls: unknown[]) {
+@@ -67,3 +67,21 @@ describe("tokens", () => {
+     expect(split(snapshot())).not.toContain("tokens");
+   });
+ });
++
++describe("grouped", () => {
++  test("asks at most the group per call, the state with each, and merges the answers and tokens", async () => {
++    const asked: { state: unknown; keys: string[] }[] = [];
++    const inner = {
++      systemOne: async ({ state, questions }: { state: unknown; questions: Record<string, unknown> }) => {
++        asked.push({ state, keys: Object.keys(questions) });
++        return { answers: Object.fromEntries(Object.keys(questions).map((k) => [k, { noul: 1 }])), usage: { input_tokens: 10, output_tokens: 0 } };
++      },
++    } as unknown as TypeSafeClient;
++    const questions = Object.fromEntries(["a", "b", "c", "d", "e"].map((k) => [k, {}]));
++    const res = await grouped(inner, 2).systemOne({ state: { s: 1 }, questions } as never);
++    expect(asked.map((a) => a.keys)).toEqual([["a", "b"], ["c", "d"], ["e"]]);
++    expect(asked.every((a) => JSON.stringify(a.state) === '{"s":1}')).toBe(true);
++    expect(Object.keys(res.answers)).toEqual(["a", "b", "c", "d", "e"]);
++    expect(res.usage?.input_tokens).toBe(30);
++  });
++});
+diff --git a/shared.ts b/shared.ts
+index d1a60fd..14e0bfc 100644
+--- a/shared.ts
++++ b/shared.ts
+@@ -18,9 +18,9 @@ export async function keyFromScriptEnv(): Promise<string | undefined> {
+   }
+ }
+ 
+-export async function makeClient(model: string): Promise<TypeSafeClient> {
++export async function makeClient(model: string, group = 0): Promise<TypeSafeClient> {
+   // --model semif answers from semif/server.py instead of jev; see README.
+-  if (model === "semif") return makeSemifClient(process.env.JEV_SEMIF_URL ?? "http://127.0.0.1:8765");
++  if (model === "semif") return grouped(makeSemifClient(process.env.JEV_SEMIF_URL ?? "http://127.0.0.1:8765"), group);
+   // JEV_BASE_URL points at any server speaking jev's /v1/systemone, which may need no key.
+   const baseURL = process.env.JEV_BASE_URL ?? "https://openrouter.ai/api";
+   const apiKey = process.env.OPENROUTER_API_KEY ?? (await keyFromScriptEnv()) ?? (process.env.JEV_BASE_URL ? "none" : undefined);
+@@ -36,7 +36,32 @@ export async function makeClient(model: string): Promise<TypeSafeClient> {
+     // SDK's ten seconds on a slow day, and a timed-out passage is a blank.
+     timeout: 60_000,
+   });
+-  return counted(client);
++  return grouped(counted(client), group);
++}
++
++/**
++ * `client` asking at most `group` questions per call, the state sent again
++ * with each group and the answers merged; 0 asks them all at once.
++ */
++export function grouped(client: TypeSafeClient, group: number): TypeSafeClient {
++  if (!(group > 0)) return client;
++  const one = client.systemOne.bind(client);
++  client.systemOne = (async (request: Parameters<typeof one>[0]) => {
++    const entries = Object.entries(request.questions);
++    if (entries.length <= group) return one(request);
++    const parts = [];
++    for (let i = 0; i < entries.length; i += group) parts.push(entries.slice(i, i + group));
++    const res = await Promise.all(parts.map((p) => one({ ...request, questions: Object.fromEntries(p) } as typeof request)));
++    return {
++      ...res[0]!,
++      answers: Object.assign({}, ...res.map((r) => r.answers)),
++      usage: {
++        input_tokens: res.reduce((n, r) => n + (r.usage?.input_tokens ?? 0), 0),
++        output_tokens: res.reduce((n, r) => n + (r.usage?.output_tokens ?? 0), 0),
++      },
++    };
++  }) as typeof client.systemOne;
++  return client;
+ }
+ 
+ /** `client` with every call's tokens added to `tokens`, so each step can say what it spent. */
