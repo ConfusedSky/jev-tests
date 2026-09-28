@@ -1,0 +1,49 @@
+How many tropes are there?: 413 too many questions (96 > 64)
+Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, and Ammo Type: 413 too many questions (86 > 64)
+Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Stock Mods, Barrel Mods and Ammo Type: 413 too many questions (102 > 64)
+Show me a table of the small guns. I want the columns to be Damage, Fire Rate, Cost, Sight Mods, and Ammo Type. For each Mod column add the cost of the mod in parenthesis.: 413 too many questions (142 > 64)
+Show me a table of the small guns with columns Damage and Barrel Mods. For each Mod column add the cost of the mod in parenthesis.: 413 too many questions (106 > 64)
+Give me a table that contains each of the standard ranged weapons as a row. For each row give me single shot damage, ammo type, weapon skill, rate of fire, standard magazine size, extended magazine size and drum magazine size: 413 too many questions (162 > 64)
+Show me the standard weapon table. In addition to the normal columns add the extended magazine size: 413 too many questions (70 > 64)
+Give me a table with Heart, Fallout and Cyberpunk Red as rows and ask how many skills are there for each row?: 413 too many questions (94 > 64)
+case                                                 truth      got                        p  page score  last    time   tokens
+heart: How many classes are there in heart?          9          DOMAINS: Wild TIER: F…  0.76   173   0% 100% ↓  31.2s  414,199
+heart: How many callings are there in heart?         5          TIER: Fracture DEFAUL…  0.78   173   0% 100% ↓  37.1s  454,847
+heart: how many skills are there in heart?           9          ABOVE US, THE CITY, S…  0.85     2   0% 100% ↓   6.9s   87,183
+heart: how many domains are there in heart?          8          THE FOREST DOMAINS: W…  0.72   173   0% 100% ↓  10.1s  130,376
+heart: Is witch a class in heart?                    true       Skills, Domains and K…  0.70    11   0% 100% ↓   7.7s   97,539
+heart: Is knight a class in heart?                   false      Skills, Domains and K…  0.67    11   0% 100% ↓   9.6s  120,980
+heart: Is witch hunter a class in heart?             false      Skills, Domains and K…  0.68    11   0% 100% ↓   7.2s   88,392
+heart: Is heretic a calling in heart?                false      Landmarks A landmark …  0.67   135   0% 100% ↓  34.8s  374,742
+heart: What are the skills available to a character? passage    —                          —     —   0% 100% ↓  10.9s  120,923
+heart: what are the equipment tags                   passage    Soon, your body will …  0.72   210  29% 100% ↓  15.3s  177,740
+fallout: How many perks are there?                   94         —                          —     —   0% 100% ↓  33.6s  239,277
+fallout: How many skills are there?                  17         —                          —     —   0% 100% ↓  38.5s  280,324
+fallout: How many origins are there?                 6          —                          —     —   0%  83% ↓  25.5s  177,141  (the contents list five; Brotherhood Initiate has no bookmark)
+fallout: Is Gunslinger a perk?                       true       —                          —     —   0% 100% ↓  19.8s  114,007
+fallout: Is Lockpick a perk?                         false      true                    0.78   123   0% 100% ↓  17.7s   93,296
+fallout: How is radiation treated?                   passage    —                          —     —   0% 100% ↓  17.5s   85,444
+fallout: What is the cost, weight and damage rating… figures    —                          —     —   0% 100% ↓  21.7s  122,708
+fallout: What is the cost, weight and damage rating… figures    —                          —     —   0% 100% ↓  20.2s  122,708
+litm: How many theme types are there?                20         —                          —     —   0%   0%    10.1s  106,558  (some runs miss p.75 and count 1 to 6 on p.104 or p.125, or find nothing (issue #14))
+litm: How many theme kits are there?                 153        —                          —     —   0%  59% ↓  19.0s  213,853  (the second page sits at the answer floor and is counted one run, refused the next)
+litm: How many tropes are there?                     30         —                          —     —   0%  33% ↓  10.6s   93,152  (the contents list the ten trope groups)
+litm: How does hero creation work in Legend in the … passage    —                          —     —   0% 100% ↓   8.0s  100,522
+cpr: How many skills are there in the game?          66         RUNNING CYBERPUNK of …  0.79   394   0%  92% ↓  33.4s  230,561  (counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead)
+cpr: Show me the exotic weapons table                passage    —                          —     —   0% 100% ↓  34.3s  237,102
+cpr: How much do each type of magazine cost in cybe… passage    —                          —     —   0%   0%    22.3s  124,737  (p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page or take the ammunition page)
+cpr: What is the damage of all the standard ranged … passage    —                          —     —   0% 100% ↓  29.2s  202,562
+fallout: What is the cost and weight of every small… passage    —                          —     —   0% 100% ↓  21.9s  119,752
+fallout: What is the damage of every small gun?      passage    —                          —     —   0% 100% ↓  23.8s  134,620
+fallout: What are the skills in fallout?             passage    —                          —     —   0% 100% ↓  47.4s  325,071
+cpr: Show me the exotic weapons table (as a table r… passage    —                          —     —   0% 100% ↓  32.4s  234,476
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓   0.0s        0
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓   0.0s        0
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓   0.0s        0
+fallout: Show me a table of the small guns with col… passage    —                          —     —   0% 100% ↓   0.0s        0
+cpr: Give me a table that contains each of the stan… passage    —                          —     —   0% 100% ↓   0.0s        0
+cpr: Show me the standard weapon table. In addition… passage    —                          —     —   0% 100% ↓   0.0s        0
+shelf: Give me a table with Heart, Fallout and Cybe… table      —                          —     —   0%  97% ↓   1.6s   17,499  (Cyberpunk Red's skills count varies run to run, as its own case does)
+
+5,442,291 tokens in, $0.2286 (last 2,762,847)
+mean score   1% (last  91%, 7449684 2026-09-25), 35 regressions

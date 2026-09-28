@@ -150,9 +150,16 @@ replaced them. Numbers are from the runs at the time (September 2026).
   questions in groups (`--group 8`) brought the gate calls to 400–414
   tokens a question, but the readouts still read whole pages or sections,
   and a count or a passage read in pieces cannot tell one item or sentence
-  from its neighbours. Not pursued; the patch was dropped. A checkpoint
-  with a `max_len` of several thousand is the only thing likely to change
-  this.
+  from its neighbours. Rerun on the bench with pages cut that way (`bun
+  bench.ts --chars 1200` over the split, `experiments/laya/`): 3% against 1%
+  at the defaults, one case more (Fallout "Is Lockpick a perk?"), for half
+  as many tokens again (8.0M against 5.4M). The cases it still answered took the wrong page
+  (Heart's class count read p.173, its "Is X a class?" questions p.11), so
+  the cut was not what held it back. 7 to 10 cases never ran: laya refuses
+  more than 64 questions a call (`413 too many questions`, the tables and
+  some counts) and a state over 50,000 characters. Not pursued; both
+  patches were dropped. A checkpoint with a `max_len` of several thousand
+  is the only thing likely to change this.
 
 ## Known flaky, not fixed
 
