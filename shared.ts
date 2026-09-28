@@ -21,14 +21,16 @@ export async function keyFromScriptEnv(): Promise<string | undefined> {
 export async function makeClient(model: string): Promise<TypeSafeClient> {
   // --model semif answers from semif/server.py instead of jev; see README.
   if (model === "semif") return makeSemifClient(process.env.JEV_SEMIF_URL ?? "http://127.0.0.1:8765");
-  const apiKey = process.env.OPENROUTER_API_KEY ?? (await keyFromScriptEnv());
+  // JEV_BASE_URL points at any server speaking jev's /v1/systemone, which may need no key.
+  const baseURL = process.env.JEV_BASE_URL ?? "https://openrouter.ai/api";
+  const apiKey = process.env.OPENROUTER_API_KEY ?? (await keyFromScriptEnv()) ?? (process.env.JEV_BASE_URL ? "none" : undefined);
   if (!apiKey) {
     console.error("OPENROUTER_API_KEY is not set");
     process.exit(2);
   }
   const client = new TypeSafeClient({
     apiKey,
-    baseURL: "https://openrouter.ai/api",
+    baseURL,
     defaultModel: model,
     // A page's worth of sentence nouls with the page in the state outran the
     // SDK's ten seconds on a slow day, and a timed-out passage is a blank.

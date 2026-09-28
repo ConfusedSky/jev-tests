@@ -34,6 +34,8 @@ ollama serve
 Needs `mutool` (mupdf), `pdftotext` (poppler) and `rg` (ripgrep) on `PATH`.
 The key is read from the environment or from `.env` next to the scripts, so
 the tools work from any directory.
+`JEV_BASE_URL` points the tools at another server speaking jev's
+`/v1/systemone`; it then needs no key (see docs/dead-ends.md, "Other backends").
 
 Ollama runs the embedding model that picks which of a long book's sections
 jev ranks, and matches a question to earlier ones whose ranking it can reuse
