@@ -156,6 +156,7 @@ the gap is visible rather than hidden.
 bun run bench            # all cases, then write bench/latest.json
 bun bench.ts heart       # cases whose book or question matches; not saved
 bun bench.ts --no-save   # compare without replacing the last run
+bun bench.ts --chars 1200  # text per call, for a backend that reads less; not saved
 ```
 
 A full run costs about $0.10 and ranks afresh (`--cache off`) unless given

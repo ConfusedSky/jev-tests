@@ -13,6 +13,7 @@
  *   bun bench.ts --no-save  compare with the last run without replacing it
  *   bun bench.ts --cache qwen3-4b  walk cached rankings (off by default: the bench measures ranking)
  *   bun bench.ts --no-search  titles only, to see what the text search adds
+ *   bun bench.ts --chars 1200  characters of text per call, for a backend that reads less; not saved
  */
 import { answerLayer, readDefaults, type ReadOpts } from "./cli";
 import { composeTable } from "./compose";
@@ -296,10 +297,22 @@ function score(c: Case, got: string | undefined, page: number | undefined): numb
 // The bench measures ranking, so it ranks afresh unless --cache MODEL is
 // given: with the cache, a run's scores and tokens would hang on the last's.
 const argv = Bun.argv.slice(2);
-const cacheAt = argv.indexOf("--cache");
-const cache = cacheAt >= 0 ? argv[cacheAt + 1] ?? "off" : "off";
-const args = cacheAt >= 0 ? argv.filter((_, i) => i !== cacheAt && i !== cacheAt + 1) : argv;
-const save = !args.includes("--no-save") && !args.includes("--no-search");
+/** The value after `flag`, and argv without the two. */
+const valued = (args: string[], flag: string): [string | undefined, string[]] => {
+  const at = args.indexOf(flag);
+  return at < 0 ? [undefined, args] : [args[at + 1], args.filter((_, i) => i !== at && i !== at + 1)];
+};
+const [cacheArg, afterCache] = valued(argv, "--cache");
+const cache = cacheArg ?? "off";
+const [charsArg, args] = valued(afterCache, "--chars");
+const chars = charsArg === undefined ? undefined : Number(charsArg);
+if (chars !== undefined && !(chars > 0)) {
+  console.error("--chars expects a positive number");
+  process.exit(2);
+}
+const sized = chars === undefined ? {} : { chars };
+// A run at other settings than the CLI's defaults is not a baseline.
+const save = !args.includes("--no-save") && !args.includes("--no-search") && chars === undefined;
 const search = !args.includes("--no-search");
 const only = args.filter((a) => !a.startsWith("--"));
 const picked = CASES.filter((c) => only.length === 0 || only.some((o) => c.book.includes(o) || c.question.toLowerCase().includes(o.toLowerCase())));
@@ -324,7 +337,7 @@ for (const c of picked) {
     let got: string | undefined;
     let s = 0;
     try {
-      const o = { ...findDefaults(), search, question: c.question, quiet: true, cache, ...c.opts };
+      const o = { ...findDefaults(), search, question: c.question, quiet: true, cache, ...sized, ...c.opts };
       const read = await readAcross(client, c.question);
       const table = await acrossTable(client, pdfs, o, read.rows, read.columns, ui);
       got = table.rows.map((r, i) => `${r} ${table.cells[i]![0]?.text ?? "—"}`).join("; ");
@@ -337,7 +350,7 @@ for (const c of picked) {
   }
   let r: Outcome | undefined;
   try {
-    const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, cache, ...c.opts }, ui);
+    const opts = await answerLayer(client, { ...readDefaults(), search, question: c.question, quiet: true, cache, ...sized, ...c.opts }, ui);
     r = opts.kind === "table" ? await composeTable(client, pdf, opts, ui) : await searchPdf(client, pdf, opts, ui);
   } catch (e) {
     console.error(`${c.question}: ${e instanceof Error ? e.message : e}`);
@@ -386,4 +399,5 @@ if (save && only.length === 0 && skipped === 0) {
   await Bun.write(snapshot, `${JSON.stringify(run, null, 2)}\n`);
   console.log("wrote bench/latest.json");
 } else if (skipped) console.log("not saved: a book was skipped");
+else if (chars !== undefined) console.log("not saved: --chars");
 process.exit(regressions > 0 ? 1 : 0);
