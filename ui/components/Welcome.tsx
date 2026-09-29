@@ -11,15 +11,15 @@ export function Welcome({ onExample }: { onExample: (template: string) => void }
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
-        {steps.map((s) => (
-          <div key={s.n} className="rounded-2xl border border-stone-200 bg-white p-5">
+        {steps.map((s, i) => (
+          <div key={s.n} className="animate-rise rounded-2xl border border-stone-200 bg-white p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ animationDelay: `calc(var(--stagger) * ${i + 2})` }}>
             <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-teal-700 font-serif text-sm font-semibold text-white">{s.n}</div>
             <div className="font-medium text-stone-900">{s.title}</div>
             <div className="mt-1 text-sm leading-relaxed text-stone-600">{s.body}</div>
           </div>
         ))}
       </div>
-      <div className="rounded-2xl border border-stone-200 bg-white">
+      <div className="animate-rise rounded-2xl border border-stone-200 bg-white" style={{ animationDelay: "calc(var(--stagger) * 5)" }}>
         <div className="border-b border-stone-100 px-5 py-3">
           <h2 className="text-sm font-semibold text-stone-800">What you get back depends on how you ask</h2>
           <p className="text-xs text-stone-500">Pick one to start a question from it, then fill in the gap.</p>
@@ -29,7 +29,7 @@ export function Welcome({ onExample }: { onExample: (template: string) => void }
             <li key={k.kind} className="border-b border-stone-100 last:border-0">
               <button
                 onClick={() => onExample(k.template)}
-                className="grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 px-5 py-2.5 text-left text-sm hover:bg-teal-50/60 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]"
+                className="grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 px-5 py-2.5 text-left text-sm hover:translate-x-0.5 hover:bg-teal-50/60 sm:grid-cols-[5.5rem_minmax(0,1fr)_auto]"
               >
                 <span>
                   <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800 ring-1 ring-teal-600/20">{k.kind}</span>
@@ -41,7 +41,7 @@ export function Welcome({ onExample }: { onExample: (template: string) => void }
           ))}
         </ul>
       </div>
-      <p className="text-center text-xs text-stone-500">
+      <p className="animate-fade text-center text-xs text-stone-500" style={{ animationDelay: "calc(var(--stagger) * 6)" }}>
         Each question costs a fraction of a cent: jev charges {PRICE}. Every step's tokens show in the log. Press <kbd className="rounded bg-stone-200 px-1">/</kbd> to type a question, <kbd className="rounded bg-stone-200 px-1">?</kbd> for every shortcut.
       </p>
     </div>

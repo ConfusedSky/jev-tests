@@ -612,7 +612,7 @@ export function App() {
           aria-label="Sidebar"
           className={cx(
             "flex w-64 shrink-0 flex-col border-r border-stone-200 bg-stone-50 xl:w-80",
-            narrow ? cx("fixed top-14 bottom-0 left-0 z-40 w-72 shadow-2xl transition-transform duration-200 ease-out", drawer ? "translate-x-0" : "-translate-x-full") : !sidebar && "hidden",
+            narrow ? cx("fixed top-14 bottom-0 left-0 z-40 w-72 shadow-2xl transition-transform duration-200 ease-out", drawer ? "translate-x-0" : "-translate-x-full") : sidebar ? "animate-slip" : "hidden",
           )}
         >
           <div className="flex items-end gap-1 border-b border-stone-200 px-3 pt-2">

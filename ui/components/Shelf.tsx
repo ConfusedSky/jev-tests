@@ -171,7 +171,7 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
                     <button
                       onClick={() => onPick(f.path)}
                       title={`${f.path}\n${f.size === 0 ? "This file is empty, so it cannot be asked" : "Click to ask this PDF alone"}`}
-                      className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
+                      className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left hover:translate-x-0.5", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
                     >
                       <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-400")} />
                       <span className="min-w-0 flex-1">

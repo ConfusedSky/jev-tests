@@ -115,10 +115,10 @@ export function Ask(props: Props) {
   };
 
   return (
-    <section data-ask className="@container rounded-2xl border border-stone-200 bg-white shadow-sm transition-shadow has-[textarea:focus]:border-teal-600/40 has-[textarea:focus]:ring-4 has-[textarea:focus]:ring-teal-600/10">
+    <section data-ask className="@container animate-rise rounded-2xl border border-stone-200 bg-white shadow-sm transition-shadow has-[textarea:focus]:border-teal-600/40 has-[textarea:focus]:ring-4 has-[textarea:focus]:ring-teal-600/10" style={{ animationDelay: "var(--stagger)" }}>
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 pt-3 pb-3">
         <div role="tablist" aria-label="What to search" className="relative grid grid-cols-3 rounded-xl bg-stone-100 p-1">
-          <span aria-hidden="true" className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-lg bg-white shadow-sm transition-transform duration-200 ease-out" style={{ transform: `translateX(${MODES.findIndex((m) => m.tool === tool) * 100}%)` }} />
+          <span aria-hidden="true" className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-lg bg-white shadow-sm transition-transform duration-350 ease-arrive" style={{ transform: `translateX(${MODES.findIndex((m) => m.tool === tool) * 100}%)` }} />
           {MODES.map((m) => (
             <button
               key={m.tool}

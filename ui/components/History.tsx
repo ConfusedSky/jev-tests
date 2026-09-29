@@ -45,7 +45,7 @@ export function History({ runs, current, onOpen, onClear, onPin, onDelete }: Pro
             const answer = answerOf(r);
             const kind = kindOf(r);
             return (
-              <li key={r.id} onAnimationEnd={(e) => e.target === e.currentTarget && setArrived((s) => new Set(s).add(r.id))} className={cx("group relative rounded-lg", !arrived.has(r.id) && "animate-fade", r.id === current ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-100")}>
+              <li key={r.id} onAnimationEnd={(e) => e.target === e.currentTarget && setArrived((s) => new Set(s).add(r.id))} className={cx("group relative rounded-lg transition duration-150 hover:translate-x-0.5", !arrived.has(r.id) && "animate-fade", r.id === current ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-100")}>
                 <button data-run={r.id} onClick={() => onOpen(r)} aria-current={r.id === current ? "true" : undefined} className="w-full rounded-lg px-2.5 py-2 pr-12 text-left">
                   <div className="line-clamp-2 text-[13px] leading-snug text-stone-800">{r.request.question}</div>
                   {(answer || kind) && (

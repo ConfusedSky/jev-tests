@@ -93,7 +93,7 @@ export function PageImage({ src, alt }: { src: string; alt: string }) {
           setSeen(true);
         }}
         onError={() => setDone({ src, ok: false })}
-        className={cx("page absolute inset-0 h-full w-full select-none transition-opacity duration-200", !seen && "opacity-0")}
+        className={cx("page absolute inset-0 h-full w-full select-none transition-opacity duration-300", !seen && "opacity-0")}
       />
     </>
   );
@@ -133,7 +133,7 @@ export function PageThumb({ spot, served, onOpen }: { spot: Spot; served: Served
         onClick={onOpen}
         title="Read the document here, at this page, with every highlight of the run"
         style={{ aspectRatio: size ? `${size.width} / ${size.height}` : "3 / 4" }}
-        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg bg-white text-left shadow-md ring-1 ring-stone-200 transition hover:shadow-lg hover:ring-teal-600/40"
+        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg bg-white text-left shadow-md ring-1 ring-stone-200 transition hover:-translate-y-0.5 hover:shadow-lg hover:ring-teal-600/40"
       >
         {doc.info && <PageImage src={pageSrc(spot.pdf, spot.page, 640, doc)} alt={`Page ${spot.page} of ${name}`} />}
         {doc.error && !doc.info && <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-stone-500">{docProblem(doc.error)}</div>}

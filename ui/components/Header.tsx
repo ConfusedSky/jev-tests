@@ -4,6 +4,7 @@ import { THEME_LABEL, THEMES, type Theme } from "../theme";
 import type { Health } from "../types";
 import { bytes, cx, dollars, MOD, tokens } from "../util";
 import { Icon } from "./Icon";
+import { Tick } from "./Tick";
 
 type Check = { label: string; ok: boolean | "off"; detail: string; fix?: string };
 
@@ -116,7 +117,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
   const over = budget > 0 && today >= budget;
   const status = down ? "UI server not running" : !health ? "checking…" : issues ? `${issues} to fix` : "system ready";
   return (
-    <header inert={inert} className="relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-3 md:gap-5 md:px-5">
+    <header inert={inert} className="relative z-20 flex h-14 shrink-0 animate-drop items-center gap-3 border-b border-stone-200 bg-white px-3 md:gap-5 md:px-5">
       {menu && <div className="fixed inset-0 z-10" onClick={() => setMenu(undefined)} />}
       <button onClick={onSidebar} aria-label="Sidebar: the shelf and the history" aria-expanded={sidebar} title="Sidebar (b)" className={iconButton}>
         <Icon name="menu" size={18} />
@@ -174,7 +175,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           aria-expanded={open}
         >
           {/* One dot for the whole: rose when the server is gone, amber when something needs fixing, green when all is ready. */}
-          <span className={cx("h-2 w-2 shrink-0 rounded-full", down ? "bg-rose-500" : !health ? "animate-pulse bg-stone-400" : issues ? "bg-amber-500" : "bg-emerald-500")} />
+          <span key={status} className={cx("h-2 w-2 shrink-0 rounded-full", down ? "animate-pop bg-rose-500" : !health ? "animate-pulse bg-stone-400" : issues ? "animate-pop bg-amber-500" : "animate-pop bg-emerald-500")} />
           <span className={cx("hidden whitespace-nowrap lg:inline", down && "text-rose-700")}>{status}</span>
         </button>
         {open && down && (
@@ -236,11 +237,13 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
         >
           <span className="flex items-center gap-1.5">
             {live && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" aria-hidden="true" />}
-            <span className={cx("font-semibold tabular-nums", over ? "text-amber-700" : "text-stone-800")}>{dollars(spend.dollars + (live?.dollars ?? 0))}</span> <span className="hidden sm:inline">spent</span>
+            <Tick className={cx("font-semibold tabular-nums", over ? "text-amber-700" : "text-stone-800")}>{dollars(spend.dollars + (live?.dollars ?? 0))}</Tick> <span className="hidden sm:inline">spent</span>
           </span>
-          <span className="hidden tabular-nums lg:inline">{tokens(spend.in + (live?.in ?? 0))} tokens in</span>
           <span className="hidden tabular-nums lg:inline">
-            {spend.runs} run{spend.runs === 1 ? "" : "s"}
+            <Tick>{tokens(spend.in + (live?.in ?? 0))}</Tick> tokens in
+          </span>
+          <span className="hidden tabular-nums lg:inline">
+            <Tick>{String(spend.runs)}</Tick> run{spend.runs === 1 ? "" : "s"}
           </span>
         </button>
         {ledger && (

@@ -11,6 +11,7 @@ import { Action, Actions, Icon } from "./Icon";
 import { Log } from "./Log";
 import { MiddlePath } from "./Path";
 import { Result, type Reader } from "./Result";
+import { Tick } from "./Tick";
 import { useToast } from "./Toast";
 import { Unfold } from "./Unfold";
 
@@ -160,7 +161,7 @@ function Walked({ lines, live }: { lines: Line[]; live: boolean }) {
                     {rows.map((r, j) => {
                       const state = stateOf(r, readingNow(r, live, r === last));
                       return (
-                        <li key={j} className="flex min-w-0 items-baseline gap-2 py-1 text-xs">
+                        <li key={j} className={cx("flex min-w-0 items-baseline gap-2 py-1 text-xs", live && "animate-fade")}>
                           <span title={STATE[state].says} className={cx("w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold", STATE[state].tone)}>
                             {state}
                           </span>
@@ -351,7 +352,7 @@ export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props)
       {/* In a narrow column the figures take a row of their own under the question, so the question keeps the width. */}
       <div className="@container">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 @xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <span className={cx("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1", o.tone)}>
+          <span key={outcome} className={cx("inline-flex shrink-0 animate-pop items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1", o.tone)}>
             <span className={cx("h-1.5 w-1.5 rounded-full", o.dot)} />
             {o.label}
           </span>
@@ -383,8 +384,10 @@ export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props)
           </div>
           <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs tabular-nums text-stone-600 @xl:col-start-auto">
             <span title="wall time">{secs(ms)}</span>
-            <span title={`${spend.in.toLocaleString()} tokens in, ${spend.out.toLocaleString()} out`}>{tokens(spend.in)} tok</span>
-            <span className="font-semibold text-stone-900">{dollars(spend.dollars)}</span>
+            <span title={`${spend.in.toLocaleString()} tokens in, ${spend.out.toLocaleString()} out`}>
+              <Tick>{tokens(spend.in)}</Tick> tok
+            </span>
+            <Tick className="font-semibold text-stone-900">{dollars(spend.dollars)}</Tick>
             {flying && (
               <span className="font-sans text-amber-800" title="A call still in flight at the stop is billed by OpenRouter but never reported, so it is not in this count">
                 + ≈1 call uncounted
