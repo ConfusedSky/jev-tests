@@ -16,6 +16,7 @@ import { Viewer } from "./components/Viewer";
 import { Welcome } from "./components/Welcome";
 import { fileStem, runJson } from "./export";
 import { useFocusInside, useTabTrap } from "./focus";
+import { ghost } from "./ghost";
 import { byTime, ordered, recentQuestions, remember, restore, stepFrom, successor } from "./history";
 import { charge, ledgerOf, OUTCOME, runSpend, spentOver, TOOL_LABEL, type Ledger } from "./labels";
 import { changed, commandFor, DEFAULTS, type Options, type Tool } from "./options";
@@ -605,7 +606,7 @@ export function App() {
         inert={covered}
       />
       <div className="relative flex min-h-0 flex-1">
-        {covered && <div className="fixed inset-0 z-30 animate-fade bg-black/40" onClick={() => setDrawer(false)} />}
+        {covered && <div ref={ghost} data-leave="fade" className="fixed inset-0 z-30 animate-fade bg-black/40" onClick={() => setDrawer(false)} />}
         <aside
           ref={aside}
           inert={!sideOpen}
@@ -752,7 +753,7 @@ export function App() {
           {pane && (
             <>
               <SplitHandle box={splitBox} ratio={split} onRatio={setSplit} />
-              <section aria-label="The answer's pages" style={{ flex: `${split} 1 0` }} className="flex min-w-0 animate-glide flex-col">
+              <section ref={ghost} data-leave="glide" aria-label="The answer's pages" style={{ flex: `${split} 1 0` }} className="flex min-w-0 animate-glide flex-col">
                 {viewer(() => setPaneOff(true), "Hide the pages")}
               </section>
             </>

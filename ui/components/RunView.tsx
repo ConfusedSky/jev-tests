@@ -78,8 +78,8 @@ function FactLine({ f, kind }: { f: Facts; kind?: string }) {
           ))}
         </span>
       </button>
-      {open && (
-        <Unfold>
+      <Unfold open={open}>
+        {() => (
           <div className="mt-2 animate-fade space-y-2 pl-5">
             {tones.map((t) => (
               <div key={t}>
@@ -96,8 +96,8 @@ function FactLine({ f, kind }: { f: Facts; kind?: string }) {
               </div>
             ))}
           </div>
-        </Unfold>
-      )}
+        )}
+      </Unfold>
     </div>
   );
 }
@@ -402,17 +402,17 @@ export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props)
         </div>
       </div>
 
-      {showPaths && req.paths && (
-        <Unfold>
+      <Unfold open={showPaths && !!req.paths}>
+        {() => (
           <ul aria-label="The PDFs this run was given" className="scroll-thin max-h-48 animate-fade overflow-y-auto rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-xs text-stone-700">
-            {req.paths.map((p) => (
+            {req.paths?.map((p) => (
               <li key={p} className="py-0.5">
                 <MiddlePath path={p} />
               </li>
             ))}
           </ul>
-        </Unfold>
-      )}
+        )}
+      </Unfold>
 
       <RunSettings run={run} />
 

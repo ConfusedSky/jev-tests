@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useLeaving } from "../motion";
 import type { Scan } from "../types";
 import { isLocate } from "../sources";
 import { basename, bytes, cx, dirname, secs } from "../util";
@@ -21,6 +22,9 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
   const [problem, setProblem] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
+  const [leaving, leave] = useLeaving();
+  const remove = useRef(onRemove);
+  remove.current = onRemove;
   const total = new Set(folders.flatMap((f) => scans[f]?.files.map((x) => x.path) ?? [])).size;
   const empty = new Set(folders.flatMap((f) => scans[f]?.files.filter((x) => x.size === 0).map((x) => x.path) ?? [])).size;
   const needle = filter.trim().toLowerCase();
@@ -97,21 +101,21 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
           </div>
         )}
         {folders.map((f) => (
-          <Folder key={f} dir={f} scan={scans[f]} needle={needle} picked={picked} onRemove={() => onRemove(f)} onRescan={() => onRescan(f)} onPick={onPick} />
+          <Folder key={f} dir={f} scan={scans[f]} needle={needle} picked={picked} leaving={leaving.has(f)} onRemove={() => leave([f], () => remove.current(f))} onRescan={() => onRescan(f)} onPick={onPick} />
         ))}
       </div>
     </div>
   );
 }
 
-function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir: string; scan?: Scan; needle: string; picked?: string; onRemove: () => void; onRescan: () => void; onPick: (p: string) => void }) {
+function Folder({ dir, scan, needle, picked, leaving, onRemove, onRescan, onPick }: { dir: string; scan?: Scan; needle: string; picked?: string; leaving: boolean; onRemove: () => void; onRescan: () => void; onPick: (p: string) => void }) {
   const [open, setOpen] = useState(true);
   const command = isLocate(dir);
   // A command's PDFs lie anywhere; each is shown under the folder it shares with the rest.
   const root = useMemo(() => (command ? commonDir((scan?.files ?? []).map((f) => f.path)) : dir), [command, scan, dir]);
   const files = useMemo(() => (scan?.files ?? []).filter((f) => !needle || f.path.slice(root.length).toLowerCase().includes(needle)), [scan, needle, root]);
   return (
-    <section className="mb-2">
+    <section className={cx("mb-2", leaving && "pointer-events-none animate-leave")}>
       <div className="group flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-stone-100">
         <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={command ? `${dir}\n${scan?.files.length ?? 0} PDFs it lists${root ? `, under ${root}` : ""}` : dir} aria-expanded={open}>
           <Icon name="chevron" size={12} className={cx("text-stone-500 transition-transform", open && "rotate-90")} />
@@ -149,9 +153,9 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
           {scan.warning}
         </div>
       )}
-      {open && (
-        <Unfold>
-          {!scan ? (
+      <Unfold open={open}>
+        {() =>
+          !scan ? (
             <ul aria-hidden="true" className="mt-0.5 animate-pulse space-y-2 py-1 pr-2 pl-5">
               {[0.7, 0.5, 0.6].map((w) => (
                 <li key={w} className="flex items-center gap-2">
@@ -186,9 +190,9 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
               })}
               {scan && !scan.error && files.length === 0 && <li className="py-1 pl-5 text-xs text-stone-500">{needle ? "no match" : "no PDFs here"}</li>}
             </ul>
-          )}
-        </Unfold>
-      )}
+          )
+        }
+      </Unfold>
     </section>
   );
 }

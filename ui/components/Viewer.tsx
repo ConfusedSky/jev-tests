@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ghostOf } from "../ghost";
 import type { Mark, PageSize } from "../types";
 import { basename, cx, isTyping, plural } from "../util";
 import { anchorAt, inReach, layOut, markAnchor, pageAt, pageInput, renderWidth, scrollFor, scrollOf, stepSpot, zoomStep, type Anchor, type Spot, type ViewBox } from "../viewer";
@@ -42,6 +43,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const scroller = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
   const nav = useRef<HTMLElement>(null);
+  const navRef = useMemo(() => ghostOf(nav), []);
   const toggle = useRef<HTMLButtonElement>(null);
   const [view, setView] = useState({ width: 0, height: 0, root: 0 });
   const [zoom, setZoom] = useState(1);
@@ -346,7 +348,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
 
       <div className="relative flex min-h-0 flex-1">
         {showList && (
-          <nav ref={nav} id="viewer-list" aria-label="The run's highlights" data-closes-on-escape={floating || undefined} className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 animate-pop shadow-xl")}>
+          <nav ref={navRef} data-leave={compact ? "pop" : undefined} id="viewer-list" aria-label="The run's highlights" data-closes-on-escape={floating || undefined} className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 animate-pop shadow-xl")}>
             <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-stone-500 uppercase">
               {plural(spots.length, "highlight")}
               <span className="sr-only">; the arrow keys move between them</span>

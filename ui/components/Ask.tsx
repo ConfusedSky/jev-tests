@@ -293,11 +293,7 @@ export function Ask(props: Props) {
         </div>
       </div>
 
-      {showOptions && (
-        <Unfold>
-          <OptionsPanel tool={tool} options={options} setOptions={setOptions} />
-        </Unfold>
-      )}
+      <Unfold open={showOptions}>{() => <OptionsPanel tool={tool} options={options} setOptions={setOptions} />}</Unfold>
 
       <div className="flex items-start gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-4 py-2">
         <span className="shrink-0 font-mono text-[11px] text-stone-500">$</span>

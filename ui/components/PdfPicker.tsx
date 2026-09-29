@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ghostOf } from "../ghost";
 import { matchItems, type Item } from "../palette";
 import type { ShelfFile } from "../types";
 import { basename, bytes, cx, dirname } from "../util";
@@ -17,6 +18,7 @@ export function PdfPicker({ files, pdf, onPick, onShowShelf }: Props) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  const boxRef = useMemo(() => ghostOf(box), []);
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
   const items = useMemo(() => files.map<Item>((f) => ({ id: f.path, group: "", label: f.name, hint: f.path, run: () => {} })), [files]);
   const shown = useMemo(() => matchItems(items, query, 200), [items, query]);
@@ -90,7 +92,8 @@ export function PdfPicker({ files, pdf, onPick, onShowShelf }: Props) {
       </button>
       {open && (
         <div
-          ref={box}
+          ref={boxRef}
+          data-leave="pop"
           onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && e.relatedTarget !== button.current && close(false)}
           style={{ left: -shift }}
           className="absolute top-full z-30 mt-1 w-[min(28rem,calc(100vw-1.5rem))] animate-pop overflow-hidden rounded-xl border border-stone-200 bg-white text-sm shadow-xl"

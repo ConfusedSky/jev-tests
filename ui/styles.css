@@ -16,10 +16,14 @@
 
   /* Fast off the mark and slow to settle, for what comes in. */
   --ease-arrive: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Slow to start and gone fast, for what goes. */
+  --ease-leave: cubic-bezier(0.7, 0, 0.84, 0);
 
   /* Short moves for what comes and goes; the reduced-motion rule below turns them off. */
   --animate-rise: rise 380ms var(--ease-arrive) backwards;
-  --animate-sink: sink 150ms ease-in forwards;
+  --animate-sink: sink var(--leave) var(--ease-leave) forwards;
+  --animate-fold: fold var(--leave) var(--ease-leave) forwards;
+  --animate-leave: leave var(--leave) var(--ease-leave) forwards;
   --animate-pop: pop 300ms var(--ease-arrive) backwards;
   --animate-fade: fade 300ms ease-out backwards;
   --animate-glide: glide 400ms var(--ease-arrive) backwards;
@@ -89,11 +93,29 @@
       clip-path: inset(0);
     }
   }
+  @keyframes fold {
+    from {
+      clip-path: inset(0);
+    }
+    to {
+      grid-template-rows: 0fr;
+      clip-path: inset(0);
+      opacity: 0;
+    }
+  }
+  @keyframes leave {
+    to {
+      opacity: 0;
+      transform: translateX(-16px);
+    }
+  }
 }
 
 /* The gap between things that come in one after another. Outside @theme on purpose: only inline styles read it, which Tailwind does not scan, so there it could be dropped as unused. */
 :root {
   --stagger: 90ms;
+  /* How long anything takes to go; in ms or s with its unit, since ui/motion.ts reads the number. */
+  --leave: 220ms;
 }
 
 /*
@@ -211,6 +233,45 @@ body {
   }
   100% {
     left: 100%;
+  }
+}
+
+/* The picture of what lies over the page playing its way out (ui/ghost.ts). A copy keeps its classes, so what they play on the way in is stopped. */
+.ghost,
+.ghost * {
+  animation: none !important;
+  transition: none !important;
+}
+.ghost {
+  pointer-events: none;
+}
+.ghost[data-leave="pop"] {
+  animation: pop-out var(--leave) var(--ease-leave) forwards !important;
+}
+.ghost[data-leave="fade"] {
+  animation: fade-out var(--leave) var(--ease-leave) forwards !important;
+}
+.ghost[data-leave="glide"] {
+  animation: glide-out var(--leave) var(--ease-leave) forwards !important;
+}
+.ghost[data-leave="fade"] > [role="dialog"] {
+  animation: pop-out var(--leave) var(--ease-leave) forwards !important;
+}
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.92);
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes glide-out {
+  to {
+    opacity: 0;
+    transform: translateX(32px);
   }
 }
 

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { leaveMs } from "../motion";
 import { cx, MOD } from "../util";
 
 type Action = { label: string; run: () => void };
@@ -64,7 +65,7 @@ function Item({ toast: t, onGone, onAct }: { toast: Toast; onGone: () => void; o
   // Gone once its way out has played; a timer, since with motion reduced no animation ends.
   useEffect(() => {
     if (!going) return;
-    const timer = setTimeout(onGone, 150);
+    const timer = setTimeout(onGone, leaveMs());
     return () => clearTimeout(timer);
   }, [going]);
   return (
