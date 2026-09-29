@@ -144,7 +144,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
             <ThemeIcon theme={theme} />
           </button>
           {menu === "theme" && (
-            <div ref={pop} role="group" aria-label="Theme" className="absolute right-0 top-9 z-20 w-52 rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
+            <div ref={pop} role="group" aria-label="Theme" className="absolute right-0 top-9 z-20 w-52 animate-pop rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl">
               {THEMES.map((t) => (
                 // A click picks and closes, picking itself since the menu is gone before the radio would hear of it; arrow keys (a click of detail 0) move through the choices and leave it open.
                 <label
@@ -178,7 +178,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           <span className={cx("hidden whitespace-nowrap lg:inline", down && "text-rose-700")}>{status}</span>
         </button>
         {open && down && (
-          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] animate-pop rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-rose-800">The UI server is not running</div>
             <p className="leading-relaxed">
               This page cannot reach it, so nothing can be asked. Start it again from the repo with <code className="rounded bg-stone-100 px-1 font-mono text-[11px] text-stone-700">bun run ui</code>; the page checks every few seconds and picks up where it was.
@@ -189,7 +189,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </div>
         )}
         {open && health && !down && (
-          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(24rem,calc(100vw-1.5rem))] animate-pop rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">What the tools need</span>
               <button onClick={onRefresh} className="text-xs text-teal-700 hover:underline">
@@ -244,7 +244,7 @@ export function Header({ health, cache, spend, live, budget, onBudget, onRefresh
           </span>
         </button>
         {ledger && (
-          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
+          <div ref={pop} className="absolute right-0 top-9 z-20 w-[min(22rem,calc(100vw-1.5rem))] animate-pop rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600 shadow-xl">
             <div className="mb-1 text-sm font-semibold text-stone-800">What this browser has spent</div>
             <p className="leading-relaxed">
               {dollars(spend.dollars)} over {spend.runs} run{spend.runs === 1 ? "" : "s"}, {spend.in.toLocaleString("en-US")} tokens in{live ? `, and ${dollars(live.dollars)} so far on the run going now` : ""}.

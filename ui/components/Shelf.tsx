@@ -4,6 +4,7 @@ import { isLocate } from "../sources";
 import { basename, bytes, cx, dirname, secs } from "../util";
 import { Icon } from "./Icon";
 import { MiddlePath } from "./Path";
+import { Unfold } from "./Unfold";
 
 type Props = {
   folders: string[];
@@ -64,7 +65,7 @@ export function Shelf({ folders, scans, picked, onAdd, onRemove, onRescan, onPic
         </button>
       </form>
       {problem && (
-        <div role="alert" className="mx-3 mt-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11px] [overflow-wrap:anywhere] text-amber-800 ring-1 ring-amber-600/20">
+        <div role="alert" className="mx-3 mt-1.5 animate-rise rounded-md bg-amber-50 px-2 py-1 text-[11px] [overflow-wrap:anywhere] text-amber-800 ring-1 ring-amber-600/20">
           {problem}
         </div>
       )}
@@ -148,42 +149,45 @@ function Folder({ dir, scan, needle, picked, onRemove, onRescan, onPick }: { dir
           {scan.warning}
         </div>
       )}
-      {open && !scan && (
-        <ul aria-hidden="true" className="mt-0.5 animate-pulse space-y-2 py-1 pr-2 pl-5">
-          {[0.7, 0.5, 0.6].map((w) => (
-            <li key={w} className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
-              <span className="h-2.5 rounded bg-stone-200" style={{ width: `${w * 100}%` }} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {open && scan && (
-        <ul className="mt-0.5">
-          {files.map((f) => {
-            const rel = root ? f.path.slice(root.length + 1) : f.path;
-            const sub = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-            const on = f.path === picked;
-            return (
-              <li key={f.path}>
-                <button
-                  onClick={() => onPick(f.path)}
-                  title={`${f.path}\n${f.size === 0 ? "This file is empty, so it cannot be asked" : "Click to ask this PDF alone"}`}
-                  className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
-                >
-                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-400")} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cx("block truncate text-[13px]", on ? "font-medium text-teal-900" : "text-stone-700")}>{f.name}</span>
-                    {sub && <MiddlePath path={sub} className="text-[11px] text-stone-500" />}
-                    {f.size === 0 && <span className="block text-[11px] font-medium text-amber-700">empty: left out, nothing in it to ask</span>}
-                  </span>
-                  {f.size > 0 && <span className="shrink-0 text-[11px] tabular-nums text-stone-500">{bytes(f.size)}</span>}
-                </button>
-              </li>
-            );
-          })}
-          {scan && !scan.error && files.length === 0 && <li className="py-1 pl-5 text-xs text-stone-500">{needle ? "no match" : "no PDFs here"}</li>}
-        </ul>
+      {open && (
+        <Unfold>
+          {!scan ? (
+            <ul aria-hidden="true" className="mt-0.5 animate-pulse space-y-2 py-1 pr-2 pl-5">
+              {[0.7, 0.5, 0.6].map((w) => (
+                <li key={w} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
+                  <span className="h-2.5 rounded bg-stone-200" style={{ width: `${w * 100}%` }} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="mt-0.5 animate-fade">
+              {files.map((f) => {
+                const rel = root ? f.path.slice(root.length + 1) : f.path;
+                const sub = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+                const on = f.path === picked;
+                return (
+                  <li key={f.path}>
+                    <button
+                      onClick={() => onPick(f.path)}
+                      title={`${f.path}\n${f.size === 0 ? "This file is empty, so it cannot be asked" : "Click to ask this PDF alone"}`}
+                      className={cx("group/f flex w-full items-center gap-2 rounded-lg py-1 pr-2 pl-5 text-left", on ? "bg-teal-50 ring-1 ring-teal-600/20" : "hover:bg-stone-100")}
+                    >
+                      <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", on ? "bg-teal-600" : "bg-stone-400")} />
+                      <span className="min-w-0 flex-1">
+                        <span className={cx("block truncate text-[13px]", on ? "font-medium text-teal-900" : "text-stone-700")}>{f.name}</span>
+                        {sub && <MiddlePath path={sub} className="text-[11px] text-stone-500" />}
+                        {f.size === 0 && <span className="block text-[11px] font-medium text-amber-700">empty: left out, nothing in it to ask</span>}
+                      </span>
+                      {f.size > 0 && <span className="shrink-0 text-[11px] tabular-nums text-stone-500">{bytes(f.size)}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+              {scan && !scan.error && files.length === 0 && <li className="py-1 pl-5 text-xs text-stone-500">{needle ? "no match" : "no PDFs here"}</li>}
+            </ul>
+          )}
+        </Unfold>
       )}
     </section>
   );

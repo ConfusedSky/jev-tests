@@ -12,6 +12,7 @@ import { Log } from "./Log";
 import { MiddlePath } from "./Path";
 import { Result, type Reader } from "./Result";
 import { useToast } from "./Toast";
+import { Unfold } from "./Unfold";
 
 /** One colour a meaning: what jev read off the question, what was reused from before, and what the walk did. */
 const TONE = {
@@ -77,22 +78,24 @@ function FactLine({ f, kind }: { f: Facts; kind?: string }) {
         </span>
       </button>
       {open && (
-        <div className="mt-2 space-y-2 pl-5">
-          {tones.map((t) => (
-            <div key={t}>
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-stone-500">{TONE[t].says}</div>
-              <div className="flex flex-wrap gap-2">
-                {facts
-                  .filter((x) => x.tone === t)
-                  .map((x) => (
-                    <Fact key={x.label} label={x.label} tone={t}>
-                      {x.body}
-                    </Fact>
-                  ))}
+        <Unfold>
+          <div className="mt-2 animate-fade space-y-2 pl-5">
+            {tones.map((t) => (
+              <div key={t}>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-stone-500">{TONE[t].says}</div>
+                <div className="flex flex-wrap gap-2">
+                  {facts
+                    .filter((x) => x.tone === t)
+                    .map((x) => (
+                      <Fact key={x.label} label={x.label} tone={t}>
+                        {x.body}
+                      </Fact>
+                    ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Unfold>
       )}
     </div>
   );
@@ -195,7 +198,7 @@ function Progress({ gauges, trying }: { gauges: Gauge[]; trying: string }) {
   const bars = gauges.filter((g) => !g.cap);
   const caps = gauges.filter((g) => g.cap);
   return (
-    <div className="space-y-2 rounded-2xl border border-sky-600/20 bg-sky-50/60 px-4 py-3">
+    <div className="animate-rise space-y-2 rounded-2xl border border-sky-600/20 bg-sky-50/60 px-4 py-3">
       {caps.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-sky-900">
           {caps.map((g) => (
@@ -271,7 +274,7 @@ function Timing({ spent }: { spent: JsonReport["spent"] }) {
       </div>
       <div className="flex h-2.5 overflow-hidden rounded-full bg-stone-100">
         {drawn.map((p) => (
-          <div key={p.key} className={p.color} style={{ width: `${(tenths(p.key) / total) * 100}%` }} title={`${p.label} ${secs(spent.ms[p.key])}`} />
+          <div key={p.key} className={cx("animate-fill", p.color)} style={{ width: `${(tenths(p.key) / total) * 100}%` }} title={`${p.label} ${secs(spent.ms[p.key])}`} />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-500">
@@ -397,13 +400,15 @@ export function RunView({ run, reader, onStop, onPick, onRetry, onEdit }: Props)
       </div>
 
       {showPaths && req.paths && (
-        <ul aria-label="The PDFs this run was given" className="scroll-thin max-h-48 overflow-y-auto rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-xs text-stone-700">
-          {req.paths.map((p) => (
-            <li key={p} className="py-0.5">
-              <MiddlePath path={p} />
-            </li>
-          ))}
-        </ul>
+        <Unfold>
+          <ul aria-label="The PDFs this run was given" className="scroll-thin max-h-48 animate-fade overflow-y-auto rounded-xl border border-stone-200 bg-white/70 px-3 py-2 text-xs text-stone-700">
+            {req.paths.map((p) => (
+              <li key={p} className="py-0.5">
+                <MiddlePath path={p} />
+              </li>
+            ))}
+          </ul>
+        </Unfold>
       )}
 
       <RunSettings run={run} />

@@ -6,6 +6,7 @@ import { copy, cx, plural } from "../util";
 import { Action, Icon } from "./Icon";
 import { PdfPicker } from "./PdfPicker";
 import { useToast } from "./Toast";
+import { Unfold } from "./Unfold";
 
 const MODES: { tool: Tool; label: string; asks: string; cost: string }[] = [
   { tool: "jevfind", label: "Whole shelf", asks: "Which page of which PDF answers it?", cost: "ranks the paths, then reads the best files" },
@@ -116,14 +117,15 @@ export function Ask(props: Props) {
   return (
     <section data-ask className="@container rounded-2xl border border-stone-200 bg-white shadow-sm transition-shadow has-[textarea:focus]:border-teal-600/40 has-[textarea:focus]:ring-4 has-[textarea:focus]:ring-teal-600/10">
       <div className="flex flex-wrap items-center gap-3 border-b border-stone-100 px-4 pt-3 pb-3">
-        <div role="tablist" aria-label="What to search" className="flex rounded-xl bg-stone-100 p-1">
+        <div role="tablist" aria-label="What to search" className="relative grid grid-cols-3 rounded-xl bg-stone-100 p-1">
+          <span aria-hidden="true" className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-lg bg-white shadow-sm transition-transform duration-200 ease-out" style={{ transform: `translateX(${MODES.findIndex((m) => m.tool === tool) * 100}%)` }} />
           {MODES.map((m) => (
             <button
               key={m.tool}
               role="tab"
               aria-selected={m.tool === tool}
               onClick={() => setTool(m.tool)}
-              className={cx("rounded-lg px-3 py-1.5 text-sm font-medium transition", m.tool === tool ? "bg-white text-stone-900 shadow-sm" : "text-stone-500 hover:text-stone-800")}
+              className={cx("relative rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors", m.tool === tool ? "text-stone-900" : "text-stone-500 hover:text-stone-800")}
             >
               {m.label}
             </button>
@@ -236,7 +238,7 @@ export function Ask(props: Props) {
       )}
 
       {note && (
-        <div className="mx-4 mb-2 flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-1.5 text-xs text-sky-900 ring-1 ring-sky-600/20">
+        <div className="mx-4 mb-2 flex animate-rise items-start gap-2 rounded-lg bg-sky-50 px-3 py-1.5 text-xs text-sky-900 ring-1 ring-sky-600/20">
           <span className="flex-1">{note}</span>
           <button onClick={onDismissNote} aria-label="Dismiss" className="text-sky-700 hover:text-sky-900">
             <Icon name="close" size={14} />
@@ -245,7 +247,7 @@ export function Ask(props: Props) {
       )}
 
       {cacheWhy && (
-        <div role="alert" className="mx-4 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">
+        <div role="alert" className="mx-4 mb-2 animate-rise rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-600/20">
           <div>
             <span className="font-semibold">The ranking cache can't run, so the tool would refuse this question.</span> {cacheWhy.replace(/^the ranking cache \(--cache [^)]+\) /, "It ")}
           </div>
@@ -291,7 +293,11 @@ export function Ask(props: Props) {
         </div>
       </div>
 
-      {showOptions && <OptionsPanel tool={tool} options={options} setOptions={setOptions} />}
+      {showOptions && (
+        <Unfold>
+          <OptionsPanel tool={tool} options={options} setOptions={setOptions} />
+        </Unfold>
+      )}
 
       <div className="flex items-start gap-2 rounded-b-2xl border-t border-stone-100 bg-stone-50 px-4 py-2">
         <span className="shrink-0 font-mono text-[11px] text-stone-500">$</span>
@@ -312,7 +318,7 @@ function OptionsPanel({ tool, options, setOptions }: { tool: Tool; options: Opti
     { title: "Walk and floors", specs: specs.filter((s) => s.advanced) },
   ].filter((g) => g.specs.length);
   return (
-    <div className="border-t border-stone-100 bg-stone-50/60 px-4 py-3">
+    <div className="animate-fade border-t border-stone-100 bg-stone-50/60 px-4 py-3">
       {groups.map((g) => (
         <div key={g.title} className="mb-3 last:mb-0">
           <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-stone-500">{g.title}</div>

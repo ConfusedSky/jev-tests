@@ -641,7 +641,7 @@ export function App() {
               </button>
             )}
           </div>
-          <div id="side-panel" role="tabpanel" aria-labelledby={`side-tab-${side}`} className="flex min-h-0 flex-1 flex-col">
+          <div key={side} id="side-panel" role="tabpanel" aria-labelledby={`side-tab-${side}`} className="flex min-h-0 flex-1 animate-fade flex-col">
             {side === "shelf" ? (
               <Shelf
                 folders={folders}
@@ -661,7 +661,7 @@ export function App() {
           </div>
         </aside>
 
-        <div ref={splitBox} className="flex min-w-0 flex-1">
+        <div ref={splitBox} className="flex min-w-0 flex-1 overflow-x-clip">
           <main ref={main} inert={covered} style={pane ? { flex: `${1 - split} 1 0` } : undefined} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-5xl space-y-5 px-3 py-4 md:px-4 md:py-5 xl:px-6 xl:py-6">
               <Ask
@@ -694,12 +694,12 @@ export function App() {
                 onExample={example}
               />
               {live && run && shown?.id !== run.id && (
-                <button onClick={() => open(run)} className="w-full rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
+                <button onClick={() => open(run)} className="w-full animate-rise rounded-xl bg-sky-50 px-4 py-2 text-left text-sm text-sky-800 ring-1 ring-sky-600/20 hover:bg-sky-100">
                   A question is still running. Show it →
                 </button>
               )}
               {endedShown && (
-                <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
+                <div className="flex animate-rise items-center gap-3 rounded-xl bg-white px-4 py-2 text-sm ring-1 ring-stone-200">
                   <span className={cx("h-2 w-2 rounded-full", OUTCOME[outcomeOf(endedShown)].dot)} />
                   <span className="min-w-0 flex-1 truncate text-stone-700">
                     Finished: <span className="font-medium">{OUTCOME[outcomeOf(endedShown)].label}</span> · {dollars(runSpend(endedShown))} · “{endedShown.request.question}”
@@ -752,7 +752,7 @@ export function App() {
           {pane && (
             <>
               <SplitHandle box={splitBox} ratio={split} onRatio={setSplit} />
-              <section aria-label="The answer's pages" style={{ flex: `${split} 1 0` }} className="flex min-w-0 flex-col">
+              <section aria-label="The answer's pages" style={{ flex: `${split} 1 0` }} className="flex min-w-0 animate-glide flex-col">
                 {viewer(() => setPaneOff(true), "Hide the pages")}
               </section>
             </>

@@ -93,7 +93,7 @@ export function PageImage({ src, alt }: { src: string; alt: string }) {
           setSeen(true);
         }}
         onError={() => setDone({ src, ok: false })}
-        className={cx("page absolute inset-0 h-full w-full select-none", !seen && "opacity-0")}
+        className={cx("page absolute inset-0 h-full w-full select-none transition-opacity duration-200", !seen && "opacity-0")}
       />
     </>
   );

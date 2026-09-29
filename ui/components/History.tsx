@@ -11,6 +11,8 @@ export function History({ runs, current, onOpen, onClear, onPin, onDelete }: Pro
   const now = useTick(true, 30_000);
   const [needle, setNeedle] = useState("");
   const list = useRef<HTMLUListElement>(null);
+  // A row fades in as it arrives and only then, since a pin moves rows and a row put back in the page would fade in again.
+  const [arrived, setArrived] = useState<ReadonlySet<string>>(new Set());
   if (runs.length === 0)
     return <div className="m-3 rounded-xl border border-dashed border-stone-300 p-4 text-center text-xs text-stone-500">Questions you ask appear here, with what each one cost.</div>;
   const shown = ordered(filterRuns(runs, needle));
@@ -43,7 +45,7 @@ export function History({ runs, current, onOpen, onClear, onPin, onDelete }: Pro
             const answer = answerOf(r);
             const kind = kindOf(r);
             return (
-              <li key={r.id} className={cx("group relative rounded-lg", r.id === current ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-100")}>
+              <li key={r.id} onAnimationEnd={(e) => e.target === e.currentTarget && setArrived((s) => new Set(s).add(r.id))} className={cx("group relative rounded-lg", !arrived.has(r.id) && "animate-fade", r.id === current ? "bg-white shadow-sm ring-1 ring-stone-200" : "hover:bg-stone-100")}>
                 <button data-run={r.id} onClick={() => onOpen(r)} aria-current={r.id === current ? "true" : undefined} className="w-full rounded-lg px-2.5 py-2 pr-12 text-left">
                   <div className="line-clamp-2 text-[13px] leading-snug text-stone-800">{r.request.question}</div>
                   {(answer || kind) && (
