@@ -162,6 +162,28 @@ replaced them. Numbers are from the runs at the time (September 2026).
   sentence ends to `--chars`) and `group.patch` (`--group N`, at most N
   questions a call). A checkpoint with a `max_len` of several thousand
   is the only thing likely to change this.
+- **Kev-0.8B** ([jaredpalmer/kev](https://github.com/jaredpalmer/kev)
+  `kev.serve --run jaredpalmer/kev-0.8b@v1.0`, a pointer head on
+  Qwen3.5-0.8B speaking `/v1/systemone`). Scored 7% against jev's 91% on
+  the bench at its defaults (`experiments/kev/bench-0.8b.log`), for 4.0M
+  tokens. Unlike laya it takes any number of questions and states up to
+  65,536 tokens, so every case ran. Most cases found no page at all; of
+  what it answered, only "Is witch a class?" and "Is Gunslinger a perk?"
+  were right, and it called Lockpick a perk too. On an 8 GB GPU the
+  server's defaults ran out of memory on page-sized states (500s); it ran
+  clean with `flash-linear-attention==0.5.2` installed and
+  `KEV_CUDA_GRAPHS=0 KEV_PREFIX_CACHE=2 KEV_PREFIX_MAX_TOKENS=32768
+  PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Kev-4B and larger
+  don't fit an 8 GB GPU.
+- **Kev-4B** (`kev-4b@v1.0` on a Modal L40S, deployed with
+  `skills/kev-deploy/scripts/kev_serve.py`). Scored 18% for 4.9M tokens
+  (`experiments/kev/bench-4b.log`). It found some pages jev finds: the
+  CPR exotic weapons table whole, Heart's skills passage (92%) and
+  equipment tags (71%), and part of Legend in the Mist's hero creation and
+  Fallout's skills. Every count and every table built to order found
+  nothing, and its true/false answers leaned true: it called the knight a
+  class, the heretic a calling and Lockpick a perk. Not pursued; Kev-27B
+  (80 GB GPU) is the size its own evaluations put near jev.
 
 ## Known flaky, not fixed
 

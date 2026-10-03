@@ -1,0 +1,44 @@
+tables read as text: ValueError: Bounding box (-0.17099999999999999, 64.928, 37.33276666666667, 67.98000000000002) is not fully within parent page bounding box (0, 0, 603, 783) (bun run tables:install)
+case                                                 truth      got                        p  page score  last    time   tokens
+heart: How many classes are there in heart?          9          —                          —     —   0% 100% ↓ 133.6s   87,138
+heart: How many callings are there in heart?         5          —                          —     —   0% 100% ↓   8.1s   49,481
+heart: how many skills are there in heart?           9          12                      0.00     4  67% 100% ↓  14.3s   84,452
+heart: how many domains are there in heart?          8          —                          —     —   0% 100% ↓  14.1s   80,771
+heart: Is witch a class in heart?                    true       true                    1.00    31 100% 100%     0.5s    1,821
+heart: Is knight a class in heart?                   false      —                          —     —   0% 100% ↓  11.1s   44,637
+heart: Is witch hunter a class in heart?             false      —                          —     —   0% 100% ↓  11.1s   44,924
+heart: Is heretic a calling in heart?                false      —                          —     —   0% 100% ↓   2.2s   12,864
+heart: What are the skills available to a character? passage    —                          —     —   0% 100% ↓  11.3s   63,695
+heart: what are the equipment tags                   passage    —                          —     —   0% 100% ↓  10.0s   52,935
+fallout: How many perks are there?                   94         —                          —     —   0% 100% ↓  30.7s   89,485
+fallout: How many skills are there?                  17         63                      0.17    47   0% 100% ↓  26.2s  106,686
+fallout: How many origins are there?                 6          —                          —     —   0%  83% ↓  30.4s  138,297  (the contents list five; Brotherhood Initiate has no bookmark)
+fallout: Is Gunslinger a perk?                       true       true                    0.64    61 100% 100%     3.6s   18,867
+fallout: Is Lockpick a perk?                         false      true                    0.66    61   0% 100% ↓   3.0s   17,562
+fallout: How is radiation treated?                   passage    —                          —     —   0% 100% ↓   9.3s   41,889
+fallout: What is the cost, weight and damage rating… figures    —                          —     —   0% 100% ↓  23.1s  136,920
+fallout: What is the cost, weight and damage rating… figures    —                          —     —   0% 100% ↓   4.5s   22,615
+litm: How many theme types are there?                20         1                       0.00    75   5%   0% ↑  47.3s  325,444  (some runs miss p.75 and count 1 to 6 on p.104 or p.125, or find nothing (issue #14))
+litm: How many theme kits are there?                 153        —                          —     —   0%  59% ↓  22.2s  138,618  (the second page sits at the answer floor and is counted one run, refused the next)
+litm: How many tropes are there?                     30         —                          —     —   0%  33% ↓  15.0s   91,280  (the contents list the ten trope groups)
+litm: How does hero creation work in Legend in the … passage    —                          —     —   0% 100% ↓  13.3s   79,424
+cpr: How many skills are there in the game?          66         2                       0.03    81   3%  92% ↓  54.8s  365,731  (counts 54 to 61 of 66; when the contents do not confine, Needed Skills (four healing skills) may be counted instead)
+cpr: Show me the exotic weapons table                passage    —                          —     —   0% 100% ↓  76.1s  397,870
+cpr: How much do each type of magazine cost in cybe… passage    —                          —     —   0%   0%    15.9s   92,580  (p.344 gates between 0.65 and 0.72 against the 0.7 threshold, so some runs find no page or take the ammunition page)
+cpr: What is the damage of all the standard ranged … passage    —                          —     —   0% 100% ↓  12.9s   73,069
+fallout: What is the cost and weight of every small… passage    —                          —     —   0% 100% ↓  17.5s   87,338
+fallout: What is the damage of every small gun?      passage    —                          —     —   0% 100% ↓  18.4s  110,523
+fallout: What are the skills in fallout?             passage    —                          —     —   0% 100% ↓   5.1s   23,852
+cpr: Show me the exotic weapons table (as a table r… passage    —                          —     —   0% 100% ↓   8.9s   48,140
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓  21.5s  116,073
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓  16.2s   90,665
+fallout: Show me a table of the small guns. I want … passage    —                          —     —   0% 100% ↓  20.4s  110,290
+fallout: Show me a table of the small guns with col… passage    —                          —     —   0% 100% ↓  24.5s  127,362
+cpr: Give me a table that contains each of the stan… passage    —                          —     —   0% 100% ↓  76.7s  441,821
+cpr: Show me the standard weapon table. In addition… passage    —                          —     —   0% 100% ↓  14.7s   79,883
+shelf: Give me a table with Heart, Fallout and Cybe… table      Give me a table with …     —     —   0%  97% ↓  20.4s  108,685  (Cyberpunk Red's skills count varies run to run, as its own case does)
+
+4,003,687 tokens in, $0.1682 (last 2,762,847)
+mean score   7% (last  91%, 7449684 2026-09-25), 33 regressions
+not saved: answered by http://127.0.0.1:8009
+exit 1
