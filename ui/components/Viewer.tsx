@@ -1,7 +1,8 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ghostOf } from "../ghost";
 import type { Mark, PageSize } from "../types";
 import { basename, cx, isTyping, plural } from "../util";
-import { anchorAt, layOut, markAnchor, pageAt, pageInput, renderWidth, scrollFor, scrollOf, stepSpot, zoomStep, type Anchor, type Spot, type ViewBox } from "../viewer";
+import { anchorAt, inReach, layOut, markAnchor, pageAt, pageInput, renderWidth, scrollFor, scrollOf, stepSpot, zoomStep, type Anchor, type Spot, type ViewBox } from "../viewer";
 import { Icon } from "./Icon";
 import { docProblem, MarkLayer, pageSrc, PageImage, sizeOf, useDoc, type Served } from "./Page";
 
@@ -42,6 +43,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   const scroller = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
   const nav = useRef<HTMLElement>(null);
+  const navRef = useMemo(() => ghostOf(nav), []);
   const toggle = useRef<HTMLButtonElement>(null);
   const [view, setView] = useState({ width: 0, height: 0, root: 0 });
   const [zoom, setZoom] = useState(1);
@@ -120,22 +122,32 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
   useLayoutEffect(() => {
     jump.current = at;
   }, [at, seq]);
+  // Smooth only within one layout: across a change of it, the pages under the view have moved.
+  const ranWith = useRef(lay);
   useLayoutEffect(() => {
     const el = scroller.current;
     const target = jump.current === undefined ? undefined : spots[jump.current];
+    const settled = ranWith.current === lay;
+    ranWith.current = lay;
     if (el && anchor.current && lay.tops.length) {
       const to = scrollOf(anchor.current, laid.current, el.clientWidth, el.clientHeight);
       anchor.current = undefined;
-      el.scrollTop = to.top;
-      el.scrollLeft = to.left;
+      // With the layout unchanged there is nothing to hold, and a stale anchor would move the view just before the scroll.
+      if (!settled) {
+        el.scrollTop = to.top;
+        el.scrollLeft = to.left;
+      }
     }
     if (!el || !target || target.pdf !== pdf || view.width === 0 || target.page > lay.tops.length) return;
     jump.current = undefined;
     const i = target.page - 1;
     const size = target.size ?? sizeOf(doc.info, target.page)!;
-    el.scrollTop = PAD + scrollFor(target, lay.tops[i]!, lay.heights[i]!, size, el.clientHeight);
-    const left = Math.min(...target.marks.map((m) => m.x0));
-    el.scrollLeft = Number.isFinite(left) ? Math.max(0, (left / size.width) * width + PAD - 24) : 0;
+    const top = PAD + scrollFor(target, lay.tops[i]!, lay.heights[i]!, size, el.clientHeight);
+    const x0 = Math.min(...target.marks.map((m) => m.x0));
+    const left = Number.isFinite(x0) ? Math.max(0, (x0 / size.width) * width + PAD - 24) : 0;
+    // The reduced-motion rule cannot override a scroll that asks for smooth by name.
+    const smooth = settled && inReach(el.scrollTop, top, el.clientHeight) && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top, left, behavior: smooth ? "smooth" : "instant" });
     setPage(target.page);
   }, [at, seq, lay, pdf, view.width]);
 
@@ -336,7 +348,7 @@ export function Viewer({ spots, at: wanted, seq, onAt, served, onClose, closeLab
 
       <div className="relative flex min-h-0 flex-1">
         {showList && (
-          <nav ref={nav} id="viewer-list" aria-label="The run's highlights" data-closes-on-escape={floating || undefined} className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 shadow-xl")}>
+          <nav ref={navRef} data-leave={compact ? "pop" : undefined} id="viewer-list" aria-label="The run's highlights" data-closes-on-escape={floating || undefined} className={cx("scroll-thin flex w-60 shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-stone-50", compact && "absolute inset-y-0 left-0 z-10 animate-pop shadow-xl")}>
             <div className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-stone-500 uppercase">
               {plural(spots.length, "highlight")}
               <span className="sr-only">; the arrow keys move between them</span>

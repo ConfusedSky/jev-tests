@@ -43,13 +43,14 @@ function Text({ line, failed }: { line: Line; failed: boolean }) {
   );
 }
 
-function Row({ node, isOpen, toggle, depth, failed }: { node: Node; isOpen: (i: number) => boolean; toggle: (i: number) => void; depth: number; failed: boolean }) {
+function Row({ node, isOpen, toggle, depth, failed, live }: { node: Node; isOpen: (i: number) => boolean; toggle: (i: number) => void; depth: number; failed: boolean; live: boolean }) {
   const has = node.children.length > 0;
   const shut = has && !isOpen(node.index);
   const shown = shut && node.sum ? node.sum : node.line;
   return (
     <>
-      <div className={cx("group flex items-start gap-1 rounded px-1 py-0.5 hover:bg-stone-100/70", node.line.message && (failed ? "bg-rose-50" : "bg-stone-100"))} style={{ paddingLeft: `${depth * 16 + 4}px` }}>
+      {/* Only while live: a finished run's log can hold hundreds of lines, too many to animate at once. */}
+      <div className={cx("group flex items-start gap-1 rounded px-1 py-0.5 hover:bg-stone-100/70", live && "animate-fade", node.line.message && (failed ? "bg-rose-50" : "bg-stone-100"))} style={{ paddingLeft: `${depth * 16 + 4}px` }}>
         <span className="w-10 shrink-0 pt-px text-right font-mono text-[10px] tabular-nums text-stone-500">+{(node.line.t / 1000).toFixed(1)}</span>
         {has ? (
           <button onClick={() => toggle(node.index)} className="w-4 shrink-0 text-[9px] text-stone-500 hover:text-stone-700" aria-label={shut ? "expand" : "collapse"}>
@@ -69,7 +70,7 @@ function Row({ node, isOpen, toggle, depth, failed }: { node: Node; isOpen: (i: 
       {has && !shut && (
         <>
           {node.children.map((c) => (
-            <Row key={c.index} node={c} isOpen={isOpen} toggle={toggle} depth={depth + 1} failed={failed} />
+            <Row key={c.index} node={c} isOpen={isOpen} toggle={toggle} depth={depth + 1} failed={failed} live={live} />
           ))}
           {node.sum && (
             <div className="flex items-start gap-1 rounded px-1 py-0.5" style={{ paddingLeft: `${depth * 16 + 4}px` }}>
@@ -146,7 +147,7 @@ export function Log({ lines, live, trying, failed = false }: { lines: Line[]; li
       <div ref={box} className="scroll-thin max-h-[32rem] overflow-y-auto px-2 py-2 font-mono text-xs leading-relaxed">
         {said.length === 0 && !trying && <div className="px-2 py-3 text-stone-500">{live ? "Starting…" : "Nothing was logged."}</div>}
         {nodes.map((n) => (
-          <Row key={n.index} node={n} isOpen={isOpen} toggle={toggle} depth={0} failed={failed} />
+          <Row key={n.index} node={n} isOpen={isOpen} toggle={toggle} depth={0} failed={failed} live={live} />
         ))}
         {live && trying && (
           <div className="flex items-center gap-2 px-1 py-0.5 pl-[3.75rem] text-sky-700">

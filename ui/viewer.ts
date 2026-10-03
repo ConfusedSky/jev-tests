@@ -152,6 +152,9 @@ export function scrollFor(spot: Pick<Spot, "marks">, top: number, height: number
   return Math.max(0, top + (first / size.height) * height - view / 3);
 }
 
+/** Whether a view `view` tall at `from` is scrolled, rather than jumped, to `to`: within two views, since the pages between further ones are not drawn. */
+export const inReach = (from: number, to: number, view: number) => Math.abs(to - from) <= 2 * view;
+
 /** The viewer's share of the width when the split is dragged to `x`, in a box starting at `left` and `width` wide, held between `min` and `max`. */
 export function splitAt(x: number, left: number, width: number, min = 0.3, max = 0.7): number {
   return Math.max(min, Math.min(max, (left + width - x) / Math.max(1, width)));

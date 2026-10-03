@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseLine } from "./log";
 import type { Run } from "./run";
 import type { JsonHit, JsonReport } from "./types";
-import { anchorAt, layOut, markAnchor, pageAt, pageInput, placed, renderWidth, scrollFor, scrollOf, splitAt, spotsOf, stepSpot, zoomStep } from "./viewer";
+import { anchorAt, inReach, layOut, markAnchor, pageAt, pageInput, placed, renderWidth, scrollFor, scrollOf, splitAt, spotsOf, stepSpot, zoomStep } from "./viewer";
 
 const spent = { in: 0, out: 0, dollars: 0, ms: { total: 0, jev: 0, read: 0, stdin: 0, embed: 0, highlight: 0, sizes: 0, other: 0 } };
 const run = (report: JsonReport | undefined, extra: Partial<Run> = {}): Run => ({
@@ -143,6 +143,10 @@ describe("laying out and placing", () => {
 
   test("the split follows the pointer, within its bounds", () => {
     expect([splitAt(600, 0, 1000), splitAt(100, 0, 1000), splitAt(950, 0, 1000)]).toEqual([0.4, 0.7, 0.3]);
+  });
+
+  test("a highlight up to two views away, either way, is scrolled to; one further is jumped to", () => {
+    expect([inReach(1000, 1500, 400), inReach(1000, 1800, 400), inReach(1000, 1801, 400), inReach(1000, 500, 400), inReach(1000, 200, 400), inReach(1000, 199, 400)]).toEqual([true, true, false, true, true, false]);
   });
 });
 
