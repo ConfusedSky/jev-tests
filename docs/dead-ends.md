@@ -182,8 +182,22 @@ replaced them. Numbers are from the runs at the time (September 2026).
   equipment tags (71%), and part of Legend in the Mist's hero creation and
   Fallout's skills. Every count and every table built to order found
   nothing, and its true/false answers leaned true: it called the knight a
-  class, the heretic a calling and Lockpick a perk. Not pursued; Kev-27B
-  (80 GB GPU) is the size its own evaluations put near jev.
+  class, the heretic a calling and Lockpick a perk.
+- **Kev-27B** (`kev-27b@v1.0` on Modal, same script; needs an 80 GB GPU).
+  Scored 68% against jev's 91%, for 3.3M tokens
+  (`experiments/kev/bench-27b.log`). It matched jev on most passages and
+  on the true/false questions except the heretic, read Heart's class,
+  calling and domain counts right, and got both cases jev misses on its
+  last run (Legend in the Mist's 20 theme types, CPR's magazine costs),
+  though both vary run to run. Where it fell short: the other counts
+  (Fallout's perks 7 of 94, skills 51 for 17; theme kits 31 of 153; Heart's
+  skills, the tropes and CPR's skills found nothing), Fallout's single-item
+  figures (right page, wrong values), the small-gun tables built to order
+  (40–100%), and the shelf table (5%). It was also slower: 545 s for the
+  run against jev's 133 s on its last. Not pursued: the sizes that run on
+  a local 8 GB GPU score too low, and the one that comes close needs a
+  rented 80 GB GPU (B200 at about $6.25/h, plus a cold start of minutes),
+  which costs more per run than jev's ~$0.12.
 
 ## Known flaky, not fixed
 
