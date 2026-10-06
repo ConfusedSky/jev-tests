@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { tabbable, wrapTab } from "../focus";
+import { ghost } from "../ghost";
 import { cx } from "../util";
 
 /**
@@ -38,7 +39,7 @@ export function Dialog({ title, onClose, children, size = "md" }: { title: strin
     };
   }, []);
   return createPortal(
-    <div className={cx("fixed inset-0 z-40 flex animate-fade items-start justify-center bg-black/40", size === "full" ? "" : size === "page" ? "p-4 pt-[3vh]" : "p-4 pt-[10vh]")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={ghost} data-leave="fade" className={cx("fixed inset-0 z-40 flex animate-fade items-start justify-center bg-black/40", size === "full" ? "" : size === "page" ? "p-4 pt-[3vh]" : "p-4 pt-[10vh]")} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panel}
         role="dialog"

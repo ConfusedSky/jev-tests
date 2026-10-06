@@ -34,7 +34,7 @@ export function Confidence({ p, floor, label }: { p: number; floor?: number; lab
     <div className="flex items-center gap-2" title={`${label}: p=${p.toFixed(3)}${floor === undefined ? "" : `, floor ${floor}`}`}>
       <span className="text-[11px] text-stone-500">{label}</span>
       <div className="relative h-1.5 w-20 overflow-hidden rounded-full bg-stone-200">
-        <div className={cx("h-full rounded-full", ok ? "bg-emerald-500" : "bg-amber-500")} style={{ width: `${Math.round(p * 100)}%` }} />
+        <div className={cx("h-full animate-fill rounded-full", ok ? "bg-emerald-500" : "bg-amber-500")} style={{ width: `${Math.round(p * 100)}%` }} />
         {floor !== undefined && <div className="absolute top-0 h-full w-px bg-stone-500" style={{ left: `${floor * 100}%` }} />}
       </div>
       <span className="font-mono text-[11px] tabular-nums text-stone-600">{p.toFixed(2)}</span>
@@ -127,7 +127,7 @@ function HitCard({ hit, kind, floor, index, count, below, reading, contents, ste
   const marks = spots.reduce((n, s) => n + s.marks.length, 0);
   const beside = reader.wide && spots.length > 0;
   return (
-    <article className={cx("overflow-hidden rounded-2xl border bg-white shadow-md shadow-stone-900/5", below ? "border-amber-300" : "border-stone-200")}>
+    <article className={cx("animate-rise overflow-hidden rounded-2xl border bg-white shadow-md shadow-stone-900/5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg", below ? "border-amber-300" : "border-stone-200")} style={{ animationDelay: `calc(var(--stagger) * ${Math.min(index, 5)})` }}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-stone-100 px-5 py-3">
         {count > 1 && <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] font-semibold text-stone-600">{index + 1} of {count}</span>}
         <Source hit={hit} />
@@ -195,7 +195,7 @@ function Across({ table, floor, stem, contents, question, reader }: { table: Non
   const cell = at && table.cells[at[0]]![at[1]]!;
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="animate-rise overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div className="flex items-center gap-3 border-b border-stone-100 px-4 py-2 text-xs text-stone-500">
           <span>
             {table.rows.length} document{table.rows.length === 1 ? "" : "s"} × {table.columns.length} question{table.columns.length === 1 ? "" : "s"}; click a cell to see where it was read
@@ -332,7 +332,7 @@ function Lead({ run, reader }: { run: Run; reader: Reader }) {
   const kind = f.across ? undefined : f.kind;
   const long = f.across ? !!r.answer?.endsWith("…") : kind === "passage" || kind === "table";
   return (
-    <article className="overflow-hidden rounded-2xl border border-dashed border-amber-300 bg-white">
+    <article className="animate-rise overflow-hidden rounded-2xl border border-dashed border-amber-300 bg-white transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-stone-100 px-5 py-3 text-xs text-stone-500">
         <span className="font-medium text-stone-700">{pdf ? basename(pdf) : "the PDF"}</span>
         <span>{r.kind === "contents" ? "the table of contents" : r.page ? `p.${r.page}` : ""}</span>
@@ -373,7 +373,7 @@ function Names({ ranked, total, floor, onPick, onAll }: { ranked: Ranked[]; tota
       </Notice>
     );
   return (
-    <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+    <div className="animate-rise overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 border-b border-stone-100 px-5 py-2.5 text-xs text-stone-500">
         <span>
           <span className="font-semibold text-stone-800">{ranked.length}</span> of {total} names reached the score floor {floor}
@@ -390,11 +390,11 @@ function Names({ ranked, total, floor, onPick, onAll }: { ranked: Ranked[]; tota
       </div>
       <ul>
         {ranked.map((r) => (
-          <li key={r.name} className="group grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-4 border-b border-stone-100 px-5 py-2.5 last:border-0 hover:bg-stone-50">
+          <li key={r.name} className="group grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-4 border-b border-stone-100 px-5 py-2.5 transition duration-150 last:border-0 hover:translate-x-0.5 hover:bg-stone-50">
             <div>
               <div className="font-mono text-sm font-semibold tabular-nums text-stone-800">{r.score.toFixed(2)}</div>
               <div className="relative mt-1 h-1 w-full rounded-full bg-stone-200">
-                <div className="h-full rounded-full bg-teal-600" style={{ width: `${(r.score / 3) * 100}%` }} />
+                <div className="h-full animate-fill rounded-full bg-teal-600" style={{ width: `${(r.score / 3) * 100}%` }} />
                 <div className="absolute top-[-2px] h-2 w-px bg-stone-500" style={{ left: `${(floor / 3) * 100}%` }} title={`floor ${floor}`} />
               </div>
             </div>
@@ -419,7 +419,7 @@ function Names({ ranked, total, floor, onPick, onAll }: { ranked: Ranked[]; tota
 export function Notice({ tone, title, children }: { tone: "amber" | "rose" | "stone"; title: string; children?: React.ReactNode }) {
   const t = { amber: "border-amber-200 bg-amber-50 text-amber-900", rose: "border-rose-200 bg-rose-50 text-rose-900", stone: "border-stone-200 bg-white text-stone-800" }[tone];
   return (
-    <div className={cx("rounded-2xl border px-5 py-4", t)}>
+    <div className={cx("animate-rise rounded-2xl border px-5 py-4", t)}>
       <div className="text-sm font-semibold">{title}</div>
       {children && <div className="mt-1 text-sm opacity-80">{children}</div>}
     </div>
