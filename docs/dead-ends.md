@@ -217,6 +217,32 @@ replaced them. Numbers are from the runs at the time (September 2026).
   embedding cache is keyed by `bookKey` (path, size, mtime), so it has to
   be renamed to the server's keys, or every book is embedded again.
 
+## Asking a gate again near its threshold
+
+- **Re-asking a gate score near the threshold** (October 2026;
+  `experiments/gate-reask/`). jev is not deterministic: the same CPR p.344
+  window, gated 12 times over identical input (`repeat.ts`), scored
+  0.61–0.79 against the 0.7 threshold. The patch (`reask.patch`) asked any
+  window, page batch or excerpt batch twice more when a page landed within
+  0.1 of the threshold, and gated on the mean of the three. Across a full
+  bench and three reruns of the cases that moved, each way:
+
+  | case | without | with re-ask |
+  | --- | --- | --- |
+  | Is heretic a calling in heart? | 2/4 right | 3/4 |
+  | How many perks are there? (96% when found) | 3/4 found | 2/4 |
+  | How many origins are there? | 2/4 at 83% | 0/4 (one at 17%) |
+  | How many tropes are there? | mean 38% | mean 30% |
+  | magazine cost (CPR) | 33% in 4 of 4 | 33% in 4 of 4 |
+
+  The full bench scored 85% without against 77% with it, and read 19% more
+  tokens (2–55% more on the reruns). The two counts that fell, perks and
+  origins, are found by taking the first window that passes; averaging
+  moves which window that is, though why it moved them the wrong way was
+  not traced. The magazine case it was aimed at is untouched: p.344 now
+  comes up as an excerpt, gated in a batch with other pages, at 0.54,
+  outside the band, and the walk takes the ammunition page (p.346).
+
 ## Known flaky, not fixed
 
 - CPR "How much do each type of magazine cost?": p.344 gates between 0.61 and

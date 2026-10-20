@@ -14,6 +14,7 @@ directory) and have no tests. Run them from the repo root so Bun loads
 | `compose/` | `read-request.ts`: how a table request reads (rows, columns, `keep`); `pick-table.ts`: which of CPR p.95's two tables is taken for the rows | [tables.md](../docs/tables.md) |
 | `across/` | `read.ts`: how jev reads a table request across the shelf, word by word, and each cell question's kind in two wordings; `rows.ts`: one request's row reading repeated | [tables.md](../docs/tables.md) |
 | `remote/` | `run.sh`: the bench on another host over ssh, set up and removed again; `times.tsv`: per-case times there and here | [dead-ends.md](../docs/dead-ends.md#running-the-bench-elsewhere) |
+| `gate-reask/` | `repeat.ts`: one window gated many times over identical input; `reask.patch`: gating again near the threshold and averaging | [dead-ends.md](../docs/dead-ends.md#asking-a-gate-again-near-its-threshold) |
 | `pages/` | `origins.py`: a book's pages drawn from a corner off pdfplumber's 0,0 or turned, the only pages where `tables.py` moves a table (`.venv/bin/python`, free) | [pages.md](../docs/pages.md#the-highlight-as-data) |
 
 ## ranking-cache

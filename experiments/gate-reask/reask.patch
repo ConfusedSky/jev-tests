@@ -1,0 +1,115 @@
+diff --git a/pdf.test.ts b/pdf.test.ts
+index 1172da4..ede4136 100644
+--- a/pdf.test.ts
++++ b/pdf.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, test } from "bun:test";
+ import { terms } from "./search";
+-import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, pageSizes, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, windows } from "./pdf";
++import { batches, bookText, cacheDir, confine, GATE, coarse, highlighted, outline, pageSizes, quadsOn, sectionsHolding, sectionsUnder, pageCount, pageScan, parseOutline, pageUrl, run, searchPdf, steady, windows } from "./pdf";
+ import { pageLines } from "./layout";
+ 
+ const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
+@@ -578,3 +578,28 @@ describe("coarse to fine", () => {
+     expect(sectionsUnder(pool, ["Equipment > Small"]).map((x) => x.path)).toEqual([]);
+   });
+ });
++
++describe("steady", () => {
++  const asker = (values: number[][][]) => {
++    let n = 0;
++    return { ask: async () => values[n++]!, asked: () => n };
++  };
++
++  test("a value clear of the threshold is asked once", async () => {
++    const { ask, asked } = asker([[[0.9], [0.1]]]);
++    expect(await steady(ask, 0.7, ["p.1", "p.2"])).toEqual({ nouls: [[0.9], [0.1]] });
++    expect(asked()).toBe(1);
++  });
++
++  test("a value near the threshold is asked twice more, and every value is the mean", async () => {
++    const { ask, asked } = asker([
++      [[0.66, 0.2], [0.1, 0]],
++      [[0.75, 0.2], [0.4, 0]],
++      [[0.78, 0.2], [0.1, 0]],
++    ]);
++    const { nouls, line } = await steady(ask, 0.7, ["p.344", "p.345"]);
++    expect(asked()).toBe(3);
++    expect(nouls.map((n) => n.map((v) => +v.toFixed(3)))).toEqual([[0.73, 0.2], [0.2, 0]]);
++    expect(line).toStartWith("reask  p.344 0.66 0.75 0.78 → 0.73  ");
++  });
++});
+diff --git a/pdf.ts b/pdf.ts
+index ac7ee6a..394fe5e 100644
+--- a/pdf.ts
++++ b/pdf.ts
+@@ -285,6 +285,26 @@ export const GATE = {
+   claim: claimNouls,
+ } satisfies Record<string, Gate>;
+ 
++/** A gate value within this of the threshold is asked AGAIN more times and averaged: one ask decides it by chance. */
++export const NEAR = 0.1;
++const AGAIN = 2;
++
++/**
++ * Noul values per window from `ask`; when any window's value is within NEAR
++ * of `threshold`, every value is the mean of AGAIN + 1 asks, and `line` says
++ * what was asked again.
++ */
++export async function steady(ask: () => Promise<number[][]>, threshold: number, names: string[]): Promise<{ nouls: number[][]; line?: string }> {
++  const first = await ask();
++  const near = first.flatMap((n, i) => (Math.abs(Math.max(...n) - threshold) < NEAR ? [i] : []));
++  if (near.length === 0) return { nouls: first };
++  const snap = snapshot();
++  const all = [first, ...(await Promise.all(Array.from({ length: AGAIN }, ask)))];
++  const nouls = first.map((n, i) => n.map((_, j) => all.reduce((sum, a) => sum + a[i]![j]!, 0) / all.length));
++  const shown = near.map((i) => `${names[i]} ${all.map((a) => Math.max(...a[i]!).toFixed(2)).join(" ")} → ${Math.max(...nouls[i]!).toFixed(2)}`);
++  return { nouls, line: `reask  ${shown.join(", ")}  ${split(snap)}` };
++}
++
+ const keyed = (key: string, gate: Gate, of: string) => gate(of).map((q, j) => [`${key}:${j}`, q] as const);
+ /** A window's gate nouls in order; its value is the highest. */
+ const gated = (answers: Record<string, { noul: number }>, key: string, n: number) =>
+@@ -418,10 +438,12 @@ export async function searchPdf(
+       for (const [i, w] of ws.entries()) {
+         ui.trying(label(w, i));
+         const t = Date.now();
+-        const nouls = await askWindow(client, o.question, name, w.text, gate);
++        const steadied = await steady(async () => [await askWindow(client, o.question, name, w.text, gate)], o.threshold, [nameOf(w)]);
++        const nouls = steadied.nouls[0]!;
+         const p = Math.max(...nouls);
+         tried.push({ name, page: w.page, p });
+         ui.clear();
++        if (steadied.line) ui.log(`${indent}  ${steadied.line}`);
+         const yes = p >= o.threshold;
+         ui.log(`${indent}  ${yes ? "yes" : "no "}  ${p.toFixed(2)}  ${secs(Date.now() - t).padStart(5)} jev  ${label(w, i)}`);
+         if (yes) yield { w, p, nouls, label: label(w, i) };
+@@ -434,8 +456,9 @@ export async function searchPdf(
+       const batch = `batch ${g + 1}/${groups.length}`;
+       ui.trying(`${name} ${group.length} pages (${batch})`);
+       const t = Date.now();
+-      const ps = await timed("api", () => askPages(client, o.question, name, group, gate));
++      const { nouls: ps, line } = await steady(() => timed("api", () => askPages(client, o.question, name, group, gate)), o.threshold, group.map(nameOf));
+       ui.clear();
++      if (line) ui.log(`${indent}  ${line}`);
+       const scored = group.map((w, j) => ({ w, p: Math.max(...ps[j]!), nouls: ps[j]!, label: label(w, i + j) }));
+       i += group.length;
+       for (const { w, p } of scored) tried.push({ name, page: w.page, p });
+@@ -669,8 +692,16 @@ export async function searchPdf(
+     const todo = [...new Set(ranked.filter((r) => r.list === "excerpts").map((r) => ex[r.index]!.page))].filter((p) => !readPages.has(p));
+     const groups = batches(todo.map((page) => ({ page, end: page, text: pages[page - 1]! })), o.chars);
+     const gateSnap = snapshot();
+-    const res = await timed("api", () => Promise.all(groups.map((g) => askPages(client, o.question, pdf.split("/").pop()!, g, gate))));
++    const steadied = await Promise.all(
++      groups.map((g) => steady(() => timed("api", () => askPages(client, o.question, pdf.split("/").pop()!, g, gate)), o.threshold, g.map(nameOf))),
++    );
++    const res = steadied.map((r) => r.nouls);
++    const lines = steadied.flatMap((r) => (r.line ? [r.line] : []));
+     // A step of its own between sections; each excerpt it passes is read as one after it.
++    if (lines.length) {
++      ui.log(`${indent}excerpts: gating ${todo.length} pages…`);
++      for (const l of lines) ui.log(`${indent}  ${l}`);
++    }
+     ui.log(`${indent}excerpts: gated ${todo.length} pages (${groups.length} ${groups.length === 1 ? "batch" : "batches"})  in ${split(gateSnap)}`);
+     return new Map(groups.flatMap((g, i) => g.map((w, j) => [w.page, { w, p: Math.max(...res[i]![j]!), nouls: res[i]![j]! }] as const)));
+   };
