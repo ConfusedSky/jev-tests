@@ -37,6 +37,14 @@ the tools work from any directory.
 `JEV_BASE_URL` points the tools at another server speaking jev's
 `/v1/systemone`; it then needs no key (see docs/dead-ends.md, "Other backends").
 
+The tools ask `typesafe/jev-1.13`, the version the prompts and bars were
+measured on, not `~typesafe/jev-latest`: when that moved to
+`jev-1.14-20261014` the bench fell from 91% to 85%. Its question reading
+stopped naming "weight" and "rating" in "What is the cost, weight and damage
+rating of a combat rifle?" (0.29–0.48 against 0.64–0.86), so both figure
+cases lost the weight. `--model` or `JEVGREP_MODEL` tries another version;
+run the bench on it before moving the pin.
+
 Ollama runs the embedding model that picks which of a long book's sections
 jev ranks, and matches a question to earlier ones whose ranking it can reuse
 (the ranking cache). Without them every book is ranked afresh, which costs

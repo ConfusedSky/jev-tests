@@ -136,7 +136,7 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
       --chars N        characters of text per call (default 48000)
       --whole-windows  gate a window of text at a time instead of every page
       --batch N        names per ranking call (default 40)
-      --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
+      --model SLUG     default typesafe/jev-1.13, or $JEVGREP_MODEL
   -q, --quiet          only print the hit
       --open           open the hit in your PDF viewer, at the page
       --no-highlight   link to the PDF itself, not a copy with the answer highlighted

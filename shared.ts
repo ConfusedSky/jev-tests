@@ -51,7 +51,9 @@ export function counted(client: TypeSafeClient): TypeSafeClient {
   return client;
 }
 
-export const DEFAULT_MODEL = process.env.JEVGREP_MODEL ?? "~typesafe/jev-latest";
+// Pinned, since every prompt and bar here was measured on one version: jev-1.14
+// reads "weight" and "rating" in "the cost, weight and damage rating" as no quantity.
+export const DEFAULT_MODEL = process.env.JEVGREP_MODEL ?? "typesafe/jev-1.13";
 
 // Jev returns no prose, so the reason is built from the rubric level it landed
 // on plus how much probability mass sits there.

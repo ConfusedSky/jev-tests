@@ -13,7 +13,7 @@ function usage(code: number): never {
   -l, --names-only     print filenames only, pipe-clean
       --json           print full answers as JSON
       --batch N        filenames per API call (default 40)
-      --model SLUG     default ~typesafe/jev-latest, or $JEVGREP_MODEL
+      --model SLUG     default typesafe/jev-1.13, or $JEVGREP_MODEL
 
 Reads filenames on stdin. Never reads file contents.
 Needs $OPENROUTER_API_KEY.`);
