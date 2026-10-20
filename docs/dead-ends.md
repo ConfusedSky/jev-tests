@@ -199,6 +199,24 @@ replaced them. Numbers are from the runs at the time (September 2026).
   rented 80 GB GPU (B200 at about $6.25/h, plus a cold start of minutes),
   which costs more per run than jev's ~$0.12.
 
+## Running the bench elsewhere
+
+- **The bench on a server nearer OpenRouter** (`root@models-server`, 2
+  cores and 3 GB, October 2026; `experiments/remote/run.sh`). Took 269 s
+  against 179 s here, at the same score (93% against 94%) and tokens
+  (2.74M against 2.68M); per-case times are in
+  `experiments/remote/times.tsv`. A cold first request from here takes
+  1.5 s, but warm ones take 0.3 s against the server's 0.12 s, and the
+  calls go out in parallel batches, so latency is not what the run waits
+  on. The tables built to order are, and they ran 1.6–1.8 times slower
+  there: their time goes to `pdfplumber` and `mutool`, which run on the
+  local CPU. A faster run needs more CPU, not a nearer network.
+  To run there at all, the server needs `mutool`, `pdftotext`, `rg` and the
+  `pdfplumber` venv (`bun run tables:install`, which needs `uv`). Without
+  `rg` or `pdfplumber` the bench fails cases rather than stopping. The
+  embedding cache is keyed by `bookKey` (path, size, mtime), so it has to
+  be renamed to the server's keys, or every book is embedded again.
+
 ## Known flaky, not fixed
 
 - CPR "How much do each type of magazine cost?": p.344 gates between 0.61 and

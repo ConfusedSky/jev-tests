@@ -1,0 +1,38 @@
+case	local_s	models_server_s
+heart: How many classes are there in heart?	1.1	0.8
+heart: How many callings are there in heart?	0.5	0.8
+heart: how many skills are there in heart?	1.8	2.6
+heart: how many domains are there in heart?	1.4	2.2
+heart: Is witch a class in heart?	0.3	0.4
+heart: Is knight a class in heart?	3.2	4.0
+heart: Is witch hunter a class in heart?	2.1	3.4
+heart: Is heretic a calling in heart?	0.8	1.5
+heart: What are the skills available to a character?	2.6	3.4
+heart: what are the equipment tags	2.1	3.1
+fallout: How many perks are there?	6.4	6.4
+fallout: How many skills are there?	3.0	4.2
+fallout: How many origins are there?	0.8	1.1
+fallout: Is Gunslinger a perk?	1.0	2.0
+fallout: Is Lockpick a perk?	1.0	1.9
+fallout: How is radiation treated?	4.2	5.4
+fallout: What is the cost, weight and damage (1)	2.7	4.0
+fallout: What is the cost, weight and damage (2)	3.2	5.0
+litm: How many theme types are there?	4.0	2.6
+litm: How many theme kits are there?	4.5	7.5
+litm: How many tropes are there?	0.5	1.0
+litm: How does hero creation work in Legend in the Mist?	5.5	4.9
+cpr: How many skills are there in the game?	4.3	3.2
+cpr: Show me the exotic weapons table	2.6	4.1
+cpr: How much do each type of magazine cost	4.3	6.1
+cpr: What is the damage of all the standard ranged weapons	2.7	4.4
+fallout: What is the cost and weight of every small gun	4.3	5.4
+fallout: What is the damage of every small gun?	4.0	6.0
+fallout: What are the skills in fallout?	9.0	11.7
+cpr: Show me the exotic weapons table (as a table)	2.8	4.4
+fallout: Show me a table of the small guns (1)	13.5	21.8
+fallout: Show me a table of the small guns (2)	13.8	23.5
+fallout: Show me a table of the small guns (3)	13.7	23.1
+fallout: Show me a table of the small guns with columns	13.2	23.5
+cpr: Give me a table that contains each of the standard ranged weapons	20.2	32.7
+cpr: Show me the standard weapon table with extended magazine	11.1	20.3
+shelf: Give me a table with Heart, Fallout and Cyberpunk Red	6.8	10.8
