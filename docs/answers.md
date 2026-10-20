@@ -66,6 +66,21 @@ noul's complement read 0.96 off a page that never mentioned the claim once
 its list noul crossed 0.5. Each names the kind-word, since the classes page
 otherwise had "Is heretic a calling?" stated at 0.5.
 
+A list can run on over several pages, so a `false` read off a list without
+the name is checked on the pages either side (`growList`): up to three each
+way, each asked the same three nouls, going on while the page still lists
+the kind. The first page that states or contradicts the claim answers it; a
+page that holds the name without stating it makes the answer `not stated`.
+Fallout's skills run p.46–49, and p.47's entries name Big Guns and Energy
+Weapons but not Small Guns. Off the cached ranking of "What are the
+skills?", which gates the four pages together and reads the best first,
+"Is Small Guns a skill?" read p.47 first and answered `false` in 2 runs of
+8. With the growth it answered `true` in 8 of 8; in the 3 that read p.47
+first, p.46 overturned it for one more call (1,246 tokens). The bench
+scored the statements the same both ways (Heart's heretic fails 1 run in
+4 either way, taking `true` straight off p.16); a `false` that holds now
+costs the pages either side, about 5,000 tokens on Heart's callings.
+
 A question can ask for several figures. "What is the cost, weight and damage
 rating of a combat rifle?" is split into words and each word is asked, in the
 same call that classifies the question, whether it names a quantity the

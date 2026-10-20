@@ -74,6 +74,9 @@ const CASES: Case[] = [
   { book: "fallout", question: "How many origins are there?", truth: 6, page: 53, known: "the contents list five; Brotherhood Initiate has no bookmark" },
   { book: "fallout", question: "Is Gunslinger a perk?", truth: "true" },
   { book: "fallout", question: "Is Lockpick a perk?", truth: "false" },
+  // The skills run p.46-49, and p.47's entries list skills without Small Guns.
+  // Ranked afresh the walk answers off the index (p.429); see docs/answers.md.
+  { book: "fallout", question: "Is Small Guns a skill?", truth: "true" },
   { book: "fallout", question: "How is radiation treated?", truth: "passage", page: 171, contains: ["RadAway"] },
   {
     book: "fallout",

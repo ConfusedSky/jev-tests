@@ -1,8 +1,8 @@
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
-import { answerFrom, answerFromOutline, claimVerdict, countAcross, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
+import { answerFrom, answerFromOutline, claimVerdict, countAcross, growList, KINDS, readPassage, readQuestion, type Answer, type Judged, type Kind, type Reading } from "./answer";
 import { CACHE_MODELS, embedder, rankingCache as makeRankingCache, unready, type CacheModel } from "./cache";
 import { lone, pageParagraphs, type Box, type Para, type Row } from "./layout";
-import { cacheDir, GATE, highlighted, link, openAt, pageCount, pageSizes, pageUrl, type Hit, type Mark, type Outcome, type PageSize, type SearchOpts, type Section, type Ui } from "./pdf";
+import { bookText, cacheDir, GATE, highlighted, link, openAt, pageCount, pageSizes, pageUrl, type Hit, type Mark, type Outcome, type PageSize, type SearchOpts, type Section, type Ui } from "./pdf";
 import { DEFAULT_MODEL, snapshot, split, spentSince, timed, type Snapshot, type Spent } from "./shared";
 import { terms } from "./search";
 
@@ -222,7 +222,12 @@ export async function answerLayer<O extends ReadOpts>(client: TypeSafeClient, o:
         }
       : kind === "truth"
         ? // The gate asked the statement's three nouls of the page; no second call.
-          async (_section, _page, text, _pdf, _end, nouls) => judge(claimVerdict(o.question, text, nouls))
+          async (section, page, text, pdf, end, nouls) => {
+            const pages = await bookText(pdf);
+            const verdict = claimVerdict(o.question, text, nouls);
+            const grow = (n: number, a: Answer, since: Snapshot) => ui.log(`    grow  p.${n}  ${a.text} (p=${a.p.toFixed(2)})  ${split(since)}`);
+            return judge(await growList(client, o.question, section, verdict, nouls, page, end, (n) => pages[n - 1], grow));
+          }
         : kind === "number"
           ? // A figure is read off the page as laid out, its tables as records: a
             // value beside its column head, not a number loose on a line.

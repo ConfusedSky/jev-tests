@@ -1,6 +1,6 @@
 import { choice, noul, type TypeSafeClient } from "@typesafe-ai/sdk";
 import { findOn, lone, pageLines, paragraphs, rowText, styledCandidates, type Box, type Para } from "./layout";
-import { timed } from "./shared";
+import { snapshot, timed, type Snapshot } from "./shared";
 
 export const KINDS = ["count", "number", "truth", "passage", "table"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -589,10 +589,53 @@ export function claimVerdict(question: string, text: string, [s, c, kind]: numbe
   return { text: "not stated", p: 1 - Math.max(s!, c!, a) };
 }
 
-async function truthFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+async function claimOf(client: TypeSafeClient, question: string, section: string, text: string): Promise<number[]> {
   const questions = Object.fromEntries(claimNouls("`text`").map((q, i) => [`c${i}`, q]));
   const res = await timed("api", () => client.systemOne({ state: { question, section, text }, questions }));
-  return claimVerdict(question, text, [0, 1, 2].map((i) => (res.answers[`c${i}`] as { noul: number }).noul));
+  return [0, 1, 2].map((i) => (res.answers[`c${i}`] as { noul: number }).noul);
+}
+
+async function truthFrom(client: TypeSafeClient, question: string, section: string, text: string): Promise<Answer> {
+  return claimVerdict(question, text, await claimOf(client, question, section, text));
+}
+
+/** Pages a list may run on for, either side of the page that listed its kind without the claim's name. */
+const LIST_REACH = 3;
+
+/**
+ * A false read off a list without the claim's name holds only if the list
+ * ends there: Fallout's skills run on over four pages, and one of them lists
+ * skills without Small Guns. Reads the pages either side while each still
+ * lists the kind, and answers from the first that states or contradicts the
+ * claim; a page holding the name without stating it makes it "not stated".
+ */
+export async function growList(
+  client: TypeSafeClient,
+  question: string,
+  section: string,
+  verdict: Answer,
+  [, contradicts]: number[],
+  page: number,
+  end: number,
+  pageText: (page: number) => string | undefined,
+  log: (page: number, a: Answer, since: Snapshot) => void,
+): Promise<Answer> {
+  if (verdict.text !== "false" || contradicts! >= 0.5) return verdict;
+  let seen = false;
+  for (const step of [-1, 1]) {
+    for (let n = step < 0 ? page - 1 : end + 1, i = 0; i < LIST_REACH; n += step, i++) {
+      const text = pageText(n);
+      if (text === undefined) break;
+      const since = snapshot();
+      const nouls = await claimOf(client, question, section, text);
+      const a = claimVerdict(question, text, nouls);
+      log(n, a, since);
+      if (a.text === "true" || nouls[1]! >= 0.5) return { ...a, pages: [n] };
+      if (nouls[2]! < 0.5) break;
+      seen ||= named(text, question);
+    }
+  }
+  return seen ? { text: "not stated", p: 0 } : verdict;
 }
 
 /**

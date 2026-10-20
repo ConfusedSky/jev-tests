@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerFrom, answerFromOutline, bestRun, boxesAt, bestRuns, cellsIn, columnsFor, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
+import { answerFrom, answerFromOutline, bestRun, boxesAt, bestRuns, cellsIn, columnsFor, childrenByParent, claimVerdict, countAcross, countParts, figureLimit, figuresIn, growList, membershipFromContents, mentions, nameKey, readPassage, readQuestion, subjectOf, unitsOf } from "./answer";
 
 const fixture = (name: string) => Bun.fileURLToPath(new URL(`fixture/${name}`, import.meta.url));
 import type { TypeSafeClient } from "@typesafe-ai/sdk";
@@ -858,5 +858,48 @@ describe("columnsFor", () => {
     } as unknown as Parameters<typeof columnsFor>[0];
     expect(await columnsFor(client, "q", ["damage"], [["Weapon", "", "Damage"]])).toEqual([[2]]);
     expect(offered).toEqual(["c2", "none"]);
+  });
+});
+
+describe("growList", () => {
+  // jev states the claim on a page that holds its name, and calls each page's list of the kind as given.
+  const PAGES: Record<number, { text: string; lists: number }> = {
+    46: { text: "Athletics\nBig Guns\nSmall Guns", lists: 0.9 },
+    47: { text: "Big Guns\nEnergy Weapons", lists: 0.9 },
+    48: { text: "Sneak\nSpeech", lists: 0.9 },
+    49: { text: "Survival", lists: 0.2 },
+  };
+  const nouls = (question: string, n: number) => [PAGES[n]!.text.includes(/^Is (.+) a /.exec(question)![1]!) ? 0.9 : 0.1, 0.1, PAGES[n]!.lists];
+  const client = (asked: number[]) =>
+    ({
+      systemOne: async ({ state }: { state: { question: string; text: string } }) => {
+        const n = Number(Object.entries(PAGES).find(([, p]) => p.text === state.text)![0]);
+        asked.push(n);
+        const [c0, c1, c2] = nouls(state.question, n);
+        return { answers: { c0: { noul: c0 }, c1: { noul: c1 }, c2: { noul: c2 } } };
+      },
+    }) as unknown as TypeSafeClient;
+  const grow = (asked: number[], question: string, page: number) => {
+    const ns = nouls(question, page);
+    return growList(client(asked), question, "Skills", claimVerdict(question, PAGES[page]!.text, ns), ns, page, page, (n) => PAGES[n]?.text, () => {});
+  };
+
+  test("a false off a list without the name is overturned by a page of the same list that states it", async () => {
+    const asked: number[] = [];
+    expect(await grow(asked, "Is Small Guns a skill?", 47)).toEqual({ text: "true", p: 0.9, pages: [46] });
+    expect(asked).toEqual([46]);
+  });
+
+  test("a false holds once the pages either side stop listing the kind", async () => {
+    const asked: number[] = [];
+    expect(await grow(asked, "Is Lockpick a skill?", 48)).toEqual({ text: "false", p: 0.9 });
+    // Back through 47 and 46, which list skills; forward to 49, which does not.
+    expect(asked).toEqual([47, 46, 49]);
+  });
+
+  test("a true is left alone", async () => {
+    const asked: number[] = [];
+    expect(await grow(asked, "Is Small Guns a skill?", 46)).toEqual({ text: "true", p: 0.9 });
+    expect(asked).toEqual([]);
   });
 });
