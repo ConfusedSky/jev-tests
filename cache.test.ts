@@ -77,6 +77,15 @@ describe("rankingCache", () => {
       expect(hit).toMatchObject({ whole: 0, subject: 1 });
     }));
 
+  test("the same question, up to case and spacing, is a hit without embedding", async () =>
+    withDir(async (dir) => {
+      const { embed, calls } = fake([]);
+      await rankingCache(qwen, embed, dir, "How many perks are there?", ["perks"]).store(pdf, ranking);
+      const hit = await rankingCache(qwen, embed, dir, "  how many  perks are there? ", ["perks"]).lookup(pdf);
+      expect(hit).toMatchObject({ entry: { question: "How many perks are there?" }, whole: 1, subject: -1 });
+      expect(calls).toEqual([]);
+    }));
+
   test("a question stored again replaces its entry", async () =>
     withDir(async (dir) => {
       const { embed } = fake([]);
@@ -93,8 +102,8 @@ describe("rankingCache", () => {
       const { embed } = fake([["treated", [1, 0, 0]]]);
       await rankingCache(qwen, embed, dir, "How is radiation treated?", []).store(pdf, ranking);
       const other = fake([["treated", [1, 0, 0]]]);
-      await rankingCache(small, other.embed, dir, "How is radiation treated?", []).lookup(pdf);
-      await rankingCache(small, other.embed, dir, "How is radiation treated?", []).lookup(pdf);
+      await rankingCache(small, other.embed, dir, "How do I cure radiation sickness?", []).lookup(pdf);
+      await rankingCache(small, other.embed, dir, "How do I cure radiation sickness?", []).lookup(pdf);
       // The stored entry is embedded once for 3-small, then read back; each lookup embeds its own question.
       expect(other.calls.filter((c) => c.some((t) => t.includes("Sections")))).toHaveLength(1);
       expect([...new Bun.Glob("*/embeddings-*.json").scanSync(dir)].map((f) => f.split("/")[1])).toEqual(["embeddings-3-small.json"]);

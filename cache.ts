@@ -91,6 +91,9 @@ export async function unready(m: CacheModel, fetchFn: typeof fetch = fetch): Pro
 export type Entry = { question: string; subject: string[]; top: string[]; all: Ranked[]; ex: Excerpt[]; at: string };
 export type Found = { entry: Entry; whole: number; subject: number };
 
+// The asymmetric embeddings score a question against its own entry well under 1, so the same words are matched by text.
+const sameText = (a: string, b: string) => a.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
+
 const cos = (a: number[], b: number[]) => {
   let d = 0;
   let na = 0;
@@ -134,6 +137,8 @@ export function rankingCache(m: CacheModel, embed: Embed, dir: string, question:
       const p = paths(pdf);
       const entries = await read<Entry[]>(p.rankings, []);
       if (entries.length === 0) return undefined;
+      const same = entries.find((e) => sameText(e.question, question));
+      if (same) return { entry: same, whole: 1, subject: -1 };
       // An entry stored under another model is embedded for this one the
       // first time it is looked at, and kept.
       const vectors = await read<Vectors>(p.embeddings, {});
