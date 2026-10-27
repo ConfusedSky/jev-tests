@@ -108,8 +108,8 @@ ranked from cache in 3.8s (…): "How is radiation treated?" (question 0.53, sub
 total 6.3s (…; 14,022 tokens in, …)          ← 54,681 when it ranked afresh
 ```
 
-Closeness is an embedding model's, chosen with `--cache`: `qwen3-4b` (the
-default, through a local Ollama), `qwen3-0.6b` (Ollama) or `3-small`
+Closeness is an embedding model's, chosen with `--cache`: `qwen3-4b` (through
+a local Ollama), `qwen3-0.6b` (Ollama) or `3-small`
 (OpenRouter). A cached question is close enough when its question and
 its three best sections score at least a model's bar against the new
 question, or its subject against the new subject (0.53 or 0.80 for
@@ -121,7 +121,8 @@ kept.
 Without the cache every book is ranked afresh, which costs money, so a
 cache that cannot run stops the tool before anything is spent: start
 Ollama (`ollama serve`; `ollama pull qwen3-embedding:4b` once), or pass
-`--cache off`. The bench ranks afresh unless given `--cache MODEL`.
+`--cache off`. The cache is off by default for now, as is the bench's,
+until it is trusted again (issue #34); `--cache qwen3-4b` turns it on.
 
 `-n, --hits N` keeps walking until N passages have passed the threshold and
 prints them all, best first within a section. Passage questions only: a

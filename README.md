@@ -47,9 +47,10 @@ run the bench on it before moving the pin.
 
 Ollama runs the embedding model that picks which of a long book's sections
 jev ranks, and matches a question to earlier ones whose ranking it can reuse
-(the ranking cache). Without them every book is ranked afresh, which costs
-money, so a tool whose cache can't run stops before spending anything and
-says what to do: start Ollama, or pass `--cache off`. The first question on
+(the ranking cache). The ranking cache is off by default for now, until it
+is trusted again; `--cache qwen3-4b` turns it on, and a tool whose cache
+can't run stops before spending anything and says what to do: start Ollama,
+or pass `--cache off`. The first question on
 a book embeds its pages once, which takes a few minutes.
 
 ## The tools

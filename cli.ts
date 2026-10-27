@@ -93,7 +93,8 @@ export const readDefaults = (): ReadOpts => ({
   search: true,
   tsv: false,
   json: false,
-  cache: "qwen3-4b",
+  // Off until the ranking cache is trusted again (issue #34).
+  cache: "off",
 });
 
 export const readFlags = (): Flags<ReadOpts> => ({
@@ -150,8 +151,8 @@ export const READ_USAGE = `  -t, --threshold P    yes-probability needed to stop
                        each hit with the boxes its answer highlights
       --kind K         force count, number, truth, passage or table instead of asking jev
       --cache MODEL    reuse the ranking of an earlier, similar question, matched by
-                       qwen3-4b (default, Ollama), qwen3-0.6b (Ollama) or 3-small
-                       (OpenRouter); off ranks every book afresh`;
+                       qwen3-4b (Ollama), qwen3-0.6b (Ollama) or 3-small (OpenRouter);
+                       off (default) ranks every book afresh`;
 
 /**
  * Wires the answer layer into a search: a count, number or statement has a

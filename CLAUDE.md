@@ -126,8 +126,8 @@ What the tools do and how is in README.md and docs/. Notes for working on it:
   up what was measured, adopted or dropped in docs/ (dead ends in
   docs/dead-ends.md) with the scripts in experiments/, so it is not
   re-derived.
-- Ollama with `qwen3-embedding:4b` must be running for the default ranking
-  cache and page embeddings; pass `--cache off` without it. When the GPU
+- Ollama with `qwen3-embedding:4b` must be running for page embeddings and
+  the ranking cache (`--cache qwen3-4b`, off by default for now). When the GPU
   lacks room for the model (about 4.5 GB), Ollama runs it partly on the CPU,
   slower but still well under a jev call. Don't stop an Ollama you didn't
   start.

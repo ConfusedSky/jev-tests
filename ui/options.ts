@@ -45,7 +45,7 @@ export type Options = {
 export const DEFAULTS: Options = {
   kind: "auto",
   hits: 1,
-  cache: "qwen3-4b",
+  cache: "off",
   across: "auto",
   threshold: 0.7,
   answerFloor: 0.7,
