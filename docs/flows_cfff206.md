@@ -7,6 +7,7 @@ How each tool decides what to read and what to answer, with every call to jev ma
 The three tools and the walk they share. Blue boxes are jev calls, numbered as in the table below; amber are decisions; green an answer; red an exit with none; purple a step with a chart of its own.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   subgraph G["jevgrep: names only"]
     G1["filenames on stdin"] --> G2[["J1 rank names"]] --> G3["names ≥ 1.5"]
@@ -65,6 +66,7 @@ flowchart TD
 Ranks filenames from stdin, one call per 40 names. Never opens a file.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   A["stdin: one filename per line"] --> B{{"any names?"}}
   B -- no --> X["exit 2"]
@@ -90,6 +92,7 @@ flowchart TD
 One PDF: read the question, walk the book or compose a table, report.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   A["book.pdf + question"] --> V{{"file exists, not empty,<br/>mutool can open it?"}}
   V -- no --> X["exit 2"]
@@ -122,6 +125,7 @@ flowchart TD
 Decides between a table across the shelf and one answer from the best file.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   A["stdin: paths"] --> B{{"any paths?"}}
   B -- no --> X["exit 2"]
@@ -156,6 +160,7 @@ flowchart TD
 `findIn` in shelf.ts: files ranked by name and by pages that mention the subject, then walked best-first.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   EM["paths, empty files left out"] --> EX{{"subject terms read,<br/>kind not count, floor soft?"}}
   EX -- yes --> RG["pdftotext every PDF (cached);<br/>ripgrep ≤ 3 excerpts per file<br/>that mention the subject"]
@@ -190,6 +195,7 @@ flowchart TD
 Each cell is a question of its own, read (J2) and walked over the shelf under a hard file floor.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   R["rows: documents named<br/>(e.g. Heart, Fallout)"] --> C["columns: questions<br/>(e.g. how many skills are there)"]
   C --> L["for each row × column, one after another"]
@@ -224,6 +230,7 @@ flowchart TD
 `answerLayer` in cli.ts. `--kind` replaces only the kind: the quantities, counted kind, subject and game still come from J2.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   Q["question"] --> J2[["J2 read the question, one call:<br/>choice: kind (count · number · truth · passage · table)<br/>noul: 'a figure for each of several things?'<br/>per word, 4 nouls: quantity · counted kind · subject · game"]]
   J2 --> E{{"kind = number and<br/>'each' ≥ 0.3?"}}
@@ -253,6 +260,7 @@ flowchart TD
 `searchPdf` in pdf.ts, up to the ranked list.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   A["PDF"] --> O["outline (mutool) +<br/>text cache (pdftotext -layout)"]
   O --> TC{{"has outline, no --no-toc,<br/>kind count or truth?"}}
@@ -291,6 +299,7 @@ flowchart TD
 Pages gated in ranked order; a page that passes is read by its kind and taken, kept or dropped.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   WK{{"next ranked item<br/>(≤ --max 12 sections)"}}
   WK -- "score < title floor 1.0<br/>and an answer taken" --> FIN
@@ -332,6 +341,7 @@ flowchart TD
 `answerFromOutline` in answer.ts, before any page is read.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   O["outline parents with more than one child"] --> J4[["J4 one call:<br/>choice: which section's children are the things counted<br/>noul per section: are its children groups, not things?"]]
   J4 --> P{{"pick p ≥ answer floor 0.7?"}}
@@ -356,6 +366,7 @@ flowchart TD
 jev judges each candidate name; code counts.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   G[["J5 gate: 'lists entries of the kind'"]] --> C{{"≥ 3 styled runs on the page?"}}
   C -- yes --> STY["candidates = names set in<br/>their own type style"]
@@ -384,6 +395,7 @@ flowchart TD
 The answer is one of the figures printed on the page; jev picks which.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   G[["J5 gate: 'contains the answer'"]] --> L["page as laid out:<br/>table rows as records"]
   L --> F["every figure on the page<br/>(digits or words), with its row as context;<br/>≤254, cut to fit jev's size limits"]
@@ -408,6 +420,7 @@ flowchart TD
 The gate's three nouls are the verdict; a false read off a list is checked on the pages either side.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   M["contents: 'is X a Y?' with Y a section<br/>(no jev call, string match)"] --> ML{{"X listed under Y?"}}
   ML -- yes --> T1["true, p = 1"]
@@ -440,6 +453,7 @@ flowchart TD
 One noul per sentence; the best runs are the passage, grown onto later pages while they keep answering.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   G[["J5 gate: 'contains the answer'"]] --> L["page as laid out: sentences,<br/>headings and table rows as units"]
   L --> J9[["J9 noul per unit: 'part of the answer?'<br/>≤150 per call, whole page in state"]]
@@ -472,6 +486,7 @@ flowchart TD
 `composeTable` in compose.ts.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   J11[["J11 read the request, per word:<br/>row things · column · what to add;<br/>noul: keep the table's own columns?"]] --> AD{{"something to add<br/>and columns named?"}}
   AD -- yes --> J12[["J12 noul per column:<br/>add it beside this column's items?"]]
@@ -504,6 +519,7 @@ flowchart TD
 A column the rows' table lacks comes from each row's entry, then the row's own cells, then a search of its own.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   U1{{"columns not placed?"}}
   U1 -- yes --> J14[["J14 entries on the next 8 pages:<br/>choice per column among 'Label: value' labels"]]
@@ -531,6 +547,7 @@ flowchart TD
 Rows of other tables matched to ours, gaps filled, values added beside items.
 
 ```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":22,"rankSpacing":30,"padding":8,"wrappingWidth":280},"themeVariables":{"fontSize":"13px","primaryColor":"#f3f4f6","primaryBorderColor":"#6b7280","primaryTextColor":"#111827","lineColor":"#8b8f98","edgeLabelBackground":"#e5e7eb","clusterBkg":"transparent","clusterBorder":"#8b8f98","titleColor":"#8b8f98"}}}%%
 flowchart TD
   IN["every column has a source, or none"] --> MR{{"a column comes<br/>from another table?"}}
   MR -- yes --> J16[["J16 match rows: same name first,<br/>choice per unmatched row"]]
