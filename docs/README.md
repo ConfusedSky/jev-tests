@@ -5,7 +5,8 @@ is not re-derived. The scripts behind the numbers are in
 [`experiments/`](../experiments/README.md).
 
 How the tools work is in [searching.md](searching.md), [answers.md](answers.md),
-[tables.md](tables.md), [pages.md](pages.md) and [semif.md](semif.md). The
+[tables.md](tables.md), [pages.md](pages.md) and [semif.md](semif.md), and
+as flowcharts in [flows_cfff206.md](flows_cfff206.md). The
 rest of this directory records experiments:
 
 | document | covers |

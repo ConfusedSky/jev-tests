@@ -100,6 +100,7 @@ $ bun jevsec.ts fallout.pdf "Show me a table of the small guns with columns Dama
 
 | document | covers |
 | --- | --- |
+| [docs/flows_cfff206.md](docs/flows_cfff206.md) | flowcharts of each tool, the walk and each kind of question, with every call to jev, as of commit cfff206 |
 | [docs/searching.md](docs/searching.md) | ranking a book, the ranking cache, the text search, the walk, reading the log, where the time goes |
 | [docs/answers.md](docs/answers.md) | each kind of question in detail, answering from the contents, counting long lists, limits |
 | [docs/tables.md](docs/tables.md) | reading tables, tables as records, tables to order, tables across the shelf |
